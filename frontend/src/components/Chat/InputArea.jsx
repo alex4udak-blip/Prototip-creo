@@ -178,7 +178,8 @@ export function InputArea() {
         await quickGenerate(prompt);
       } else {
         // Умная или глубокая генерация
-        await generate(prompt, { deepThinking: settings.mode === 'deep' });
+        // ВАЖНО: передаём null как answers, options как третий аргумент!
+        await generate(prompt, null, { deepThinking: settings.mode === 'deep' });
       }
     } catch (error) {
       console.error('Generate error:', error);
