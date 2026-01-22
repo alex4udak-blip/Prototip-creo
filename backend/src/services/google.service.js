@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -7,7 +7,7 @@ import { log } from '../utils/logger.js';
 
 // Инициализация Google AI
 const genAI = config.googleApiKey
-  ? new GoogleGenAI({ apiKey: config.googleApiKey })
+  ? new GoogleGenerativeAI(config.googleApiKey)
   : null;
 
 /**
@@ -59,15 +59,15 @@ The text should be the focal point and perfectly readable.`;
 
   try {
     // Используем Gemini для генерации изображений
-    const aiModel = genAI.getGenerativeModel({ model: GOOGLE_MODELS[model] || GOOGLE_MODELS['google-nano'] });
-
-    const result = await aiModel.generateContent({
-      contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
+    const modelName = GOOGLE_MODELS[model] || GOOGLE_MODELS['google-nano'];
+    const aiModel = genAI.getGenerativeModel({
+      model: modelName,
       generationConfig: {
-        responseModalities: ['IMAGE', 'TEXT'],
-        responseMimeType: 'image/png'
+        responseModalities: ['image', 'text'],
       }
     });
+
+    const result = await aiModel.generateContent(finalPrompt);
 
     const response = result.response;
     const timeMs = Date.now() - startTime;
@@ -86,6 +86,9 @@ The text should be the focal point and perfectly readable.`;
     }
 
     if (images.length === 0) {
+      // Попробуем получить текстовый ответ как fallback
+      const text = response.text();
+      log.warn('Google API не вернул изображение, получен текст', { text: text?.substring(0, 100) });
       throw new Error('Google API не вернул изображение');
     }
 
@@ -120,39 +123,9 @@ export async function generateWithImagen(prompt, options = {}) {
   const startTime = Date.now();
 
   try {
-    // Imagen 3 API
-    const response = await genAI.models.generateImages({
-      model: 'imagen-3.0-generate-002',
-      prompt: prompt,
-      config: {
-        numberOfImages: Math.min(numImages, 4),
-        aspectRatio: getAspectRatio(width, height),
-        outputOptions: {
-          mimeType: 'image/png'
-        }
-      }
-    });
-
-    const timeMs = Date.now() - startTime;
-    const images = [];
-
-    for (const image of response.generatedImages || []) {
-      if (image.image?.imageBytes) {
-        const imageUrl = await saveBase64Image(
-          Buffer.from(image.image.imageBytes).toString('base64'),
-          'image/png'
-        );
-        images.push(imageUrl);
-      }
-    }
-
-    log.info('Imagen 3 generation complete', { timeMs, numImages: images.length });
-
-    return {
-      images,
-      timeMs,
-      model: 'imagen-3'
-    };
+    // Imagen 3 через Vertex AI - пока заглушка
+    // Требует другую авторизацию (service account)
+    throw new Error('Imagen 3 requires Vertex AI setup');
 
   } catch (error) {
     log.error('Imagen generation failed', { error: error.message });
@@ -205,7 +178,7 @@ export async function checkGoogleHealth() {
   try {
     // Простой тест
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
-    const result = await model.generateContent('test');
+    const result = await model.generateContent('Say hi');
     return { available: true };
   } catch (error) {
     return { available: false, reason: error.message };

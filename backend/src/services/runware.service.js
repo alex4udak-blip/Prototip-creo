@@ -57,13 +57,19 @@ export async function generateWithRunware(prompt, options = {}) {
   const startTime = Date.now();
 
   try {
-    const response = await fetch(`${RUNWARE_API}/image/generate`, {
+    // Runware API требует массив объектов
+    const requestPayload = [{
+      taskType: 'imageInference',
+      ...payload
+    }];
+
+    const response = await fetch(`${RUNWARE_API}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${config.runwareApiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(requestPayload)
     });
 
     if (!response.ok) {
@@ -75,9 +81,17 @@ export async function generateWithRunware(prompt, options = {}) {
     const data = await response.json();
     const timeMs = Date.now() - startTime;
 
-    // Извлекаем URL изображений
-    const images = data.images || data.data || [];
-    const imageUrls = images.map(img => img.imageURL || img.url);
+    // Извлекаем URL изображений из массива результатов
+    const results = data.data || data || [];
+    const imageUrls = [];
+
+    for (const item of results) {
+      if (item.imageURL) {
+        imageUrls.push(item.imageURL);
+      } else if (item.images) {
+        imageUrls.push(...item.images.map(img => img.imageURL || img.url));
+      }
+    }
 
     log.info('Runware generation complete', {
       model,
