@@ -191,13 +191,26 @@ export const useChatStore = create((set, get) => ({
     // Сохраняем referenceUrl до того как сбросим attachedReference
     const referenceUrl = attachedReference?.url;
 
-    // Добавляем сообщение пользователя немедленно
+    // Создаём placeholder для ответа AI (показывает "Анализирую...")
+    const tempAssistantMessageId = `assistant-${Date.now()}`;
+    const assistantPlaceholder = {
+      id: tempAssistantMessageId,
+      role: 'assistant',
+      content: null,
+      isAnalyzing: true,  // Флаг что идёт анализ/clarification
+      isGenerating: false,
+      generationPhase: GENERATION_PHASES.ANALYZING,
+      createdAt: new Date().toISOString()
+    };
+
+    // Добавляем сообщение пользователя И placeholder ассистента немедленно
     set(state => ({
-      messages: [...state.messages, userMessage],
+      messages: [...state.messages, userMessage, assistantPlaceholder],
       isGenerating: true,
-      generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.STARTING,
-      generationProgress: null,
+      generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.ANALYZING,
+      generationProgress: referenceUrl ? 'Анализирую референс...' : 'Анализирую запрос...',
       generationMode: deepThinking ? 'deep_thinking' : (quickGenerate ? 'quick' : 'standard'),
+      generationMessageId: tempAssistantMessageId,
       deepThinkingData: deepThinking ? { stage: 'starting', message: 'Начинаю глубокий анализ...' } : null,
       attachedReference: null // Сбрасываем после сохранения URL
     }));
@@ -231,16 +244,22 @@ export const useChatStore = create((set, get) => ({
 
       // Если сервер вернул вопросы
       if (response.status === 'needs_clarification') {
-        const clarificationMessage = {
-          id: response.messageId,
-          role: 'assistant',
-          content: response.clarification.summary,
-          clarification: response.clarification,
-          createdAt: new Date().toISOString()
-        };
-
+        // Заменяем placeholder на реальное сообщение с вопросами
         set(state => ({
-          messages: [...state.messages, clarificationMessage],
+          messages: state.messages.map(msg =>
+            msg.id === tempAssistantMessageId
+              ? {
+                  id: response.messageId || tempAssistantMessageId,
+                  role: 'assistant',
+                  content: response.clarification.summary,
+                  clarification: response.clarification,
+                  isAnalyzing: false,
+                  isGenerating: false,
+                  generationPhase: null,
+                  createdAt: new Date().toISOString()
+                }
+              : msg
+          ),
           pendingClarification: {
             ...response.clarification,
             originalPrompt: prompt,
@@ -249,6 +268,7 @@ export const useChatStore = create((set, get) => ({
           isGenerating: false,
           generationPhase: null,
           generationMode: null,
+          generationMessageId: null,
           deepThinkingData: null
         }));
 
@@ -262,22 +282,25 @@ export const useChatStore = create((set, get) => ({
         return response;
       }
 
-      // Обычная генерация - добавляем placeholder для ответа ассистента
-      const assistantMessageId = response.messageId || `assistant-${Date.now()}`;
-      const assistantMessage = {
-        id: assistantMessageId,
-        role: 'assistant',
-        content: null,
-        isGenerating: true,
-        generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.ANALYZING,
-        deepThinking: deepThinking,
-        createdAt: new Date().toISOString()
-      };
+      // Обычная генерация - обновляем placeholder (уже добавлен выше)
+      const assistantMessageId = response.messageId || tempAssistantMessageId;
 
       set(state => ({
-        messages: [...state.messages, assistantMessage],
+        messages: state.messages.map(msg =>
+          msg.id === tempAssistantMessageId
+            ? {
+                ...msg,
+                id: assistantMessageId,
+                isAnalyzing: false,
+                isGenerating: true,
+                generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.GENERATING,
+                deepThinking: deepThinking
+              }
+            : msg
+        ),
         generationMessageId: assistantMessageId,
-        generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.ANALYZING
+        generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.GENERATING,
+        generationProgress: 'Генерирую изображение...'
       }));
 
       // Обновляем текущий чат если его не было

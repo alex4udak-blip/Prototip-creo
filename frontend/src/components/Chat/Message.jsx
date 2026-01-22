@@ -252,6 +252,13 @@ export function Message({ message }) {
                 </div>
               )}
 
+              {/* Analyzing status - показываем пока идёт анализ/clarification */}
+              {message.isAnalyzing && !message.isGenerating && (
+                <div className="mt-3">
+                  <GenerationStatus phase={GENERATION_PHASES.ANALYZING} progress="Анализирую запрос..." />
+                </div>
+              )}
+
               {/* Generation status - красивый UI в чате */}
               {message.isGenerating && (
                 <div className="mt-3">
