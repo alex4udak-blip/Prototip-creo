@@ -218,21 +218,20 @@ router.post('/', checkGenerationLimit, async (req, res) => {
 
     // ЭТАП 2: Генерация (либо ответы получены, либо вопросы не нужны)
 
-    // Сохраняем сообщение пользователя (если это ответ на вопросы — добавляем контекст)
-    let userContent = prompt;
-    if (answers) {
-      const answerText = Object.entries(answers)
-        .map(([q, a]) => `${q}: ${Array.isArray(a) ? a.join(', ') : a}`)
-        .join(', ');
-      userContent = `${prompt}\n[Уточнения: ${answerText}]`;
-    }
+    // Если это ОТВЕТ на clarification — НЕ создаём новое сообщение пользователя!
+    // Оригинальное уже было сохранено в ЭТАП 1
+    let userMessageId = null;
 
-    const userMessage = await db.insert('messages', {
-      chat_id: chatId,
-      role: 'user',
-      content: userContent,
-      reference_url: reference_url || null
-    });
+    if (!answers) {
+      // Новый запрос — сохраняем сообщение пользователя
+      const userMessage = await db.insert('messages', {
+        chat_id: chatId,
+        role: 'user',
+        content: prompt,
+        reference_url: reference_url || null
+      });
+      userMessageId = userMessage.id;
+    }
 
     // Создаём placeholder для ответа AI
     const assistantMessage = await db.insert('messages', {
@@ -247,7 +246,7 @@ router.post('/', checkGenerationLimit, async (req, res) => {
       success: true,
       chatId,
       messageId,
-      userMessageId: userMessage.id,
+      userMessageId: userMessageId,  // null если это ответ на clarification
       status: 'processing',
       mode: deep_thinking ? 'deep_thinking' : 'standard'
     });

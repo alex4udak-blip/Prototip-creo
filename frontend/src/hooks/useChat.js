@@ -178,42 +178,69 @@ export const useChatStore = create((set, get) => ({
     // deepThinking берётся из options или из режима 'deep'
     const { deepThinking = (settings.mode === 'deep'), quickGenerate = false } = options;
 
-    // СРАЗУ добавляем сообщение пользователя в чат!
-    const tempUserMessageId = `user-${Date.now()}`;
-    const userMessage = {
-      id: tempUserMessageId,
-      role: 'user',
-      content: prompt,
-      referenceUrl: attachedReference?.url,
-      createdAt: new Date().toISOString()
-    };
-
     // Сохраняем referenceUrl до того как сбросим attachedReference
     const referenceUrl = attachedReference?.url;
 
-    // Создаём placeholder для ответа AI (показывает "Анализирую...")
-    const tempAssistantMessageId = `assistant-${Date.now()}`;
-    const assistantPlaceholder = {
-      id: tempAssistantMessageId,
-      role: 'assistant',
-      content: null,
-      isAnalyzing: true,  // Флаг что идёт анализ/clarification
-      isGenerating: false,
-      generationPhase: GENERATION_PHASES.ANALYZING,
-      createdAt: new Date().toISOString()
-    };
+    // Если это ОТВЕТ на clarification — НЕ добавляем новое сообщение пользователя!
+    // Оригинальное сообщение уже есть в чате
+    const isAnsweringClarification = !!answers && !!pendingClarification;
 
-    // Добавляем сообщение пользователя И placeholder ассистента немедленно
-    set(state => ({
-      messages: [...state.messages, userMessage, assistantPlaceholder],
-      isGenerating: true,
-      generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.ANALYZING,
-      generationProgress: referenceUrl ? 'Анализирую референс...' : 'Анализирую запрос...',
-      generationMode: deepThinking ? 'deep_thinking' : (quickGenerate ? 'quick' : 'standard'),
-      generationMessageId: tempAssistantMessageId,
-      deepThinkingData: deepThinking ? { stage: 'starting', message: 'Начинаю глубокий анализ...' } : null,
-      attachedReference: null // Сбрасываем после сохранения URL
-    }));
+    let tempUserMessageId = null;
+    const tempAssistantMessageId = `assistant-${Date.now()}`;
+
+    if (isAnsweringClarification) {
+      // Только добавляем placeholder для ответа AI
+      const assistantPlaceholder = {
+        id: tempAssistantMessageId,
+        role: 'assistant',
+        content: null,
+        isAnalyzing: false,
+        isGenerating: true,
+        generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.GENERATING,
+        createdAt: new Date().toISOString()
+      };
+
+      set(state => ({
+        messages: [...state.messages, assistantPlaceholder],
+        isGenerating: true,
+        generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.GENERATING,
+        generationProgress: 'Генерирую с учётом ваших уточнений...',
+        generationMode: deepThinking ? 'deep_thinking' : 'standard',
+        generationMessageId: tempAssistantMessageId,
+        deepThinkingData: deepThinking ? { stage: 'starting', message: 'Начинаю глубокий анализ...' } : null
+      }));
+    } else {
+      // Новое сообщение — добавляем и user message и placeholder
+      tempUserMessageId = `user-${Date.now()}`;
+      const userMessage = {
+        id: tempUserMessageId,
+        role: 'user',
+        content: prompt,
+        referenceUrl: attachedReference?.url,
+        createdAt: new Date().toISOString()
+      };
+
+      const assistantPlaceholder = {
+        id: tempAssistantMessageId,
+        role: 'assistant',
+        content: null,
+        isAnalyzing: true,
+        isGenerating: false,
+        generationPhase: GENERATION_PHASES.ANALYZING,
+        createdAt: new Date().toISOString()
+      };
+
+      set(state => ({
+        messages: [...state.messages, userMessage, assistantPlaceholder],
+        isGenerating: true,
+        generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.ANALYZING,
+        generationProgress: referenceUrl ? 'Анализирую референс...' : 'Анализирую запрос...',
+        generationMode: deepThinking ? 'deep_thinking' : (quickGenerate ? 'quick' : 'standard'),
+        generationMessageId: tempAssistantMessageId,
+        deepThinkingData: deepThinking ? { stage: 'starting', message: 'Начинаю глубокий анализ...' } : null,
+        attachedReference: null
+      }));
+    }
 
     try {
       // Если есть ответы на вопросы — используем оригинальный промпт
@@ -234,8 +261,8 @@ export const useChatStore = create((set, get) => ({
         quick_generate: quickGenerate
       });
 
-      // Обновляем ID сообщения пользователя если сервер вернул
-      if (response.userMessageId) {
+      // Обновляем ID сообщения пользователя если сервер вернул (только для новых сообщений)
+      if (response.userMessageId && tempUserMessageId) {
         get().updateMessage(tempUserMessageId, { id: response.userMessageId });
       }
 
