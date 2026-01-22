@@ -622,11 +622,26 @@ export async function executePlan(plan, promptAnalysis, references = []) {
 }
 
 /**
- * Парсинг размера из строки "1200x628" или имени пресета
+ * Парсинг размера из строки "1200x628", имени пресета, или 'auto'
+ * @param {string} sizeInput - размер или 'auto'
+ * @param {Array} presets - пресеты из БД
+ * @param {string} prompt - промпт для извлечения размера (когда auto)
  */
-export function parseSize(sizeInput, presets = []) {
-  if (!sizeInput) {
-    return { width: 1200, height: 628 }; // Default
+export function parseSize(sizeInput, presets = [], prompt = '') {
+  // Если 'auto' - пытаемся извлечь размер из промпта
+  if (sizeInput === 'auto' && prompt) {
+    const extracted = extractSizeFromPrompt(prompt);
+    if (extracted) {
+      log.debug('Size extracted from prompt', extracted);
+      return extracted;
+    }
+    // Если не нашли - используем default
+    log.debug('Auto size: no size in prompt, using default');
+    return { width: 1024, height: 1024 }; // Default для auto
+  }
+
+  if (!sizeInput || sizeInput === 'auto') {
+    return { width: 1024, height: 1024 }; // Default
   }
 
   // Если это строка вида "1200x628"
@@ -648,7 +663,57 @@ export function parseSize(sizeInput, presets = []) {
   }
 
   // Default
-  return { width: 1200, height: 628 };
+  return { width: 1024, height: 1024 };
+}
+
+/**
+ * Извлечение размера из промпта
+ */
+function extractSizeFromPrompt(prompt) {
+  // Паттерн 1: "100x600", "100×600", "100X600"
+  const xPattern = prompt.match(/(\d{2,4})\s*[xXхХ×]\s*(\d{2,4})/);
+  if (xPattern) {
+    return { width: parseInt(xPattern[1]), height: parseInt(xPattern[2]) };
+  }
+
+  // Паттерн 2: "100 на 600", "100 by 600"
+  const naPattern = prompt.match(/(\d{2,4})\s*(?:на|by)\s*(\d{2,4})/i);
+  if (naPattern) {
+    return { width: parseInt(naPattern[1]), height: parseInt(naPattern[2]) };
+  }
+
+  // Паттерн 3: "размер 100 600", "size 100 600"
+  const sizePattern = prompt.match(/(?:размер|size)\s*[:\s]*(\d{2,4})\s+(\d{2,4})/i);
+  if (sizePattern) {
+    return { width: parseInt(sizePattern[1]), height: parseInt(sizePattern[2]) };
+  }
+
+  // Паттерн 4: "100*600"
+  const starPattern = prompt.match(/(\d{2,4})\s*\*\s*(\d{2,4})/);
+  if (starPattern) {
+    return { width: parseInt(starPattern[1]), height: parseInt(starPattern[2]) };
+  }
+
+  // Паттерн 5: ключевые слова для форматов
+  const lowerPrompt = prompt.toLowerCase();
+
+  if (lowerPrompt.includes('stories') || lowerPrompt.includes('сторис')) {
+    return { width: 1088, height: 1920 };
+  }
+  if (lowerPrompt.includes('квадрат') || lowerPrompt.includes('square') || lowerPrompt.includes('пост')) {
+    return { width: 1024, height: 1024 };
+  }
+  if (lowerPrompt.includes('баннер') || lowerPrompt.includes('banner')) {
+    return { width: 1216, height: 640 };
+  }
+  if (lowerPrompt.includes('wide') || lowerPrompt.includes('широк') || lowerPrompt.includes('landscape')) {
+    return { width: 1920, height: 1088 };
+  }
+  if (lowerPrompt.includes('portrait') || lowerPrompt.includes('портрет') || lowerPrompt.includes('vertical')) {
+    return { width: 768, height: 1024 };
+  }
+
+  return null;
 }
 
 /**

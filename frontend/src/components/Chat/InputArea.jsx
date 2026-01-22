@@ -81,6 +81,9 @@ const GENERATION_MODES = [
 
 // Size presets - ВСЕ РАЗМЕРЫ КРАТНЫ 64 для Runware API!
 const SIZE_PRESETS = {
+  auto: [
+    { label: 'AI определит', value: 'auto', icon: '🤖', description: 'Размер из промпта' },
+  ],
   social: [
     { label: 'Квадрат', value: '1024x1024', icon: '📱' },
     { label: 'FB ссылка', value: '1216x640', icon: '🔗' },
@@ -355,14 +358,18 @@ export function InputArea() {
                 {Object.keys(SIZE_PRESETS).map(tab => (
                   <button
                     key={tab}
-                    onClick={() => setActiveTab(tab)}
+                    onClick={() => {
+                      setActiveTab(tab);
+                      // Если выбрали авто-таб, сразу выбираем auto размер
+                      if (tab === 'auto') selectSize('auto');
+                    }}
                     className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                       activeTab === tab
                         ? 'bg-bg-secondary text-text-primary shadow-sm'
                         : 'text-text-muted hover:text-text-secondary'
                     }`}
                   >
-                    {tab === 'social' ? 'Соцсети' : tab === 'ads' ? 'Реклама' : 'Другое'}
+                    {tab === 'auto' ? '🤖 Авто' : tab === 'social' ? 'Соцсети' : tab === 'ads' ? 'Реклама' : 'Другое'}
                   </button>
                 ))}
               </div>
@@ -483,10 +490,10 @@ export function InputArea() {
               {/* Current settings summary */}
               <div className="hidden md:flex items-center gap-2 text-xs text-text-muted">
                 <span className="px-2 py-0.5 bg-bg-hover rounded">
-                  {settings.size}
+                  {settings.size === 'auto' ? '🤖 Авто' : settings.size}
                 </span>
                 <span className="px-2 py-0.5 bg-bg-hover rounded">
-                  ×{settings.variations || 1}
+                  {settings.variations === 'auto' ? '🤖' : `×${settings.variations || 1}`}
                 </span>
               </div>
 

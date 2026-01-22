@@ -447,9 +447,9 @@ async function processGeneration(params) {
       enhanced_prompt: promptAnalysis.enhanced_prompt?.substring(0, 200)
     });
 
-    // 4. Парсим размер
+    // 4. Парсим размер (передаём промпт для auto-режима)
     const presets = await db.getMany('SELECT name, width, height FROM size_presets');
-    const { width, height } = parseSize(size, presets);
+    const { width, height } = parseSize(size, presets, prompt);
 
     // 5. Генерируем изображение
     const result = await generateImage(promptAnalysis.enhanced_prompt, {
