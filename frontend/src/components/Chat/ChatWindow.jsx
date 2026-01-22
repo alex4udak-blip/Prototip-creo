@@ -71,64 +71,53 @@ export function ChatWindow({ className = '' }) {
     }
   };
 
-  // Empty state (нет чата)
+  // Empty state (нет чата) - компактный дизайн
   if (!currentChat && !chatLoading) {
     return (
-      <div className={`flex-1 flex items-center justify-center ${className}`}>
-        <div className="text-center max-w-md px-4">
-          {/* Logo */}
-          <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-accent to-accent-hover flex items-center justify-center shadow-lg shadow-accent/20">
-            <Sparkles className="w-10 h-10 text-white" />
+      <div className={`flex-1 flex flex-col justify-center overflow-y-auto py-4 ${className}`}>
+        <div className="text-center max-w-lg mx-auto px-4">
+          {/* Logo - меньше */}
+          <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-gradient-to-br from-accent to-accent-hover flex items-center justify-center shadow-lg shadow-accent/20">
+            <Sparkles className="w-7 h-7 text-white" />
           </div>
 
-          <h2 className="text-2xl font-bold text-text-primary mb-2">
-            Добро пожаловать в BannerGen
+          <h2 className="text-xl font-bold text-text-primary mb-1">
+            BannerGen
           </h2>
-          <p className="text-text-secondary mb-8">
-            AI-генератор рекламных баннеров для арбитража трафика
+          <p className="text-sm text-text-secondary mb-4">
+            AI-генератор баннеров для арбитража
           </p>
 
-          {/* Features */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
-            <div className="card hover:border-accent/30 transition-colors">
-              <Wand2 className="w-6 h-6 text-accent mb-2" />
-              <h3 className="font-medium text-sm mb-1">Умные промпты</h3>
-              <p className="text-xs text-text-muted">
-                Пишите на русском - AI улучшит запрос
-              </p>
+          {/* Features - горизонтально, компактно */}
+          <div className="flex justify-center gap-6 mb-6 text-xs">
+            <div className="flex items-center gap-1.5 text-text-muted">
+              <Wand2 className="w-4 h-4 text-accent" />
+              <span>Умные промпты</span>
             </div>
-
-            <div className="card hover:border-accent/30 transition-colors">
-              <Image className="w-6 h-6 text-accent mb-2" />
-              <h3 className="font-medium text-sm mb-1">Референсы</h3>
-              <p className="text-xs text-text-muted">
-                Перетащите картинку для стилизации
-              </p>
+            <div className="flex items-center gap-1.5 text-text-muted">
+              <Image className="w-4 h-4 text-accent" />
+              <span>Референсы</span>
             </div>
-
-            <div className="card hover:border-accent/30 transition-colors">
-              <Zap className="w-6 h-6 text-accent mb-2" />
-              <h3 className="font-medium text-sm mb-1">Быстро</h3>
-              <p className="text-xs text-text-muted">
-                Генерация за 5-10 секунд
-              </p>
+            <div className="flex items-center gap-1.5 text-text-muted">
+              <Zap className="w-4 h-4 text-accent" />
+              <span>5-10 сек</span>
             </div>
           </div>
 
-          {/* Examples */}
-          <div className="mt-8">
-            <p className="text-xs text-text-muted mb-3">Примеры запросов:</p>
-            <div className="space-y-2">
+          {/* Examples - компактнее */}
+          <div>
+            <p className="text-xs text-text-muted mb-2">Попробуйте:</p>
+            <div className="flex flex-wrap justify-center gap-2">
               {[
-                'Баннер для казино с текстом "Бонус 100%"',
-                'Креатив под слот Book of Dead, яркий',
-                'Спортивная ставка, футбол, зелёные тона'
+                'Казино "Бонус 100%"',
+                'Слот Book of Dead',
+                'Ставки на футбол'
               ].map((example, i) => (
                 <button
                   key={i}
                   onClick={() => handleExampleClick(example)}
                   disabled={isGenerating}
-                  className="block w-full text-left px-4 py-3 bg-bg-secondary hover:bg-bg-hover rounded-xl text-sm text-text-secondary transition-all duration-200 hover:translate-x-1 disabled:opacity-50 disabled:hover:translate-x-0"
+                  className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-hover rounded-lg text-xs text-text-secondary transition-all hover:text-text-primary disabled:opacity-50"
                 >
                   {example}
                 </button>
