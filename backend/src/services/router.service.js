@@ -231,16 +231,26 @@ export function selectModel(promptAnalysis, options = {}) {
 
   // PRIORITY 3: Reference image handling
   if (hasReference) {
-    // Claude suggested Kontext — trust it for editing
-    if (suggestedModel === 'kontext' || suggestedModel === 'flux-kontext') {
-      log.info('MODEL DECISION: runware-kontext for reference editing', { reason: 'claude_suggested_kontext' });
-      return 'runware-kontext';
+    // ВАЖНО: Если есть референс И нужен текст - Google Nano Pro с Identity Lock!
+    // Это даёт результат как у Genspark - стиль референса + чёткий текст
+    if (promptAnalysis.needs_text && hasGoogleApi) {
+      log.info('MODEL DECISION: google-nano-pro for reference + text (Identity Lock)', {
+        reason: 'reference_with_text',
+        text: promptAnalysis.text_content?.substring(0, 30)
+      });
+      return 'google-nano-pro';
     }
 
     // Character consistency with reference — Google Identity Lock
     if (promptAnalysis.needs_character_consistency && hasGoogleApi) {
       log.info('MODEL DECISION: google-nano-pro for character consistency', { reason: 'identity_lock' });
       return 'google-nano-pro';
+    }
+
+    // Claude suggested Kontext — trust it only for explicit editing
+    if (suggestedModel === 'kontext' || suggestedModel === 'flux-kontext') {
+      log.info('MODEL DECISION: runware-kontext for reference editing', { reason: 'claude_suggested_kontext' });
+      return 'runware-kontext';
     }
 
     // Reference purpose determines model
@@ -253,8 +263,13 @@ export function selectModel(promptAnalysis, options = {}) {
       return 'runware-kontext';
     }
 
-    // Для style, composition и всего остального - FLUX Dev как style reference
-    // FLUX Dev лучше использует референс как вдохновение, а не копирует его
+    // Если есть Google API - используй его для лучшего качества с референсом
+    if (hasGoogleApi) {
+      log.info('MODEL DECISION: google-nano-pro for reference style', { reason: 'style_reference_google', purpose });
+      return 'google-nano-pro';
+    }
+
+    // Fallback на FLUX Dev для style reference
     log.info('MODEL DECISION: runware-flux-dev for style reference', { reason: 'style_reference', purpose });
     return 'runware-flux-dev';
   }
