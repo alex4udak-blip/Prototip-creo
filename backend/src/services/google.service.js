@@ -26,10 +26,11 @@ const genAI = config.googleApiKey
  * Документация: https://ai.google.dev/gemini-api/docs/image-generation
  */
 const GOOGLE_MODELS = {
-  // Nano Banana - быстрый, для простых задач (до 1024px)
+  // Nano Banana - быстрый Gemini 2.5 Flash Image (актуальная модель)
   'google-nano': 'gemini-2.5-flash-image',
-  // Nano Banana Pro - профессиональный с Thinking, для сложных задач (до 4K)
-  'google-nano-pro': 'gemini-3-pro-image-preview',
+  // Nano Banana Pro - тоже Gemini 2.5 Flash Image (gemini-3-pro-image-preview может быть недоступен)
+  // По документации gemini-2.5-flash-image - основная модель для image generation
+  'google-nano-pro': 'gemini-2.5-flash-image',
 };
 
 /**
@@ -156,18 +157,31 @@ Text rendering rules:
     // Подготавливаем контент для запроса
     const contentParts = [];
 
-    // Если есть референс — добавляем его первым (Identity Lock)
+    // Если есть референс — добавляем его первым для Style Transfer
     if (referenceUrl) {
       const referencePart = await prepareReferenceForGoogle(referenceUrl);
       if (referencePart) {
         contentParts.push(referencePart);
-        // Добавляем инструкцию для Identity Lock - КРИТИЧНО для стиля!
-        finalPrompt = `IMPORTANT: Use the reference image above as style guide (Identity Lock).
-Maintain the SAME visual style, color palette, lighting, and aesthetic.
-Create a NEW image inspired by this reference style, do NOT copy it directly.
+        // УЛУЧШЕННЫЙ промпт для Style Transfer согласно документации Google
+        // Нужно чётко указать что делать со стилем референса
+        finalPrompt = `STYLE TRANSFER TASK:
+Look at the reference image above. Apply its EXACT visual style to create a new image.
 
-${finalPrompt}`;
-        log.info('Added reference for Identity Lock', { referenceUrl });
+STYLE ELEMENTS TO COPY FROM REFERENCE:
+- Color palette and color grading
+- Lighting style and atmosphere
+- Visual aesthetic (3D, neon, premium, etc.)
+- Typography style if present
+- Composition approach
+- Overall mood and feeling
+
+DO NOT copy the content/subject - create NEW content with the SAME STYLE.
+
+NEW IMAGE REQUIREMENTS:
+${finalPrompt}
+
+CRITICAL: The new image must look like it belongs to the same design series as the reference.`;
+        log.info('Added reference for Style Transfer', { referenceUrl });
       }
     }
 
