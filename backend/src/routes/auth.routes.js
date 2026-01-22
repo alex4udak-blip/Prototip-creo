@@ -104,6 +104,46 @@ router.get('/me', authMiddleware, async (req, res) => {
 });
 
 /**
+ * GET /api/auth/invites
+ * Получить все invite-ссылки (для админа)
+ * Секретный endpoint — доступ по ?secret=bannergen2026
+ */
+router.get('/invites', async (req, res) => {
+  try {
+    const { secret } = req.query;
+
+    // Простая защита
+    if (secret !== 'bannergen2026') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Получаем всех пользователей с токенами
+    const users = await db.query(
+      'SELECT name, invite_token FROM users WHERE invite_token IS NOT NULL ORDER BY name'
+    );
+
+    // Определяем базовый URL
+    const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN
+      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+      : (process.env.FRONTEND_URL || 'http://localhost:5173');
+
+    const invites = users.rows.map(u => ({
+      name: u.name,
+      url: `${baseUrl}/invite/${u.invite_token}`
+    }));
+
+    res.json({
+      baseUrl,
+      invites
+    });
+
+  } catch (error) {
+    log.error('Get invites error', { error: error.message });
+    res.status(500).json({ error: 'Ошибка получения ссылок' });
+  }
+});
+
+/**
  * POST /api/auth/refresh
  * Обновить токен (если скоро истечёт)
  */
