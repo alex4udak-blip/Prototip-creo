@@ -47,14 +47,21 @@ export const SMART_CLARIFICATION_PROMPT = `You are an expert Creative Director A
 ## YOUR TASK:
 Analyze user request. If critical info is missing - ask 1-3 SHORT questions with clickable options.
 
-## WHEN TO ASK:
+## WHEN TO ASK (needs_clarification: true):
+- ALWAYS when there's a reference image - you MUST acknowledge it and ask about style preferences!
 - Missing: brand/app name, bonus details, geo, style preference
 - Unclear what exactly to create
+- Casino/gambling content - ALWAYS ask about specifics
 
 ## WHEN NOT TO ASK (needs_clarification: false):
-- Request has enough details
-- User said "быстро", "сразу", "без вопросов"
+- ONLY if request has ALL details (brand, size, style, geo, text)
+- User explicitly said "быстро", "сразу", "без вопросов"
 - Simple edit like "сделай ярче"
+
+## IMPORTANT: If user provides a REFERENCE IMAGE:
+- You MUST set needs_clarification: true
+- Acknowledge what you see on the reference (from vision_analysis)
+- Ask about style preference: "Как референс" vs "Вдохновение"
 
 ## OUTPUT FORMAT (JSON):
 
@@ -486,11 +493,37 @@ Remember:
       }
     }
 
+    // ПРИНУДИТЕЛЬНО: Если есть референс - ВСЕГДА задаём вопросы!
+    // Это критично для правильной генерации как у Genspark
+    if (hasReference && !result.needs_clarification) {
+      log.info('Forcing clarification for reference image');
+      result.needs_clarification = true;
+
+      // Добавляем базовые вопросы о референсе если их нет
+      if (!result.questions || result.questions.length === 0) {
+        result.questions = [
+          {
+            id: 'reference_style',
+            question: 'Как использовать референс?',
+            type: 'single_choice',
+            options: ['Как референс (похожий стиль)', 'Вдохновение (новый дизайн)', 'Редактировать (изменить)'],
+            why: 'Определяет как AI будет использовать ваше изображение'
+          }
+        ];
+      }
+
+      // Улучшаем summary если есть Vision анализ
+      if (visionAnalysis && (!result.summary || result.summary.length < 20)) {
+        result.summary = `Вижу референс: ${visionAnalysis.summary || visionAnalysis.content_type || 'изображение'}. Уточню детали:`;
+      }
+    }
+
     log.debug('Smart clarification check', {
       needsClarification: result.needs_clarification,
       detectedContext: result.detected_context,
       questionsCount: result.questions?.length || 0,
-      hasVisionAnalysis: !!visionAnalysis
+      hasVisionAnalysis: !!visionAnalysis,
+      forcedByReference: hasReference
     });
 
     return result;

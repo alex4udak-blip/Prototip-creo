@@ -197,7 +197,40 @@ export function selectModel(promptAnalysis, options = {}) {
     return 'runware-flux-dev';
   }
 
-  // PRIORITY 2: Text on image — critical for readability
+  // PRIORITY 2: Reference image handling - ПРОВЕРЯЕМ ПЕРВЫМ!
+  // Если есть референс - ВСЕГДА google-nano-pro для Identity Lock (как Genspark)
+  if (hasReference) {
+    // ВАЖНО: Референс + Google API = google-nano-pro с Identity Lock
+    // Это даёт результат как у Genspark - стиль референса + чёткий текст
+    if (hasGoogleApi) {
+      log.info('MODEL DECISION: google-nano-pro for reference (Identity Lock like Genspark)', {
+        reason: 'reference_identity_lock',
+        hasText: promptAnalysis.needs_text,
+        text: promptAnalysis.text_content?.substring(0, 30)
+      });
+      return 'google-nano-pro';
+    }
+
+    // Claude suggested Kontext — trust it only for explicit editing (без Google API)
+    if (suggestedModel === 'kontext' || suggestedModel === 'flux-kontext') {
+      log.info('MODEL DECISION: runware-kontext for reference editing', { reason: 'claude_suggested_kontext' });
+      return 'runware-kontext';
+    }
+
+    // Reference purpose determines model (без Google API)
+    const purpose = promptAnalysis.reference_purpose || 'style';
+
+    if (purpose === 'edit' || purpose === 'modify') {
+      log.info('MODEL DECISION: runware-kontext for reference editing', { reason: 'edit_reference' });
+      return 'runware-kontext';
+    }
+
+    // Fallback на FLUX Dev для style reference
+    log.info('MODEL DECISION: runware-flux-dev for style reference', { reason: 'style_reference_no_google', purpose });
+    return 'runware-flux-dev';
+  }
+
+  // PRIORITY 3: Text on image (БЕЗ референса)
   if (promptAnalysis.needs_text && promptAnalysis.text_content) {
     const textLength = (promptAnalysis.text_content || '').split(/\s+/).filter(w => w.length > 0).length;
 
@@ -226,51 +259,6 @@ export function selectModel(promptAnalysis, options = {}) {
     }
 
     log.warn('Text rendering needs Google API! Falling back to FLUX Dev (text may be imperfect)');
-    return 'runware-flux-dev';
-  }
-
-  // PRIORITY 3: Reference image handling
-  if (hasReference) {
-    // ВАЖНО: Если есть референс И нужен текст - Google Nano Pro с Identity Lock!
-    // Это даёт результат как у Genspark - стиль референса + чёткий текст
-    if (promptAnalysis.needs_text && hasGoogleApi) {
-      log.info('MODEL DECISION: google-nano-pro for reference + text (Identity Lock)', {
-        reason: 'reference_with_text',
-        text: promptAnalysis.text_content?.substring(0, 30)
-      });
-      return 'google-nano-pro';
-    }
-
-    // Character consistency with reference — Google Identity Lock
-    if (promptAnalysis.needs_character_consistency && hasGoogleApi) {
-      log.info('MODEL DECISION: google-nano-pro for character consistency', { reason: 'identity_lock' });
-      return 'google-nano-pro';
-    }
-
-    // Claude suggested Kontext — trust it only for explicit editing
-    if (suggestedModel === 'kontext' || suggestedModel === 'flux-kontext') {
-      log.info('MODEL DECISION: runware-kontext for reference editing', { reason: 'claude_suggested_kontext' });
-      return 'runware-kontext';
-    }
-
-    // Reference purpose determines model
-    // По умолчанию 'style' - референс как пример стиля, а не для редактирования
-    const purpose = promptAnalysis.reference_purpose || 'style';
-
-    if (purpose === 'edit' || purpose === 'modify') {
-      // Kontext только для явного редактирования (когда Claude определил это)
-      log.info('MODEL DECISION: runware-kontext for reference editing', { reason: 'edit_reference' });
-      return 'runware-kontext';
-    }
-
-    // Если есть Google API - используй его для лучшего качества с референсом
-    if (hasGoogleApi) {
-      log.info('MODEL DECISION: google-nano-pro for reference style', { reason: 'style_reference_google', purpose });
-      return 'google-nano-pro';
-    }
-
-    // Fallback на FLUX Dev для style reference
-    log.info('MODEL DECISION: runware-flux-dev for style reference', { reason: 'style_reference', purpose });
     return 'runware-flux-dev';
   }
 
