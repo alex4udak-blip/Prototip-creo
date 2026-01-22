@@ -221,8 +221,17 @@ ${finalPrompt}`;
     if (error.message.includes('SAFETY')) {
       throw new Error('Google отклонил запрос по соображениям безопасности. Попробуйте изменить описание.');
     }
-    if (error.message.includes('quota') || error.message.includes('rate')) {
+    if (error.message.includes('quota') || error.message.includes('rate') || error.message.includes('RESOURCE_EXHAUSTED')) {
       throw new Error('Превышен лимит запросов к Google API. Попробуйте позже.');
+    }
+    if (error.message.includes('INVALID_IMAGE') || error.message.includes('Invalid image')) {
+      throw new Error('Google не смог обработать референс. Попробуйте другое изображение.');
+    }
+    if (error.message.includes('PERMISSION_DENIED')) {
+      throw new Error('Ошибка авторизации Google API. Проверьте API ключ.');
+    }
+    if (error.message.includes('INVALID_PROMPT') || error.message.includes('blocked')) {
+      throw new Error('Google заблокировал этот промпт. Попробуйте изменить описание.');
     }
 
     throw error;
@@ -230,26 +239,10 @@ ${finalPrompt}`;
 }
 
 /**
- * Альтернативный метод через Imagen 3 API
+ * Проверка доступности Google AI API
  */
-export async function generateWithImagen(prompt, options = {}) {
-  if (!genAI) {
-    throw new Error('GOOGLE_API_KEY не настроен');
-  }
-
-  const { width = 1024, height = 1024, numImages = 1 } = options;
-
-  const startTime = Date.now();
-
-  try {
-    // Imagen 3 через Vertex AI - пока заглушка
-    // Требует другую авторизацию (service account)
-    throw new Error('Imagen 3 requires Vertex AI setup');
-
-  } catch (error) {
-    log.error('Imagen generation failed', { error: error.message });
-    throw error;
-  }
+export function isGoogleApiAvailable() {
+  return !!genAI;
 }
 
 /**

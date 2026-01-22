@@ -1,6 +1,34 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Paperclip, X, Image, Loader2, CornerDownLeft } from 'lucide-react';
+import { Paperclip, X, Image, Loader2, CornerDownLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import { useChatStore } from '../../hooks/useChat';
+
+// Toast notification component
+function Toast({ message, type = 'error', onClose }) {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 4000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  return (
+    <div className={`fixed bottom-24 left-1/2 -translate-x-1/2 z-50 animate-slide-up`}>
+      <div className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg backdrop-blur-sm ${
+        type === 'error'
+          ? 'bg-error/90 text-white'
+          : 'bg-success/90 text-white'
+      }`}>
+        {type === 'error' ? (
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+        ) : (
+          <CheckCircle className="w-5 h-5 flex-shrink-0" />
+        )}
+        <span className="text-sm font-medium">{message}</span>
+        <button onClick={onClose} className="ml-2 hover:opacity-70 transition">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // Популярные размеры для быстрого выбора
 const QUICK_SIZES = [
@@ -29,8 +57,14 @@ export function InputArea() {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [toast, setToast] = useState(null);
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
+
+  // Show toast notification
+  const showToast = (message, type = 'error') => {
+    setToast({ message, type });
+  };
 
   // Умное авторасширение textarea
   const adjustTextareaHeight = useCallback(() => {
@@ -82,21 +116,22 @@ export function InputArea() {
   // Загрузка файла
   const handleFileUpload = async (file) => {
     if (!file || !file.type.startsWith('image/')) {
-      alert('Только изображения (JPEG, PNG, WebP, GIF)');
+      showToast('Только изображения (JPEG, PNG, WebP, GIF)', 'error');
       return;
     }
 
     if (file.size > 10 * 1024 * 1024) {
-      alert('Максимальный размер файла: 10MB');
+      showToast('Максимальный размер: 10MB', 'error');
       return;
     }
 
     setIsUploading(true);
     try {
       await uploadReference(file);
+      showToast('Референс загружен!', 'success');
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Ошибка загрузки: ' + error.message);
+      showToast('Ошибка загрузки: ' + error.message, 'error');
     } finally {
       setIsUploading(false);
     }
@@ -151,6 +186,15 @@ export function InputArea() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {/* Toast notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+
       {/* Drag overlay */}
       {isDragging && (
         <div className="drag-overlay">

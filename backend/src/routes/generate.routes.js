@@ -239,8 +239,25 @@ router.post('/', checkGenerationLimit, async (req, res) => {
       chatTitle: chat.title,
       deepThinking: deep_thinking,
       chatHistory
-    }).catch(error => {
-      log.error('Background generation failed', { error: error.message, messageId });
+    }).catch(async (error) => {
+      log.error('Background generation failed', { error: error.message, messageId, chatId });
+
+      // Обновляем сообщение с ошибкой в БД
+      try {
+        await db.update('messages', messageId, {
+          content: null,
+          error_message: error.message || 'Неизвестная ошибка генерации'
+        });
+
+        // Уведомляем клиента через WebSocket
+        broadcastToChat(chatId, {
+          type: 'generation_error',
+          messageId,
+          error: error.message || 'Неизвестная ошибка генерации'
+        });
+      } catch (dbError) {
+        log.error('Failed to update message with error', { dbError: dbError.message, messageId });
+      }
     });
 
   } catch (error) {

@@ -506,16 +506,19 @@ export async function generateImage(prompt, options = {}) {
     const shouldFallback = model !== 'runware-flux-dev' && !model?.startsWith('google');
 
     if (shouldFallback) {
-      log.info('Attempting fallback to runware-flux-dev', { originalModel: model });
+      log.info('Attempting fallback to runware-flux-dev', { originalModel: model, hasReference: !!referenceUrl });
 
       try {
+        // Для fallback используем FLUX Dev, но если есть референс — пробуем Kontext
+        const fallbackModel = referenceUrl ? 'runware-kontext' : 'runware-flux-dev';
+
         const fallbackResult = await generateWithRunware(prompt, {
-          model: 'runware-flux-dev',
+          model: fallbackModel,
           negativePrompt,
           width,
           height,
-          numImages
-          // Note: не передаём референс в fallback — может быть причиной ошибки
+          numImages,
+          referenceUrl // Передаём референс в fallback
         });
 
         return {
@@ -535,15 +538,19 @@ export async function generateImage(prompt, options = {}) {
 
     // If Google failed, try Runware as fallback
     if (model?.startsWith('google') && config.runwareApiKey) {
-      log.info('Google failed, trying Runware fallback');
+      log.info('Google failed, trying Runware fallback', { hasReference: !!referenceUrl });
 
       try {
+        // Если был референс — используем Kontext, иначе FLUX Dev
+        const fallbackModel = referenceUrl ? 'runware-kontext' : 'runware-flux-dev';
+
         const fallbackResult = await generateWithRunware(prompt, {
-          model: 'runware-flux-dev',
+          model: fallbackModel,
           negativePrompt,
           width,
           height,
-          numImages
+          numImages,
+          referenceUrl // Передаём референс
         });
 
         return {

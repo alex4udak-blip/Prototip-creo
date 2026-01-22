@@ -30,7 +30,7 @@ export function ClarificationQuestions({ clarification, messageId }) {
     skipClarification,
     quickGenerate,
     isGenerating,
-    generationStatus
+    generationPhase
   } = useChatStore();
 
   const [answers, setAnswers] = useState({});

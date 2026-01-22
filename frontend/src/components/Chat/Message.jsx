@@ -248,7 +248,7 @@ export function Message({ message }) {
               {/* Clarification questions */}
               {message.clarification && (
                 <div className="mt-3">
-                  <ClarificationQuestions clarification={message.clarification} />
+                  <ClarificationQuestions clarification={message.clarification} messageId={message.id} />
                 </div>
               )}
 
