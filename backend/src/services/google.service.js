@@ -191,11 +191,11 @@ Generate a promotional banner that maintains visual consistency with the referen
     // Добавляем текстовый промпт
     contentParts.push({ text: finalPrompt });
 
-    // Генерируем нужное количество изображений
-    const allImages = [];
-    const requestedImages = Math.min(numImages || 1, 4);  // Max 4
+    // Генерируем нужное количество изображений ПАРАЛЛЕЛЬНО для скорости
+    const requestedImages = Math.min(numImages || 1, 5);  // Max 5 (как Genspark)
 
-    for (let i = 0; i < requestedImages; i++) {
+    // Запускаем все генерации параллельно
+    const generateOne = async (index) => {
       try {
         const result = await aiModel.generateContent(contentParts);
         const response = result.response;
@@ -205,15 +205,21 @@ Generate a promotional banner that maintains visual consistency with the referen
           for (const part of candidate.content?.parts || []) {
             if (part.inlineData) {
               const imageUrl = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
-              allImages.push(imageUrl);
+              return imageUrl;
             }
           }
         }
+        return null;
       } catch (genError) {
-        log.warn(`Google image ${i + 1}/${requestedImages} failed`, { error: genError.message });
-        // Продолжаем с остальными
+        log.warn(`Google image ${index + 1}/${requestedImages} failed`, { error: genError.message });
+        return null;
       }
-    }
+    };
+
+    // Запускаем все параллельно
+    const promises = Array.from({ length: requestedImages }, (_, i) => generateOne(i));
+    const results = await Promise.all(promises);
+    const allImages = results.filter(url => url !== null);
 
     const timeMs = Date.now() - startTime;
 

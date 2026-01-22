@@ -543,6 +543,20 @@ Remember:
           });
         }
       }
+
+      // Добавляем вопрос про количество вариаций (как Genspark!)
+      const hasVariationsQuestion = result.questions.some(q =>
+        q.id?.includes('variation') || q.question?.toLowerCase().includes('вариац')
+      );
+      if (!hasVariationsQuestion) {
+        result.questions.push({
+          id: 'variations_count',
+          question: 'Сколько вариаций?',
+          type: 'single_choice',
+          options: ['1 вариант', '3 варианта', '5 вариантов (рекомендуется)'],
+          why: 'Больше вариантов = больше выбора'
+        });
+      }
     }
 
     log.debug('Smart clarification check', {
@@ -764,16 +778,26 @@ Respond ONLY with valid JSON.`;
 
 /**
  * Обработка ответов пользователя на вопросы - УЛУЧШЕННАЯ
+ * Теперь извлекает количество вариаций из ответов
  */
 export async function processUserAnswers(originalPrompt, answers, options = {}) {
   const { hasReference = false, deepThinking = false } = options;
 
-  // Формируем обогащённый промпт из ответов
+  // Извлекаем количество вариаций из ответов
+  let variationsCount = 1;
+  if (answers.variations_count) {
+    const match = answers.variations_count.match(/(\d+)/);
+    if (match) {
+      variationsCount = Math.min(parseInt(match[1]), 5);
+    }
+  }
+
+  // Формируем обогащённый промпт из ответов (без variations_count - это не для промпта)
   let enrichedPrompt = originalPrompt;
 
   const answerDescriptions = [];
   for (const [questionId, answer] of Object.entries(answers)) {
-    if (answer && answer !== 'skip') {
+    if (answer && answer !== 'skip' && questionId !== 'variations_count') {
       // Форматируем ответ в зависимости от типа
       if (Array.isArray(answer)) {
         answerDescriptions.push(`${questionId}: ${answer.join(', ')}`);
@@ -788,11 +812,17 @@ export async function processUserAnswers(originalPrompt, answers, options = {}) 
   }
 
   // Выбираем режим анализа
+  let result;
   if (deepThinking) {
-    return analyzeWithDeepThinking(enrichedPrompt, { hasReference, ...options });
+    result = await analyzeWithDeepThinking(enrichedPrompt, { hasReference, ...options });
+  } else {
+    result = await analyzeAndEnhancePrompt(enrichedPrompt, { hasReference, ...options });
   }
 
-  return analyzeAndEnhancePrompt(enrichedPrompt, { hasReference, ...options });
+  // Добавляем количество вариаций в результат
+  result.variations_count = variationsCount;
+
+  return result;
 }
 
 /**

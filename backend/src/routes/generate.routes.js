@@ -480,12 +480,15 @@ async function processGeneration(params) {
     const { width, height } = parseSize(size, presets, prompt);
 
     // 5. Генерируем изображение
+    // Используем variations_count из ответов пользователя если есть
+    const numImages = promptAnalysis.variations_count || variations || 1;
+
     const result = await generateImage(promptAnalysis.enhanced_prompt, {
       model: selectedModel,
       negativePrompt: promptAnalysis.negative_prompt,
       width,
       height,
-      numImages: Math.min(variations, 4),
+      numImages: Math.min(numImages, 5),  // До 5 как Genspark
       referenceUrl,
       textContent: promptAnalysis.text_content,
       textStyle: promptAnalysis.text_style
