@@ -40,8 +40,13 @@ async function seed() {
     console.log('📧 INVITE LINKS (отправь каждому участнику):');
     console.log('='.repeat(60) + '\n');
 
+    // Определяем базовый URL
+    const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN
+      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+      : (process.env.FRONTEND_URL || 'http://localhost:5173');
+
     for (const { name, token } of inviteLinks) {
-      const url = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/invite/${token}`;
+      const url = `${baseUrl}/invite/${token}`;
       console.log(`${name}:`);
       console.log(`  ${url}\n`);
     }
