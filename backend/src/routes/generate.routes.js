@@ -218,12 +218,24 @@ router.post('/', checkGenerationLimit, async (req, res) => {
 
     // ЭТАП 2: Генерация (либо ответы получены, либо вопросы не нужны)
 
-    // Если это ОТВЕТ на clarification — НЕ создаём новое сообщение пользователя!
-    // Оригинальное уже было сохранено в ЭТАП 1
     let userMessageId = null;
 
-    if (!answers) {
-      // Новый запрос — сохраняем сообщение пользователя
+    if (answers) {
+      // Ответ на clarification — создаём компактное сообщение с выборами
+      const answersText = Object.entries(answers)
+        .filter(([key, val]) => val && val !== 'skip')
+        .map(([key, val]) => Array.isArray(val) ? val.join(', ') : val)
+        .join(', ');
+
+      const userMessage = await db.insert('messages', {
+        chat_id: chatId,
+        role: 'user',
+        content: answersText || 'Сгенерировать',
+        metadata: JSON.stringify({ type: 'clarification_answer', answers })
+      });
+      userMessageId = userMessage.id;
+    } else {
+      // Новый запрос — сохраняем полное сообщение пользователя
       const userMessage = await db.insert('messages', {
         chat_id: chatId,
         role: 'user',

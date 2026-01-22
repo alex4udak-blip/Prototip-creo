@@ -189,7 +189,21 @@ export const useChatStore = create((set, get) => ({
     const tempAssistantMessageId = `assistant-${Date.now()}`;
 
     if (isAnsweringClarification) {
-      // Только добавляем placeholder для ответа AI
+      // Формируем текст из ответов пользователя
+      const answersText = Object.entries(answers)
+        .filter(([key, val]) => val && val !== 'skip')
+        .map(([key, val]) => Array.isArray(val) ? val.join(', ') : val)
+        .join(', ');
+
+      tempUserMessageId = `user-${Date.now()}`;
+      const userAnswersMessage = {
+        id: tempUserMessageId,
+        role: 'user',
+        content: answersText || 'Сгенерировать',
+        isAnswerMessage: true,  // Метка что это ответ на вопросы
+        createdAt: new Date().toISOString()
+      };
+
       const assistantPlaceholder = {
         id: tempAssistantMessageId,
         role: 'assistant',
@@ -201,7 +215,7 @@ export const useChatStore = create((set, get) => ({
       };
 
       set(state => ({
-        messages: [...state.messages, assistantPlaceholder],
+        messages: [...state.messages, userAnswersMessage, assistantPlaceholder],
         isGenerating: true,
         generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.GENERATING,
         generationProgress: 'Генерирую с учётом ваших уточнений...',
