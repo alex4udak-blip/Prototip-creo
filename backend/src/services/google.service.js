@@ -14,25 +14,22 @@ const genAI = config.googleApiKey
  * Google Nano Banana Models (Gemini Image Generation)
  *
  * АКТУАЛЬНЫЕ МОДЕЛИ (январь 2026):
- * - gemini-2.5-flash-preview-image-generation — Nano Banana (быстрый, эффективный)
- * - gemini-2.0-flash-exp — Gemini 2.0 Flash с image generation
- *
- * Для Nano Banana Pro (когда появится):
- * - gemini-3-pro-image-preview — профессиональный с Thinking
+ * - gemini-2.5-flash-image — Nano Banana (быстрый, эффективный)
+ * - gemini-3-pro-image-preview — Nano Banana Pro (профессиональный с Thinking)
  *
  * Особенности:
  * - Отлично рендерит текст на изображениях!
  * - Поддерживает референсы для Identity Lock (до 14 изображений)
  * - Понимает контекст и инструкции на русском
+ * - Gemini 3 Pro поддерживает до 4K (4096×4096)
  *
  * Документация: https://ai.google.dev/gemini-api/docs/image-generation
  */
 const GOOGLE_MODELS = {
-  // Nano Banana - быстрый, для простых задач
-  'google-nano': 'gemini-2.0-flash-exp',
-  // Nano Banana Pro - качественный, для сложных задач с текстом
-  // Пробуем сначала 2.0 flash exp, он поддерживает image generation
-  'google-nano-pro': 'gemini-2.0-flash-exp',
+  // Nano Banana - быстрый, для простых задач (до 1024px)
+  'google-nano': 'gemini-2.5-flash-image',
+  // Nano Banana Pro - профессиональный с Thinking, для сложных задач (до 4K)
+  'google-nano-pro': 'gemini-3-pro-image-preview',
 };
 
 /**
