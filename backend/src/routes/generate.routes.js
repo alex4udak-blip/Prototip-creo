@@ -98,6 +98,18 @@ router.post('/', checkGenerationLimit, async (req, res) => {
 
     chatId = parseInt(chat_id) || null;
 
+    // DEBUG: Логируем ВСЕ входящие параметры
+    log.info('Generate request received', {
+      hasPrompt: !!prompt,
+      hasReference: !!reference_url,
+      hasAnswers: !!answers,
+      skip_clarification,
+      quick_generate,
+      deep_thinking,
+      mode: req.body.mode,  // На случай если mode передаётся
+      bodyKeys: Object.keys(req.body)
+    });
+
     // Проверяем или создаём чат
     let chat;
     if (chatId) {

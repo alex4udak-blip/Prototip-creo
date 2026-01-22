@@ -20,38 +20,37 @@ const RUNWARE_MODELS = {
  *
  * Все размеры кратны 16 и общая площадь ~ 1 мегапиксель
  */
+/**
+ * АКТУАЛЬНЫЙ список поддерживаемых размеров Runware API
+ * Взято из ошибки API (allowedValues):
+ * '1568x672', '1504x688', '1456x720', '1392x752', '1328x800',
+ * '1248x832', '1184x880', '1104x944', '1024x1024', '944x1104',
+ * '880x1184', '832x1248', '800x1328', '752x1392', '720x1456',
+ * '688x1504', '672x1568'
+ */
 const RUNWARE_SUPPORTED_SIZES = [
-  // Квадратные
+  // Квадрат
   { width: 1024, height: 1024 },
-  { width: 512, height: 512 },
 
   // Широкие (landscape) - для баннеров
   { width: 1568, height: 672 },
   { width: 1504, height: 688 },
-  { width: 1472, height: 704 },
-  { width: 1440, height: 720 },
-  { width: 1408, height: 736 },
-  { width: 1344, height: 768 },
-  { width: 1312, height: 784 },
-  { width: 1280, height: 800 },
+  { width: 1456, height: 720 },
+  { width: 1392, height: 752 },
+  { width: 1328, height: 800 },
   { width: 1248, height: 832 },
-  { width: 1216, height: 864 },
-  { width: 1152, height: 896 },
-  { width: 1088, height: 960 },
+  { width: 1184, height: 880 },
+  { width: 1104, height: 944 },
 
   // Вертикальные (portrait) - для stories
-  { width: 672, height: 1568 },
-  { width: 688, height: 1504 },
-  { width: 704, height: 1472 },
-  { width: 720, height: 1440 },
-  { width: 736, height: 1408 },
-  { width: 768, height: 1344 },
-  { width: 784, height: 1312 },
-  { width: 800, height: 1280 },
+  { width: 944, height: 1104 },
+  { width: 880, height: 1184 },
   { width: 832, height: 1248 },
-  { width: 864, height: 1216 },
-  { width: 896, height: 1152 },
-  { width: 960, height: 1088 },
+  { width: 800, height: 1328 },
+  { width: 752, height: 1392 },
+  { width: 720, height: 1456 },
+  { width: 688, height: 1504 },
+  { width: 672, height: 1568 },
 ];
 
 /**
