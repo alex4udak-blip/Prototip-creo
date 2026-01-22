@@ -71,8 +71,9 @@ export function ChatWindow({ className = '' }) {
     }
   };
 
-  // Empty state (нет чата) - компактный дизайн
-  if (!currentChat && !chatLoading) {
+  // Empty state (нет чата И нет сообщений) - компактный дизайн
+  // Важно: показываем welcome только если нет сообщений, т.к. сообщение может быть добавлено локально до создания чата
+  if (!currentChat && !chatLoading && messages.length === 0 && !isGenerating) {
     return (
       <div className={`flex-1 flex flex-col justify-center overflow-y-auto py-4 ${className}`}>
         <div className="text-center max-w-lg mx-auto px-4">

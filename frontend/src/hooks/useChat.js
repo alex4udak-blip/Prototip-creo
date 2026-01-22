@@ -252,10 +252,11 @@ export const useChatStore = create((set, get) => ({
           deepThinkingData: null
         }));
 
-        // Обновляем чат если новый
+        // Обновляем чат если новый (БЕЗ перезагрузки сообщений!)
         if (!currentChat && response.chatId) {
-          await get().selectChat(response.chatId);
+          set({ currentChat: { id: response.chatId, title: 'Новый чат' } });
           await get().loadChats();
+          wsManager.subscribe(response.chatId);
         }
 
         return response;
@@ -281,9 +282,9 @@ export const useChatStore = create((set, get) => ({
 
       // Обновляем текущий чат если его не было
       if (!currentChat && response.chatId) {
-        // Не перезагружаем сообщения, просто обновляем currentChat
-        const chat = await chatsAPI.getById(response.chatId);
-        set({ currentChat: chat });
+        // ВАЖНО: НЕ перезагружаем сообщения! Они уже добавлены локально
+        // Просто устанавливаем currentChat минимально
+        set({ currentChat: { id: response.chatId, title: 'Новый чат' } });
         await get().loadChats();
         wsManager.subscribe(response.chatId);
       }

@@ -79,29 +79,29 @@ const GENERATION_MODES = [
   }
 ];
 
-// Size presets
+// Size presets - ВСЕ РАЗМЕРЫ КРАТНЫ 64 для Runware API!
 const SIZE_PRESETS = {
   social: [
-    { label: 'FB/Insta пост', value: '1080x1080', icon: '📱' },
-    { label: 'FB ссылка', value: '1200x628', icon: '🔗' },
-    { label: 'Stories', value: '1080x1920', icon: '📲' },
-    { label: 'Twitter', value: '1200x675', icon: '🐦' },
+    { label: 'Квадрат', value: '1024x1024', icon: '📱' },
+    { label: 'FB ссылка', value: '1216x640', icon: '🔗' },
+    { label: 'Stories', value: '1088x1920', icon: '📲' },
+    { label: 'Twitter', value: '1216x704', icon: '🐦' },
   ],
   ads: [
-    { label: 'Баннер 300×250', value: '300x250', icon: '📊' },
-    { label: 'Баннер 728×90', value: '728x90', icon: '📏' },
-    { label: 'Баннер 160×600', value: '160x600', icon: '📐' },
-    { label: 'Баннер 320×50', value: '320x50', icon: '📱' },
+    { label: 'Баннер 320×256', value: '320x256', icon: '📊' },
+    { label: 'Баннер 704×128', value: '704x128', icon: '📏' },
+    { label: 'Баннер 192×576', value: '192x576', icon: '📐' },
+    { label: 'Баннер 320×64', value: '320x64', icon: '📱' },
   ],
   custom: [
-    { label: 'Квадрат', value: '1024x1024', icon: '⬜' },
-    { label: 'Широкий', value: '1920x1080', icon: '🖼️' },
+    { label: 'Квадрат 1K', value: '1024x1024', icon: '⬜' },
+    { label: 'Широкий HD', value: '1920x1088', icon: '🖼️' },
     { label: 'Портрет', value: '768x1024', icon: '🎨' },
   ]
 };
 
-// Image count options
-const IMAGE_COUNTS = [1, 2, 4];
+// Image count options - 'auto' = AI решает из промпта
+const IMAGE_COUNTS = ['auto', 1, 2, 4];
 
 const MIN_HEIGHT = 52;
 const MAX_HEIGHT = 180;
@@ -329,14 +329,16 @@ export function InputArea() {
                         : 'bg-bg-hover hover:bg-bg-tertiary text-text-secondary'
                     }`}
                   >
-                    {count === 1 ? (
+                    {count === 'auto' ? (
+                      <Sparkles className="w-4 h-4" />
+                    ) : count === 1 ? (
                       <Maximize2 className="w-4 h-4" />
                     ) : count === 2 ? (
                       <Copy className="w-4 h-4" />
                     ) : (
                       <Grid2X2 className="w-4 h-4" />
                     )}
-                    <span className="text-sm font-medium">{count}</span>
+                    <span className="text-sm font-medium">{count === 'auto' ? 'Авто' : count}</span>
                   </button>
                 ))}
               </div>

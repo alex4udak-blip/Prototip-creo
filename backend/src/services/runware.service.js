@@ -100,13 +100,26 @@ export async function generateWithRunware(prompt, options = {}) {
     });
   }
 
+  // ВАЖНО: Runware API требует размеры кратные 64!
+  // Округляем до ближайшего кратного 64
+  const roundTo64 = (val) => Math.round(val / 64) * 64;
+  const clampedWidth = roundTo64(Math.min(Math.max(width, 128), 2048));
+  const clampedHeight = roundTo64(Math.min(Math.max(height, 128), 2048));
+
+  log.debug('Size adjustment for Runware', {
+    originalWidth: width,
+    originalHeight: height,
+    adjustedWidth: clampedWidth,
+    adjustedHeight: clampedHeight
+  });
+
   // Базовый payload для обычной генерации
   const payload = {
     positivePrompt: prompt,
     negativePrompt: negativePrompt || 'blurry, low quality, distorted, ugly, amateur',
     model: modelId,
-    width: Math.min(width, 1920),
-    height: Math.min(height, 1920),
+    width: clampedWidth,
+    height: clampedHeight,
     numberResults: Math.min(numImages, 4),
     outputFormat: 'PNG',
     CFGScale: isKontext ? 3.5 : 7.5,
