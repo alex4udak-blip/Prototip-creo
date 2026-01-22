@@ -67,11 +67,16 @@ export function handleUploadError(err, req, res, next) {
 
 /**
  * Получить публичный URL для загруженного файла
+ * На production за reverse proxy всегда используем HTTPS
  */
 export function getFileUrl(filename, req) {
-  const protocol = req.protocol;
+  // Railway и другие PaaS используют X-Forwarded-Proto
+  const forwardedProto = req.get('X-Forwarded-Proto');
+  const protocol = forwardedProto || req.protocol;
+  // В production всегда HTTPS
+  const secureProtocol = process.env.NODE_ENV === 'production' ? 'https' : protocol;
   const host = req.get('host');
-  return `${protocol}://${host}/uploads/${filename}`;
+  return `${secureProtocol}://${host}/uploads/${filename}`;
 }
 
 /**

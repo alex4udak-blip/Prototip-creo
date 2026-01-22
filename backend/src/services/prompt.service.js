@@ -401,6 +401,38 @@ export function extractTextContent(prompt) {
 }
 
 /**
+ * Извлечение размера из промпта
+ * Поддерживает форматы: "100x600", "100 на 600", "100*600", "размер 100 600"
+ */
+export function extractSizeFromPrompt(prompt) {
+  // Паттерн 1: "100x600", "100×600", "100X600"
+  const xPattern = prompt.match(/(\d{2,4})\s*[xXхХ×]\s*(\d{2,4})/);
+  if (xPattern) {
+    return { width: parseInt(xPattern[1]), height: parseInt(xPattern[2]) };
+  }
+
+  // Паттерн 2: "100 на 600", "100 by 600"
+  const naPattern = prompt.match(/(\d{2,4})\s*(?:на|by|на)\s*(\d{2,4})/i);
+  if (naPattern) {
+    return { width: parseInt(naPattern[1]), height: parseInt(naPattern[2]) };
+  }
+
+  // Паттерн 3: "размер 100 600", "size 100 600"
+  const sizePattern = prompt.match(/(?:размер|size)\s*[:\s]*(\d{2,4})\s+(\d{2,4})/i);
+  if (sizePattern) {
+    return { width: parseInt(sizePattern[1]), height: parseInt(sizePattern[2]) };
+  }
+
+  // Паттерн 4: "100*600"
+  const starPattern = prompt.match(/(\d{2,4})\s*\*\s*(\d{2,4})/);
+  if (starPattern) {
+    return { width: parseInt(starPattern[1]), height: parseInt(starPattern[2]) };
+  }
+
+  return null;
+}
+
+/**
  * Определение языка текста
  */
 export function detectLanguage(text) {
