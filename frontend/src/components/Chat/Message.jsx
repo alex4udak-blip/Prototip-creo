@@ -252,16 +252,7 @@ export function Message({ message }) {
                 </div>
               )}
 
-              {/* Beautiful Generation Status - NEW! */}
-              {message.isGenerating && (
-                <div className="min-w-[280px]">
-                  <GenerationStatus
-                    phase={message.generationPhase}
-                    progress={message.generationProgress}
-                  />
-                  <PhaseProgress phase={message.generationPhase} />
-                </div>
-              )}
+              {/* Generation status is now shown only in header (GlobalGenerationStatus in ChatWindow) */}
             </div>
 
             {/* Meta info (model, time) */}
