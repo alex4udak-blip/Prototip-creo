@@ -83,7 +83,7 @@ export async function generateWithRunware(prompt, options = {}) {
     height = 628,
     numImages = 1,
     referenceUrl = null,
-    strength = 0.65  // Сила влияния референса (0-1)
+    strength = 0.35  // Сила влияния референса (0-1). 0.35 = вдохновение, 0.65+ = редактирование
   } = options;
 
   const modelId = RUNWARE_MODELS[model] || RUNWARE_MODELS['runware-flux-dev'];
@@ -131,14 +131,16 @@ export async function generateWithRunware(prompt, options = {}) {
   // Kontext использует специальный формат для редактирования
   if (isKontext && preparedReference) {
     // FLUX Kontext требует inputImages массив для редактирования
+    // Kontext = редактирование, нужна высокая strength
     payload.inputImages = [preparedReference];
-    payload.strength = strength;
-    log.debug('Using Kontext edit mode', { strength });
+    payload.strength = 0.7;
+    log.debug('Using Kontext edit mode', { strength: 0.7 });
   } else if (preparedReference) {
-    // Обычный img2img для других моделей
+    // Обычный img2img для FLUX Dev = style reference
+    // Низкая strength = референс как вдохновение, а не копирование
     payload.inputImage = preparedReference;
-    payload.strength = strength;
-    log.debug('Using img2img mode', { strength });
+    payload.strength = strength; // 0.35 по умолчанию
+    log.debug('Using img2img style mode', { strength });
   }
 
   log.debug('Runware request', {

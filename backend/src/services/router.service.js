@@ -244,21 +244,19 @@ export function selectModel(promptAnalysis, options = {}) {
     }
 
     // Reference purpose determines model
-    const purpose = promptAnalysis.reference_purpose || 'edit';
+    // По умолчанию 'style' - референс как пример стиля, а не для редактирования
+    const purpose = promptAnalysis.reference_purpose || 'style';
 
-    if (purpose === 'style') {
-      log.info('MODEL DECISION: runware-flux-dev for style transfer', { reason: 'style_reference' });
-      return 'runware-flux-dev';
-    }
-
-    if (purpose === 'edit' || purpose === 'modify' || purpose === 'composition') {
+    if (purpose === 'edit' || purpose === 'modify') {
+      // Kontext только для явного редактирования (когда Claude определил это)
       log.info('MODEL DECISION: runware-kontext for reference editing', { reason: 'edit_reference' });
       return 'runware-kontext';
     }
 
-    // Default for reference — Kontext
-    log.info('MODEL DECISION: runware-kontext (default for reference)', { reason: 'has_reference' });
-    return 'runware-kontext';
+    // Для style, composition и всего остального - FLUX Dev как style reference
+    // FLUX Dev лучше использует референс как вдохновение, а не копирует его
+    log.info('MODEL DECISION: runware-flux-dev for style reference', { reason: 'style_reference', purpose });
+    return 'runware-flux-dev';
   }
 
   // PRIORITY 4: Speed requirements
