@@ -1,49 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Sparkles, Wand2, Image, Zap } from 'lucide-react';
-import { useChatStore, PHASE_LABELS } from '../../hooks/useChat';
+import { useChatStore } from '../../hooks/useChat';
 import { Message } from './Message';
-
-/**
- * Global Generation Status Bar
- * Shows at the top when generating
- */
-function GlobalGenerationStatus({ phase, progress }) {
-  if (!phase) return null;
-
-  const label = PHASE_LABELS[phase] || 'Обработка...';
-
-  return (
-    <div className="sticky top-0 z-10 bg-gradient-to-b from-bg-primary via-bg-primary to-transparent pb-4">
-      <div className="max-w-4xl mx-auto px-4">
-        <div className="flex items-center gap-3 py-2 px-4 bg-accent/10 border border-accent/20 rounded-xl animate-fade-in">
-          {/* Animated icon */}
-          <div className="relative">
-            <Sparkles className="w-4 h-4 text-accent animate-pulse" />
-          </div>
-
-          {/* Status text */}
-          <span className="text-sm text-accent font-medium">
-            {label}
-          </span>
-
-          {/* Progress message */}
-          {progress && (
-            <span className="text-xs text-text-muted">
-              - {progress}
-            </span>
-          )}
-
-          {/* Animated dots */}
-          <div className="flex gap-0.5 ml-auto">
-            <span className="w-1 h-1 rounded-full bg-accent animate-bounce-dot-1"></span>
-            <span className="w-1 h-1 rounded-full bg-accent animate-bounce-dot-2"></span>
-            <span className="w-1 h-1 rounded-full bg-accent animate-bounce-dot-3"></span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function ChatWindow({ className = '' }) {
   const {
@@ -51,8 +9,6 @@ export function ChatWindow({ className = '' }) {
     messages,
     chatLoading,
     isGenerating,
-    generationPhase,
-    generationProgress,
     generate
   } = useChatStore();
   const messagesEndRef = useRef(null);
@@ -149,10 +105,7 @@ export function ChatWindow({ className = '' }) {
   // Chat with messages
   return (
     <div className={`flex-1 overflow-y-auto ${className}`}>
-      {/* Global status bar when generating */}
-      {isGenerating && (
-        <GlobalGenerationStatus phase={generationPhase} progress={generationProgress} />
-      )}
+      {/* Status bar removed - теперь красивый статус показывается внутри сообщения */}
 
       <div className="max-w-4xl mx-auto p-4">
         {messages.length === 0 ? (
