@@ -48,20 +48,24 @@ export const SMART_CLARIFICATION_PROMPT = `You are an expert Creative Director A
 Analyze user request. If critical info is missing - ask 1-3 SHORT questions with clickable options.
 
 ## WHEN TO ASK (needs_clarification: true):
-- ALWAYS when there's a reference image - you MUST acknowledge it and ask about style preferences!
+- **MANDATORY** when there's a reference image - you MUST ask about how to use it!
 - Missing: brand/app name, bonus details, geo, style preference
 - Unclear what exactly to create
 - Casino/gambling content - ALWAYS ask about specifics
 
 ## WHEN NOT TO ASK (needs_clarification: false):
-- ONLY if request has ALL details (brand, size, style, geo, text)
-- User explicitly said "быстро", "сразу", "без вопросов"
-- Simple edit like "сделай ярче"
+- ONLY if NO reference AND request has ALL details (brand, size, style, geo, text)
+- User explicitly said "быстро", "сразу", "без вопросов" AND no reference
+- Simple edit like "сделай ярче" AND no reference
 
-## IMPORTANT: If user provides a REFERENCE IMAGE:
-- You MUST set needs_clarification: true
-- Acknowledge what you see on the reference (from vision_analysis)
-- Ask about style preference: "Как референс" vs "Вдохновение"
+## CRITICAL RULE FOR REFERENCE IMAGES:
+If REFERENCE IMAGE is provided - you MUST ALWAYS:
+1. Set needs_clarification: true (THIS IS MANDATORY!)
+2. Acknowledge what you see on the reference (from vision_analysis)
+3. Ask: "Как использовать референс?" with options: ["Как референс (Identity Lock)", "Вдохновение (стиль)", "Редактировать"]
+4. Ask about style preference if not clear
+
+NEVER return needs_clarification: false when there is a reference image!
 
 ## OUTPUT FORMAT (JSON):
 
@@ -493,9 +497,53 @@ Remember:
       }
     }
 
-    // НЕ принудительно - пусть режим генерации (Умный/Быстрый) определяет
-    // Но если Claude решил не спрашивать при референсе - добавим Vision анализ в ответ
-    // чтобы пользователь видел что AI "увидел" на референсе
+    // ПРИНУДИТЕЛЬНО: если есть референс - ВСЕГДА показываем вопросы!
+    // Это критично для работы как Genspark - нужно уточнить как использовать референс
+    if (hasReference && visionAnalysis && !result.needs_clarification) {
+      log.info('FORCING clarification for reference image', {
+        hadQuestions: result.questions?.length || 0,
+        visionSummary: visionAnalysis.summary?.substring(0, 50)
+      });
+
+      // Если Claude не задал вопросы - добавляем стандартные для референса
+      result.needs_clarification = true;
+      result.summary = result.summary || `Вижу референс: ${visionAnalysis.summary?.substring(0, 100) || 'изображение'}. Уточню пару деталей:`;
+
+      // Добавляем вопрос про использование референса если нет вопросов
+      if (!result.questions || result.questions.length === 0) {
+        result.questions = [
+          {
+            id: 'reference_usage',
+            question: 'Как использовать референс?',
+            type: 'single_choice',
+            options: ['Как референс (Identity Lock)', 'Вдохновение (стиль)', 'Редактировать'],
+            why: 'Определяет модель и степень влияния'
+          },
+          {
+            id: 'style_preference',
+            question: 'Стиль новой картинки?',
+            type: 'single_choice',
+            options: ['Точно как референс', 'Похожий стиль', 'Свой стиль'],
+            why: 'Для точного результата'
+          }
+        ];
+      } else {
+        // Добавляем вопрос про референс в начало если его нет
+        const hasRefQuestion = result.questions.some(q =>
+          q.id?.includes('reference') || q.id?.includes('style') ||
+          q.question?.toLowerCase().includes('референс') || q.question?.toLowerCase().includes('стиль')
+        );
+        if (!hasRefQuestion) {
+          result.questions.unshift({
+            id: 'reference_usage',
+            question: 'Как использовать референс?',
+            type: 'single_choice',
+            options: ['Как референс', 'Вдохновение', 'Редактировать'],
+            why: 'Определяет модель генерации'
+          });
+        }
+      }
+    }
 
     log.debug('Smart clarification check', {
       needsClarification: result.needs_clarification,

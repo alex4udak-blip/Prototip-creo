@@ -14,6 +14,82 @@ const RUNWARE_MODELS = {
 };
 
 /**
+ * Поддерживаемые размеры Runware API
+ * Из ошибки API: 1024x1024, 1568x672, 1504x688, 1472x704, 1440x720,
+ * 1408x736, 1344x768, 1312x784, 1280x800, 1248x832, 1216x864, etc.
+ *
+ * Все размеры кратны 16 и общая площадь ~ 1 мегапиксель
+ */
+const RUNWARE_SUPPORTED_SIZES = [
+  // Квадратные
+  { width: 1024, height: 1024 },
+  { width: 512, height: 512 },
+
+  // Широкие (landscape) - для баннеров
+  { width: 1568, height: 672 },
+  { width: 1504, height: 688 },
+  { width: 1472, height: 704 },
+  { width: 1440, height: 720 },
+  { width: 1408, height: 736 },
+  { width: 1344, height: 768 },
+  { width: 1312, height: 784 },
+  { width: 1280, height: 800 },
+  { width: 1248, height: 832 },
+  { width: 1216, height: 864 },
+  { width: 1152, height: 896 },
+  { width: 1088, height: 960 },
+
+  // Вертикальные (portrait) - для stories
+  { width: 672, height: 1568 },
+  { width: 688, height: 1504 },
+  { width: 704, height: 1472 },
+  { width: 720, height: 1440 },
+  { width: 736, height: 1408 },
+  { width: 768, height: 1344 },
+  { width: 784, height: 1312 },
+  { width: 800, height: 1280 },
+  { width: 832, height: 1248 },
+  { width: 864, height: 1216 },
+  { width: 896, height: 1152 },
+  { width: 960, height: 1088 },
+];
+
+/**
+ * Находит ближайший поддерживаемый размер Runware
+ * @param {number} targetWidth - желаемая ширина
+ * @param {number} targetHeight - желаемая высота
+ * @returns {{ adjustedWidth: number, adjustedHeight: number }}
+ */
+function findNearestRunwareSize(targetWidth, targetHeight) {
+  const targetRatio = targetWidth / targetHeight;
+
+  let bestMatch = RUNWARE_SUPPORTED_SIZES[0];
+  let bestScore = Infinity;
+
+  for (const size of RUNWARE_SUPPORTED_SIZES) {
+    const sizeRatio = size.width / size.height;
+
+    // Score = разница в aspect ratio + разница в площади (нормализованная)
+    const ratioDiff = Math.abs(sizeRatio - targetRatio);
+    const areaDiff = Math.abs(
+      (size.width * size.height) - (targetWidth * targetHeight)
+    ) / 1000000; // Нормализуем
+
+    const score = ratioDiff * 10 + areaDiff; // Приоритет на aspect ratio
+
+    if (score < bestScore) {
+      bestScore = score;
+      bestMatch = size;
+    }
+  }
+
+  return {
+    adjustedWidth: bestMatch.width,
+    adjustedHeight: bestMatch.height
+  };
+}
+
+/**
  * Конвертирует локальный URL или путь к файлу в base64
  * Runware API требует либо публичный URL, либо base64 data URI
  */
@@ -100,17 +176,16 @@ export async function generateWithRunware(prompt, options = {}) {
     });
   }
 
-  // ВАЖНО: Runware API требует размеры кратные 64!
-  // Округляем до ближайшего кратного 64
-  const roundTo64 = (val) => Math.round(val / 64) * 64;
-  const clampedWidth = roundTo64(Math.min(Math.max(width, 128), 2048));
-  const clampedHeight = roundTo64(Math.min(Math.max(height, 128), 2048));
+  // ВАЖНО: Runware API имеет КОНКРЕТНЫЙ список поддерживаемых размеров!
+  // Список из документации: 1024x1024, 1568x672, 1504x688, 1472x704, etc.
+  // Нужно найти ближайший поддерживаемый размер
+  const { adjustedWidth, adjustedHeight } = findNearestRunwareSize(width, height);
 
   log.debug('Size adjustment for Runware', {
     originalWidth: width,
     originalHeight: height,
-    adjustedWidth: clampedWidth,
-    adjustedHeight: clampedHeight
+    adjustedWidth,
+    adjustedHeight
   });
 
   // Базовый payload для обычной генерации
@@ -118,8 +193,8 @@ export async function generateWithRunware(prompt, options = {}) {
     positivePrompt: prompt,
     negativePrompt: negativePrompt || 'blurry, low quality, distorted, ugly, amateur',
     model: modelId,
-    width: clampedWidth,
-    height: clampedHeight,
+    width: adjustedWidth,
+    height: adjustedHeight,
     numberResults: Math.min(numImages, 4),
     outputFormat: 'PNG',
     CFGScale: isKontext ? 3.5 : 7.5,
