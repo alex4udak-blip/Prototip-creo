@@ -78,6 +78,7 @@ router.post('/', checkGenerationLimit, async (req, res) => {
       success: true,
       chatId,
       messageId,
+      userMessageId: userMessage.id,
       status: 'processing'
     });
 

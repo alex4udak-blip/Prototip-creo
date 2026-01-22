@@ -135,30 +135,35 @@ export const useChatStore = create((set, get) => ({
       if (!currentChat && response.chatId) {
         await get().selectChat(response.chatId);
         await get().loadChats();
+      } else {
+        // Если чат уже есть - добавляем сообщения локально
+        // (сервер уже сохранил их в БД)
+        const userMessage = {
+          id: response.userMessageId || Date.now(),
+          role: 'user',
+          content: prompt,
+          referenceUrl: attachedReference?.url,
+          createdAt: new Date().toISOString()
+        };
+
+        const assistantMessage = {
+          id: response.messageId,
+          role: 'assistant',
+          content: 'Генерирую...',
+          isGenerating: true,
+          createdAt: new Date().toISOString()
+        };
+
+        set(state => ({
+          messages: [...state.messages, userMessage, assistantMessage],
+          attachedReference: null
+        }));
       }
 
-      // Добавляем сообщение пользователя
-      const userMessage = {
-        id: Date.now(),
-        role: 'user',
-        content: prompt,
-        referenceUrl: attachedReference?.url,
-        createdAt: new Date().toISOString()
-      };
-
-      // Добавляем placeholder для ответа
-      const assistantMessage = {
-        id: response.messageId,
-        role: 'assistant',
-        content: 'Генерирую...',
-        isGenerating: true,
-        createdAt: new Date().toISOString()
-      };
-
-      set(state => ({
-        messages: [...state.messages, userMessage, assistantMessage],
-        attachedReference: null // Очищаем референс
-      }));
+      // Очищаем референс в любом случае
+      if (currentChat) {
+        set({ attachedReference: null });
+      }
 
       return response;
 
