@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { db } from '../db/client.js';
 import { authMiddleware, checkGenerationLimit, incrementGenerationStats } from '../middleware/auth.middleware.js';
 import { uploadMiddleware, handleUploadError, getFileUrl } from '../middleware/upload.middleware.js';
-import { enhancePrompt, generateChatTitle } from '../services/prompt.service.js';
+import { checkNeedsClarification, processUserAnswers, enhancePrompt, generateChatTitle } from '../services/prompt.service.js';
 import { selectModel, generateImage, parseSize, getAvailableModels } from '../services/router.service.js';
 import { broadcastToChat } from '../websocket/handler.js';
 import { log } from '../utils/logger.js';
@@ -11,6 +11,42 @@ const router = Router();
 
 // Все routes требуют авторизации
 router.use(authMiddleware);
+
+/**
+ * POST /api/generate/clarify
+ * Проверка нужны ли уточняющие вопросы
+ */
+router.post('/clarify', async (req, res) => {
+  try {
+    const { prompt, reference_url, chat_id } = req.body;
+
+    if (!prompt || prompt.trim().length === 0) {
+      return res.status(400).json({ error: 'Введите описание баннера' });
+    }
+
+    // Получаем историю чата если есть
+    let chatHistory = [];
+    if (chat_id) {
+      const messages = await db.getMany(
+        'SELECT role, content FROM messages WHERE chat_id = $1 ORDER BY created_at DESC LIMIT 10',
+        [parseInt(chat_id)]
+      );
+      chatHistory = messages.reverse();
+    }
+
+    // Проверяем нужны ли вопросы
+    const clarificationResult = await checkNeedsClarification(prompt, {
+      hasReference: !!reference_url,
+      chatHistory
+    });
+
+    res.json(clarificationResult);
+
+  } catch (error) {
+    log.error('Clarification check error', { error: error.message });
+    res.status(500).json({ error: 'Ошибка анализа запроса' });
+  }
+});
 
 /**
  * POST /api/generate
@@ -28,7 +64,9 @@ router.post('/', checkGenerationLimit, async (req, res) => {
       reference_url,
       size,
       model: userModel,
-      variations = 1
+      variations = 1,
+      answers = null,  // Ответы на уточняющие вопросы
+      skip_clarification = false  // Пропустить этап вопросов
     } = req.body;
 
     // Валидация
@@ -36,7 +74,7 @@ router.post('/', checkGenerationLimit, async (req, res) => {
       return res.status(400).json({ error: 'Введите описание баннера' });
     }
 
-    chatId = parseInt(chat_id);
+    chatId = parseInt(chat_id) || null;
 
     // Проверяем или создаём чат
     let chat;
@@ -57,11 +95,72 @@ router.post('/', checkGenerationLimit, async (req, res) => {
       chatId = chat.id;
     }
 
-    // Сохраняем сообщение пользователя
+    // Получаем историю чата для контекста
+    let chatHistory = [];
+    const existingMessages = await db.getMany(
+      'SELECT role, content FROM messages WHERE chat_id = $1 ORDER BY created_at DESC LIMIT 10',
+      [chatId]
+    );
+    chatHistory = existingMessages.reverse();
+
+    // ЭТАП 1: Проверяем нужны ли уточняющие вопросы (если нет ответов и не пропускаем)
+    if (!answers && !skip_clarification) {
+      const clarificationResult = await checkNeedsClarification(prompt, {
+        hasReference: !!reference_url,
+        chatHistory
+      });
+
+      if (clarificationResult.needs_clarification) {
+        // Сохраняем сообщение пользователя
+        const userMessage = await db.insert('messages', {
+          chat_id: chatId,
+          role: 'user',
+          content: prompt,
+          reference_url: reference_url || null
+        });
+
+        // Сохраняем вопросы как сообщение ассистента
+        const assistantMessage = await db.insert('messages', {
+          chat_id: chatId,
+          role: 'assistant',
+          content: clarificationResult.summary || 'Уточняющие вопросы',
+          metadata: JSON.stringify({
+            type: 'clarification',
+            questions: clarificationResult.questions,
+            originalPrompt: prompt
+          })
+        });
+
+        // Возвращаем вопросы клиенту
+        return res.json({
+          success: true,
+          chatId,
+          userMessageId: userMessage.id,
+          messageId: assistantMessage.id,
+          status: 'needs_clarification',
+          clarification: {
+            summary: clarificationResult.summary,
+            questions: clarificationResult.questions
+          }
+        });
+      }
+    }
+
+    // ЭТАП 2: Генерация (либо ответы получены, либо вопросы не нужны)
+
+    // Сохраняем сообщение пользователя (если это ответ на вопросы — добавляем контекст)
+    let userContent = prompt;
+    if (answers) {
+      const answerText = Object.entries(answers)
+        .map(([q, a]) => `${q}: ${a}`)
+        .join(', ');
+      userContent = `${prompt}\n[Уточнения: ${answerText}]`;
+    }
+
     const userMessage = await db.insert('messages', {
       chat_id: chatId,
       role: 'user',
-      content: prompt,
+      content: userContent,
       reference_url: reference_url || null
     });
 
@@ -87,6 +186,7 @@ router.post('/', checkGenerationLimit, async (req, res) => {
       chatId,
       messageId,
       prompt,
+      answers,
       referenceUrl: reference_url,
       size,
       userModel,
@@ -129,6 +229,7 @@ async function processGeneration(params) {
     chatId,
     messageId,
     prompt,
+    answers,
     referenceUrl,
     size,
     userModel,
@@ -147,11 +248,19 @@ async function processGeneration(params) {
       message: 'Анализирую запрос...'
     });
 
-    // 2. Улучшаем промпт через Claude
-    const promptAnalysis = await enhancePrompt(prompt, {
-      hasReference: !!referenceUrl,
-      size
-    });
+    // 2. Улучшаем промпт через Claude (с учётом ответов если есть)
+    let promptAnalysis;
+    if (answers && Object.keys(answers).length > 0) {
+      promptAnalysis = await processUserAnswers(prompt, answers, {
+        hasReference: !!referenceUrl,
+        size
+      });
+    } else {
+      promptAnalysis = await enhancePrompt(prompt, {
+        hasReference: !!referenceUrl,
+        size
+      });
+    }
 
     // 3. Выбираем модель
     const selectedModel = selectModel(promptAnalysis, {

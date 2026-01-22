@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Download, Copy, Check, ExternalLink, AlertCircle, Sparkles, User, Maximize2 } from 'lucide-react';
+import { ClarificationQuestions } from './ClarificationQuestions';
 
 export function Message({ message }) {
   const isUser = message.role === 'user';
@@ -124,6 +125,13 @@ export function Message({ message }) {
                 <div className="mt-3 flex items-start gap-2 text-error bg-error/10 rounded-lg p-3">
                   <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                   <span className="text-sm">{message.errorMessage}</span>
+                </div>
+              )}
+
+              {/* Clarification questions */}
+              {message.clarification && (
+                <div className="mt-3">
+                  <ClarificationQuestions clarification={message.clarification} />
                 </div>
               )}
 

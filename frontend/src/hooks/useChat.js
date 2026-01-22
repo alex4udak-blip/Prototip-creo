@@ -19,6 +19,9 @@ export const useChatStore = create((set, get) => ({
   generationStatus: null,
   generationProgress: null,
 
+  // Уточняющие вопросы
+  pendingClarification: null,  // { questions, summary, originalPrompt }
+
   // Референс (прикреплённая картинка)
   attachedReference: null,
 
@@ -116,32 +119,80 @@ export const useChatStore = create((set, get) => ({
   // Generation
   // ==========================================
 
-  generate: async (prompt) => {
-    const { currentChat, attachedReference, settings } = get();
+  generate: async (prompt, answers = null) => {
+    const { currentChat, attachedReference, settings, pendingClarification } = get();
 
     set({ isGenerating: true, generationStatus: 'starting', generationProgress: null });
 
     try {
+      // Если есть ответы на вопросы — используем оригинальный промпт
+      const actualPrompt = answers && pendingClarification?.originalPrompt
+        ? pendingClarification.originalPrompt
+        : prompt;
+
       const response = await generateAPI.generate({
         chat_id: currentChat?.id,
-        prompt,
+        prompt: actualPrompt,
         reference_url: attachedReference?.url,
         size: settings.size,
         model: settings.model,
-        variations: settings.variations
+        variations: settings.variations,
+        answers: answers,
+        skip_clarification: !!answers  // Пропускаем вопросы если уже ответили
       });
 
+      // Очищаем pending clarification
+      set({ pendingClarification: null });
+
+      // Если сервер вернул вопросы
+      if (response.status === 'needs_clarification') {
+        const userMessage = {
+          id: response.userMessageId || Date.now(),
+          role: 'user',
+          content: prompt,
+          referenceUrl: attachedReference?.url,
+          createdAt: new Date().toISOString()
+        };
+
+        const clarificationMessage = {
+          id: response.messageId,
+          role: 'assistant',
+          content: response.clarification.summary,
+          clarification: response.clarification,
+          createdAt: new Date().toISOString()
+        };
+
+        set(state => ({
+          messages: [...state.messages, userMessage, clarificationMessage],
+          pendingClarification: {
+            ...response.clarification,
+            originalPrompt: prompt,
+            messageId: response.messageId
+          },
+          isGenerating: false,
+          attachedReference: null
+        }));
+
+        // Обновляем чат если новый
+        if (!currentChat && response.chatId) {
+          await get().selectChat(response.chatId);
+          await get().loadChats();
+        }
+
+        return response;
+      }
+
+      // Обычная генерация
       // Обновляем текущий чат если его не было
       if (!currentChat && response.chatId) {
         await get().selectChat(response.chatId);
         await get().loadChats();
       } else {
         // Если чат уже есть - добавляем сообщения локально
-        // (сервер уже сохранил их в БД)
         const userMessage = {
           id: response.userMessageId || Date.now(),
           role: 'user',
-          content: prompt,
+          content: answers ? `${actualPrompt}` : prompt,
           referenceUrl: attachedReference?.url,
           createdAt: new Date().toISOString()
         };
@@ -170,6 +221,53 @@ export const useChatStore = create((set, get) => ({
     } catch (error) {
       console.error('Generate error:', error);
       set({ isGenerating: false, generationStatus: 'error' });
+      throw error;
+    }
+  },
+
+  // Отправка ответов на уточняющие вопросы
+  submitClarificationAnswers: async (answers) => {
+    const { pendingClarification } = get();
+    if (!pendingClarification) return;
+
+    return get().generate(pendingClarification.originalPrompt, answers);
+  },
+
+  // Пропустить вопросы и генерировать сразу
+  skipClarification: async () => {
+    const { pendingClarification, currentChat, attachedReference, settings } = get();
+    if (!pendingClarification) return;
+
+    set({ isGenerating: true, pendingClarification: null });
+
+    try {
+      const response = await generateAPI.generate({
+        chat_id: currentChat?.id,
+        prompt: pendingClarification.originalPrompt,
+        reference_url: attachedReference?.url,
+        size: settings.size,
+        model: settings.model,
+        variations: settings.variations,
+        skip_clarification: true
+      });
+
+      const assistantMessage = {
+        id: response.messageId,
+        role: 'assistant',
+        content: 'Генерирую...',
+        isGenerating: true,
+        createdAt: new Date().toISOString()
+      };
+
+      set(state => ({
+        messages: [...state.messages, assistantMessage],
+        attachedReference: null
+      }));
+
+      return response;
+    } catch (error) {
+      console.error('Skip clarification error:', error);
+      set({ isGenerating: false });
       throw error;
     }
   },

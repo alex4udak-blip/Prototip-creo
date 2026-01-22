@@ -8,18 +8,103 @@ const anthropic = config.anthropicApiKey
   : null;
 
 /**
- * Системный промпт для Creative Brain (based on Universal Creative Engine)
+ * Системный промпт для Clarification Agent
+ * Задаёт уточняющие вопросы перед генерацией
  */
-export const SYSTEM_PROMPT = `You are a Creative Director AI that orchestrates multiple AI models
-to produce any type of visual content.
+export const CLARIFICATION_SYSTEM_PROMPT = `You are a Creative Director AI assistant that helps users create perfect banners and visual content.
+
+## YOUR ROLE:
+Before generating an image, you MUST ask clarifying questions to understand the user's needs better.
+This is critical for producing high-quality results.
+
+## ANALYZE THE REQUEST AND DECIDE:
+
+If the request is CLEAR and SPECIFIC (has style, colors, size, text, etc.) - respond with:
+{
+  "needs_clarification": false,
+  "ready_to_generate": true
+}
+
+If the request is VAGUE or INCOMPLETE - respond with clarifying questions:
+{
+  "needs_clarification": true,
+  "questions": [
+    {
+      "id": "style",
+      "question": "Какой стиль баннера вам нужен?",
+      "type": "single_choice",
+      "options": [
+        {"value": "modern", "label": "Современный/Минималистичный"},
+        {"value": "casino", "label": "Казино/Игровой"},
+        {"value": "premium", "label": "Премиум/Люкс"},
+        {"value": "fun", "label": "Яркий/Весёлый"}
+      ]
+    },
+    {
+      "id": "colors",
+      "question": "Какая цветовая гамма?",
+      "type": "single_choice",
+      "options": [
+        {"value": "gold_black", "label": "Золото + Чёрный"},
+        {"value": "blue_purple", "label": "Синий + Фиолетовый"},
+        {"value": "red_orange", "label": "Красный + Оранжевый"},
+        {"value": "custom", "label": "Другое (напишу)"}
+      ]
+    }
+  ],
+  "summary": "Чтобы создать идеальный баннер, мне нужно уточнить несколько деталей."
+}
+
+## QUESTION TYPES:
+- single_choice: User picks one option
+- multiple_choice: User can pick multiple
+- text_input: Free text answer
+- confirm: Yes/No question
+
+## QUESTIONS TO CONSIDER (pick 2-4 most relevant):
+
+### For banners/ads:
+- Стиль (современный, ретро, минималистичный, игровой)
+- Цветовая гамма
+- Текст на баннере (какой именно?)
+- Целевая аудитория
+- Где будет использоваться (Facebook, Instagram, сайт)?
+
+### For social media:
+- Платформа (Instagram, TikTok, YouTube)?
+- Формат (пост, сторис, обложка)?
+- Настроение (весёлое, серьёзное, вдохновляющее)?
+
+### For product images:
+- Тип продукта
+- Фон (белый, градиент, lifestyle)?
+- Нужны ли декоративные элементы?
+
+### For characters/mascots:
+- Стиль (мультяшный, реалистичный, пиксельный)?
+- Эмоция/поза
+- Возраст/пол персонажа
+
+## RULES:
+1. Ask 2-4 questions MAX (not more!)
+2. Questions should be in RUSSIAN
+3. Make options clear and helpful
+4. Don't ask obvious questions
+5. If user provided reference image - ask less questions
+6. Always include a "summary" explaining why you're asking
+
+Respond ONLY with valid JSON, no markdown.`;
+
+/**
+ * Системный промпт для Creative Brain (генерация промпта)
+ */
+export const GENERATION_SYSTEM_PROMPT = `You are a Creative Director AI that creates detailed prompts for image generation.
 
 ## YOUR ROLE:
 1. Understand the creative task (any language)
-2. Classify the creative type
-3. Decompose into sub-tasks if needed
-4. Select optimal model combination
-5. Generate detailed prompts for each model
-6. Define the execution strategy
+2. Create detailed, effective prompt for image generation
+3. Select optimal model
+4. Extract text if needed
 
 ## OUTPUT FORMAT (JSON):
 {
@@ -95,6 +180,87 @@ to produce any type of visual content.
 - Negative prompt: "blurry, low quality, distorted, amateur"`;
 
 /**
+ * Проверка нужны ли уточняющие вопросы
+ */
+export async function checkNeedsClarification(userPrompt, options = {}) {
+  const { hasReference = false, chatHistory = [] } = options;
+
+  if (!anthropic) {
+    log.warn('Claude API not configured, skipping clarification');
+    return { needs_clarification: false, ready_to_generate: true };
+  }
+
+  try {
+    // Собираем контекст из истории чата
+    let context = '';
+    if (chatHistory.length > 0) {
+      context = '\n\nПредыдущие сообщения в чате:\n';
+      for (const msg of chatHistory.slice(-6)) { // Последние 6 сообщений
+        context += `${msg.role === 'user' ? 'User' : 'AI'}: ${msg.content}\n`;
+      }
+    }
+
+    const message = `User request: ${userPrompt}
+Reference image provided: ${hasReference ? 'YES' : 'NO'}
+${context}
+
+Analyze if this request needs clarification or is ready for generation.`;
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: CLARIFICATION_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: message }]
+    });
+
+    const text = response.content[0].text;
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+
+    if (!jsonMatch) {
+      log.error('Failed to parse clarification response', { response: text });
+      return { needs_clarification: false, ready_to_generate: true };
+    }
+
+    const result = JSON.parse(jsonMatch[0]);
+
+    log.debug('Clarification check result', {
+      needsClarification: result.needs_clarification,
+      questionsCount: result.questions?.length || 0
+    });
+
+    return result;
+
+  } catch (error) {
+    log.error('Clarification check error', { error: error.message });
+    return { needs_clarification: false, ready_to_generate: true };
+  }
+}
+
+/**
+ * Обработка ответов пользователя на вопросы
+ */
+export async function processUserAnswers(originalPrompt, answers, options = {}) {
+  const { hasReference = false } = options;
+
+  // Формируем обогащённый промпт из ответов
+  let enrichedPrompt = originalPrompt;
+
+  const answerDescriptions = [];
+  for (const [questionId, answer] of Object.entries(answers)) {
+    if (answer && answer !== 'skip') {
+      answerDescriptions.push(`${questionId}: ${answer}`);
+    }
+  }
+
+  if (answerDescriptions.length > 0) {
+    enrichedPrompt += `\n\nUser preferences:\n${answerDescriptions.join('\n')}`;
+  }
+
+  // Теперь генерируем финальный промпт
+  return analyzeAndEnhancePrompt(enrichedPrompt, { hasReference, ...options });
+}
+
+/**
  * Анализ и улучшение промпта с помощью Claude (main function)
  */
 export async function analyzeAndEnhancePrompt(userPrompt, options = {}) {
@@ -119,12 +285,12 @@ export async function analyzeAndEnhancePrompt(userPrompt, options = {}) {
       message += `\nTarget size: ${width}x${height}`;
     }
 
-    message += '\n\nAnalyze and create execution plan.';
+    message += '\n\nCreate detailed generation plan.';
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 2048,
-      system: SYSTEM_PROMPT,
+      system: GENERATION_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: message }]
     });
 
@@ -177,7 +343,6 @@ function createBasicPrompt(userPrompt, options = {}) {
   // Базовое улучшение промпта
   let enhancedPrompt = userPrompt;
   if (language === 'ru') {
-    // Простая транслитерация/перевод не нужна — оставляем как есть для логов
     enhancedPrompt = `Professional promotional banner, ${userPrompt}, high quality, sharp details, vibrant colors, casino aesthetic, luxury feel`;
   } else {
     enhancedPrompt = `Professional promotional banner, ${userPrompt}, high quality, sharp details, vibrant colors`;
