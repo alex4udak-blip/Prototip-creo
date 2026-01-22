@@ -11,10 +11,12 @@ const genAI = config.googleApiKey
   : null;
 
 /**
- * Google Nano Banana Models
+ * Google Nano Banana Models (Imagen 3 via Gemini)
  *
- * gemini-2.0-flash-exp — быстрая модель для генерации изображений с текстом
- * Nano Banana Pro — для сложных задач и Identity Lock
+ * ВАЖНО: Для генерации изображений нужно использовать Imagen 3 через Gemini API
+ * или специальные модели для image generation!
+ *
+ * gemini-2.0-flash-preview-image-generation — модель с поддержкой генерации изображений
  *
  * Особенности:
  * - Отлично рендерит текст на изображениях!
@@ -22,8 +24,8 @@ const genAI = config.googleApiKey
  * - Понимает контекст и инструкции на русском
  */
 const GOOGLE_MODELS = {
-  'google-nano': 'gemini-2.0-flash-exp',           // Nano Banana (быстрый)
-  'google-nano-pro': 'gemini-2.0-flash-exp',       // Nano Banana Pro (для сложных задач)
+  'google-nano': 'gemini-2.0-flash-preview-image-generation',           // Nano Banana (быстрый)
+  'google-nano-pro': 'gemini-2.0-flash-preview-image-generation',       // Nano Banana Pro (для сложных задач)
 };
 
 /**
@@ -93,7 +95,8 @@ export async function generateWithGoogle(prompt, options = {}) {
     height = 628,
     textContent = null,
     textStyle = null,
-    referenceUrl = null
+    referenceUrl = null,
+    numImages = 1  // Количество изображений
   } = options;
 
   // Формируем промпт
@@ -130,6 +133,7 @@ Text rendering rules:
     model,
     hasText: !!textContent,
     hasReference: !!referenceUrl,
+    numImages,
     promptLength: finalPrompt.length
   });
 
@@ -153,59 +157,60 @@ Text rendering rules:
       const referencePart = await prepareReferenceForGoogle(referenceUrl);
       if (referencePart) {
         contentParts.push(referencePart);
-        // Добавляем инструкцию для Identity Lock
-        finalPrompt = `Reference image is provided above. Use it to maintain visual consistency (Identity Lock).
+        // Добавляем инструкцию для Identity Lock - КРИТИЧНО для стиля!
+        finalPrompt = `IMPORTANT: Use the reference image above as style guide (Identity Lock).
+Maintain the SAME visual style, color palette, lighting, and aesthetic.
+Create a NEW image inspired by this reference style, do NOT copy it directly.
 
 ${finalPrompt}`;
-        log.debug('Added reference for Identity Lock');
+        log.info('Added reference for Identity Lock', { referenceUrl });
       }
     }
 
     // Добавляем текстовый промпт
     contentParts.push({ text: finalPrompt });
 
-    const result = await aiModel.generateContent(contentParts);
+    // Генерируем нужное количество изображений
+    const allImages = [];
+    const requestedImages = Math.min(numImages || 1, 4);  // Max 4
 
-    const response = result.response;
-    const timeMs = Date.now() - startTime;
+    for (let i = 0; i < requestedImages; i++) {
+      try {
+        const result = await aiModel.generateContent(contentParts);
+        const response = result.response;
 
-    // Извлекаем изображение из ответа
-    const images = [];
-
-    for (const candidate of response.candidates || []) {
-      for (const part of candidate.content?.parts || []) {
-        if (part.inlineData) {
-          // Сохраняем base64 изображение
-          const imageUrl = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
-          images.push(imageUrl);
+        // Извлекаем изображение из ответа
+        for (const candidate of response.candidates || []) {
+          for (const part of candidate.content?.parts || []) {
+            if (part.inlineData) {
+              const imageUrl = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
+              allImages.push(imageUrl);
+            }
+          }
         }
+      } catch (genError) {
+        log.warn(`Google image ${i + 1}/${requestedImages} failed`, { error: genError.message });
+        // Продолжаем с остальными
       }
     }
 
-    if (images.length === 0) {
-      // Попробуем получить текстовый ответ для диагностики
-      let textResponse = '';
-      try {
-        textResponse = response.text();
-      } catch (e) {
-        // ignore
-      }
-      log.warn('Google API не вернул изображение', {
-        textResponse: textResponse?.substring(0, 200),
-        candidates: response.candidates?.length || 0
-      });
+    const timeMs = Date.now() - startTime;
+
+    if (allImages.length === 0) {
+      log.warn('Google API не вернул ни одного изображения');
       throw new Error('Google API не вернул изображение. Попробуйте изменить запрос.');
     }
 
     log.info('Google Nano Banana generation complete', {
       model,
       timeMs,
-      numImages: images.length,
+      requestedImages,
+      actualImages: allImages.length,
       usedReference: !!referenceUrl
     });
 
     return {
-      images,
+      images: allImages,
       timeMs,
       model: model
     };

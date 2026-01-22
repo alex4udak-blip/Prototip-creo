@@ -465,7 +465,8 @@ export async function generateImage(prompt, options = {}) {
         height,
         textContent,
         textStyle,
-        referenceUrl  // Google может использовать для Identity Lock
+        referenceUrl,  // Google может использовать для Identity Lock
+        numImages      // Количество изображений
       });
     } else {
       // Runware (FLUX Schnell, FLUX Dev, Kontext)

@@ -144,10 +144,23 @@ router.post('/', checkGenerationLimit, async (req, res) => {
 
     // ЭТАП 1: Проверяем нужны ли уточняющие вопросы (если нет ответов и не пропускаем)
     if (!answers && !skip_clarification) {
+      log.info('Checking clarification', {
+        hasReference: !!reference_url,
+        referenceUrl: reference_url?.substring(0, 50),
+        promptLength: prompt.length
+      });
+
       const clarificationResult = await checkNeedsClarification(prompt, {
         hasReference: !!reference_url,
         referenceUrl: reference_url,  // Для Vision анализа
         chatHistory
+      });
+
+      log.info('Clarification result', {
+        needsClarification: clarificationResult.needs_clarification,
+        questionsCount: clarificationResult.questions?.length || 0,
+        hasVisionAnalysis: !!clarificationResult.vision_analysis,
+        summary: clarificationResult.summary?.substring(0, 50)
       });
 
       if (clarificationResult.needs_clarification) {
@@ -599,14 +612,20 @@ router.post('/upload',
       // Автоматически анализируем референс через Vision
       let visionAnalysis = null;
       try {
+        log.info('Starting Vision analysis for upload', { url: url?.substring(0, 50) });
         const { analyzeReferenceImage } = await import('../services/prompt.service.js');
         visionAnalysis = await analyzeReferenceImage(url);
         log.info('Vision analysis completed for upload', {
           hasAnalysis: !!visionAnalysis,
-          contentType: visionAnalysis?.content_type
+          contentType: visionAnalysis?.content_type,
+          style: visionAnalysis?.style,
+          summary: visionAnalysis?.summary?.substring(0, 100)
         });
       } catch (visionError) {
-        log.warn('Vision analysis failed (non-critical)', { error: visionError.message });
+        log.error('Vision analysis failed', {
+          error: visionError.message,
+          stack: visionError.stack?.substring(0, 200)
+        });
       }
 
       res.json({
