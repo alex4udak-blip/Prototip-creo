@@ -10,10 +10,18 @@ const genAI = config.googleApiKey
   ? new GoogleGenAI({ apiKey: config.googleApiKey })
   : null;
 
-// Модели Nano Banana
+/**
+ * Google Nano Banana Models
+ *
+ * gemini-2.0-flash-exp — быстрая модель для генерации изображений с текстом
+ * Nano Banana Pro — gemini-3-pro-image-preview (расширенные возможности)
+ *
+ * Особенность: отлично рендерит текст на изображениях!
+ * Поддерживает до 14 референсов для Identity Lock
+ */
 const GOOGLE_MODELS = {
   'google-nano': 'gemini-2.0-flash-exp',           // Nano Banana (быстрый)
-  'google-nano-pro': 'imagen-3.0-generate-002',    // Imagen 3 (качество)
+  'google-nano-pro': 'gemini-2.0-flash-exp',       // Nano Banana Pro (для сложных задач)
 };
 
 /**

@@ -54,18 +54,26 @@ app.use((req, res, next) => {
 // API Routes
 // ===========================================
 
-// Health check
+// Health check — returns 503 if database is down
 app.get('/api/health', async (req, res) => {
   const dbOk = await testConnection().catch(() => false);
   const wsStats = getConnectionStats();
 
-  res.json({
-    status: dbOk ? 'healthy' : 'degraded',
+  const status = dbOk ? 'healthy' : 'degraded';
+  const httpStatus = dbOk ? 200 : 503;
+
+  res.status(httpStatus).json({
+    status,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     database: dbOk ? 'connected' : 'disconnected',
     websocket: wsStats,
-    environment: config.nodeEnv
+    environment: config.nodeEnv,
+    apis: {
+      claude: !!config.anthropicApiKey,
+      runware: !!config.runwareApiKey,
+      google: !!config.googleApiKey
+    }
   });
 });
 
@@ -157,6 +165,25 @@ process.on('SIGTERM', () => {
     log.info('Server closed');
     process.exit(0);
   });
+});
+
+// Handle unhandled rejections
+process.on('unhandledRejection', (reason, promise) => {
+  log.error('Unhandled Rejection at:', {
+    promise: String(promise),
+    reason: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined
+  });
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  log.error('Uncaught Exception:', {
+    error: error.message,
+    stack: error.stack
+  });
+  // Exit after logging
+  process.exit(1);
 });
 
 export default app;

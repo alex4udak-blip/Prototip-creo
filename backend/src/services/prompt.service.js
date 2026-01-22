@@ -7,41 +7,98 @@ const anthropic = config.anthropicApiKey
   ? new Anthropic({ apiKey: config.anthropicApiKey })
   : null;
 
-// Системный промпт для улучшения запросов
-const SYSTEM_PROMPT = `Ты эксперт по созданию промптов для AI-генерации рекламных баннеров.
-Специализация: гемблинг, беттинг, казино, крипто, арбитраж трафика.
+/**
+ * Системный промпт для Creative Brain (based on Universal Creative Engine)
+ */
+export const SYSTEM_PROMPT = `You are a Creative Director AI that orchestrates multiple AI models
+to produce any type of visual content.
 
-Твоя задача: превратить описание на русском в детальный промпт на английском для генерации изображения.
+## YOUR ROLE:
+1. Understand the creative task (any language)
+2. Classify the creative type
+3. Decompose into sub-tasks if needed
+4. Select optimal model combination
+5. Generate detailed prompts for each model
+6. Define the execution strategy
 
-ВАЖНО:
-1. Определи нужен ли текст на баннере. Если в запросе упоминается конкретный текст, бонус, проценты — needs_text: true
-2. Если есть текст — извлеки его точно как написано (сохраняй язык оригинала)
-3. Для гемблинга добавляй: casino aesthetic, golden accents, luxury feel, neon lights, excitement
-4. Всегда добавляй: professional promotional banner, high quality, sharp details, vibrant colors
-
-Ответ ТОЛЬКО в JSON формате:
+## OUTPUT FORMAT (JSON):
 {
-  "enhanced_prompt": "детальный промпт на английском для image generation",
-  "negative_prompt": "blurry, low quality, distorted text, ugly, amateur, watermark, signature",
+  "task_understanding": "what user wants in detail",
+  "enhanced_prompt": "detailed prompt in English for image generation",
+  "creative_type": "banner | social | product | infographic | branding | character | ui | meme | other",
+  "complexity": "simple | medium | complex | composite",
+
   "needs_text": true/false,
-  "text_content": "точный текст для баннера если needs_text=true, иначе null",
-  "text_style": "описание стиля текста (bold golden letters, neon glow, etc) если needs_text=true",
-  "style_keywords": ["ключевые слова стиля"],
-  "suggested_model": "flux-dev | flux-schnell | nano-banana | kontext",
-  "reasoning": "краткое объяснение выбора модели на русском"
+  "text_content": "exact text if needs_text=true, otherwise null",
+  "text_style": "description of text style if needs_text=true",
+
+  "suggested_model": "nano-banana-pro | nano-banana | flux-dev | flux-schnell | kontext",
+  "reference_purpose": "style | character | composition | product | null",
+  "needs_character_consistency": true/false,
+
+  "negative_prompt": "blurry, low quality, distorted, ugly, amateur, deformed",
+  "style_keywords": ["keyword1", "keyword2"],
+  "reasoning": "brief explanation of choices in Russian"
 }
 
-Правила выбора модели:
-- nano-banana: когда нужен ТОЧНЫЙ текст на баннере (бонусы, проценты, названия)
-- kontext: когда есть референс-картинка для редактирования/стилизации
-- flux-schnell: для быстрых черновиков или простых запросов
-- flux-dev: для качественных баннеров без сложного текста`;
+## MODEL SELECTION RULES:
+
+### Use nano-banana-pro when:
+- Text longer than 4 words needed
+- Infographics, diagrams, charts
+- Character consistency across images (with reference)
+- Complex compositions requiring reasoning
+- Multi-language text
+- Professional/commercial quality required
+
+### Use nano-banana when:
+- Short text (1-4 words) needed
+- Fast generation with text
+- Budget optimization with text
+
+### Use flux-dev when:
+- Standard image generation
+- Style transfer with reference
+- Product photos
+- Backgrounds and environments
+- No text or minimal text
+
+### Use flux-schnell when:
+- Drafts and previews
+- Rapid prototyping
+- Memes and quick content
+- Testing concepts
+
+### Use kontext when:
+- Editing existing images
+- Text replacement/correction
+- Background changes
+- Style adjustments
+- Iterative refinement
+
+## PROMPT ENGINEERING RULES:
+
+### Structure (6 factors):
+1. SUBJECT: Who/what is in the image
+2. COMPOSITION: Camera angle, framing, position
+3. ACTION: What's happening
+4. ENVIRONMENT: Background, atmosphere, lighting
+5. STYLE: Visual aesthetic, quality level
+6. TEXT: If needed, exact text and styling
+
+### For gambling/casino:
+- Add: casino aesthetic, golden accents, luxury feel, neon lights, excitement
+- Include: high quality, professional promotional banner, vibrant colors
+
+### Always include:
+- Quality markers: "4K, sharp details, professional"
+- Negative prompt: "blurry, low quality, distorted, amateur"`;
 
 /**
- * Улучшение промпта с помощью Claude
+ * Анализ и улучшение промпта с помощью Claude (main function)
  */
-export async function enhancePrompt(userPrompt, options = {}) {
-  const { hasReference = false, size = null, referenceDescription = null } = options;
+export async function analyzeAndEnhancePrompt(userPrompt, options = {}) {
+  const { hasReference = false, width = null, height = null, referenceDescription = null } = options;
 
   // Если Claude недоступен — возвращаем базовый результат
   if (!anthropic) {
@@ -51,22 +108,22 @@ export async function enhancePrompt(userPrompt, options = {}) {
 
   try {
     // Формируем сообщение для Claude
-    let message = `Описание баннера: ${userPrompt}`;
+    let message = `User request: ${userPrompt}`;
+    message += `\nReference provided: ${hasReference ? 'YES' : 'NO'}`;
 
-    if (hasReference) {
-      message += '\n\nЕсть референс-картинка для стиля.';
-      if (referenceDescription) {
-        message += ` Описание референса: ${referenceDescription}`;
-      }
+    if (hasReference && referenceDescription) {
+      message += `\nReference description: ${referenceDescription}`;
     }
 
-    if (size) {
-      message += `\nРазмер баннера: ${size}`;
+    if (width && height) {
+      message += `\nTarget size: ${width}x${height}`;
     }
+
+    message += '\n\nAnalyze and create execution plan.';
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
+      max_tokens: 2048,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: message }]
     });
@@ -82,10 +139,11 @@ export async function enhancePrompt(userPrompt, options = {}) {
 
     const result = JSON.parse(jsonMatch[0]);
 
-    log.debug('Prompt enhanced', {
+    log.debug('Prompt analyzed and enhanced', {
       original: userPrompt.substring(0, 50),
       model: result.suggested_model,
-      needsText: result.needs_text
+      needsText: result.needs_text,
+      creativeType: result.creative_type
     });
 
     return result;
@@ -97,28 +155,98 @@ export async function enhancePrompt(userPrompt, options = {}) {
 }
 
 /**
+ * Улучшение промпта (alias for backward compatibility)
+ */
+export async function enhancePrompt(userPrompt, options = {}) {
+  return analyzeAndEnhancePrompt(userPrompt, options);
+}
+
+/**
  * Базовый промпт без Claude (fallback)
  */
 function createBasicPrompt(userPrompt, options = {}) {
   const { hasReference } = options;
 
-  // Простое определение нужен ли текст
-  const needsText = /\d+[%€$₽]|бонус|bonus|free spin|фриспин/i.test(userPrompt);
+  // Определяем нужен ли текст
+  const textContent = extractTextContent(userPrompt);
+  const needsText = textContent !== null;
 
-  // Извлекаем потенциальный текст
-  const textMatch = userPrompt.match(/["«»']([^"«»']+)["«»']/);
-  const textContent = textMatch ? textMatch[1] : null;
+  // Определяем язык
+  const language = detectLanguage(userPrompt);
+
+  // Базовое улучшение промпта
+  let enhancedPrompt = userPrompt;
+  if (language === 'ru') {
+    // Простая транслитерация/перевод не нужна — оставляем как есть для логов
+    enhancedPrompt = `Professional promotional banner, ${userPrompt}, high quality, sharp details, vibrant colors, casino aesthetic, luxury feel`;
+  } else {
+    enhancedPrompt = `Professional promotional banner, ${userPrompt}, high quality, sharp details, vibrant colors`;
+  }
+
+  // Определяем модель
+  let suggestedModel = 'flux-dev';
+  if (needsText) {
+    const wordCount = textContent.split(' ').length;
+    suggestedModel = wordCount > 4 ? 'nano-banana-pro' : 'nano-banana';
+  }
+  if (hasReference) {
+    suggestedModel = 'kontext';
+  }
 
   return {
-    enhanced_prompt: `Professional promotional banner, ${userPrompt}, high quality, sharp details, vibrant colors, casino aesthetic, luxury feel`,
-    negative_prompt: 'blurry, low quality, distorted text, ugly, amateur, watermark',
+    task_understanding: userPrompt,
+    enhanced_prompt: enhancedPrompt,
+    creative_type: 'banner',
+    complexity: 'simple',
     needs_text: needsText,
     text_content: textContent,
     text_style: needsText ? 'bold golden letters with glow effect' : null,
-    style_keywords: ['promotional', 'casino', 'vibrant'],
-    suggested_model: hasReference ? 'kontext' : (needsText ? 'nano-banana' : 'flux-dev'),
+    suggested_model: suggestedModel,
+    reference_purpose: hasReference ? 'style' : null,
+    needs_character_consistency: false,
+    negative_prompt: 'blurry, low quality, distorted text, ugly, amateur, watermark, deformed',
+    style_keywords: ['promotional', 'professional', 'vibrant'],
     reasoning: 'Базовый режим (Claude недоступен)'
   };
+}
+
+/**
+ * Извлечение текста из промпта
+ */
+export function extractTextContent(prompt) {
+  // Ищем текст в кавычках
+  const quotedMatch = prompt.match(/["«»'']([^"«»'']+)["«»'']/);
+  if (quotedMatch) {
+    return quotedMatch[1].trim();
+  }
+
+  // Ищем после ключевых слов
+  const keywordMatch = prompt.match(/(?:текст|text|надпись|слова)[:\s]+([^,.]+)/i);
+  if (keywordMatch) {
+    return keywordMatch[1].trim();
+  }
+
+  // Ищем явные паттерны бонусов
+  const bonusMatch = prompt.match(/(\d+[%€$₽]\s*(?:бонус|bonus)?|\bBONUS\s+\d+[%€$]?|\bWELCOME\s+\d+)/i);
+  if (bonusMatch) {
+    return bonusMatch[1].trim();
+  }
+
+  return null;
+}
+
+/**
+ * Определение языка текста
+ */
+export function detectLanguage(text) {
+  // Простая проверка на кириллицу
+  const cyrillicChars = (text.match(/[а-яёА-ЯЁ]/g) || []).length;
+  const latinChars = (text.match(/[a-zA-Z]/g) || []).length;
+
+  if (cyrillicChars > latinChars) {
+    return 'ru';
+  }
+  return 'en';
 }
 
 /**

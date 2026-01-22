@@ -26,8 +26,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Устанавливаем зависимости для sharp (обработка изображений)
+# Устанавливаем зависимости для sharp (обработка изображений) и bash
 RUN apk add --no-cache \
+    bash \
     python3 \
     make \
     g++ \
@@ -46,6 +47,11 @@ COPY backend/ ./
 # Копируем собранный frontend
 COPY --from=frontend-builder /app/frontend/dist ../frontend/dist
 
+# Копируем start.sh
+WORKDIR /app
+COPY start.sh ./
+RUN chmod +x start.sh
+
 # Создаём директорию для uploads
 RUN mkdir -p /app/uploads && chmod 777 /app/uploads
 
@@ -58,8 +64,8 @@ ENV STORAGE_PATH=/app/uploads
 EXPOSE 3000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
 
-# Start
-CMD ["node", "src/index.js"]
+# Start using start.sh (Railway will override with startCommand)
+CMD ["/app/start.sh"]

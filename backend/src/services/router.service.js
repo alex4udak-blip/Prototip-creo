@@ -4,7 +4,129 @@ import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
 
 /**
+ * Execution Strategies based on Universal Creative Engine
+ */
+export const STRATEGIES = {
+  SEQUENTIAL: 'sequential',   // Step-by-step execution
+  PARALLEL: 'parallel',       // Multiple variants at once
+  ITERATIVE: 'iterative',     // Refine until quality
+  COMPOSITE: 'composite',     // Multi-element composition
+  STYLE_TRANSFER: 'style_transfer'
+};
+
+/**
+ * Creative Types for routing
+ */
+export const CREATIVE_TYPES = {
+  BANNER: 'banner',
+  SOCIAL: 'social',
+  PRODUCT: 'product',
+  INFOGRAPHIC: 'infographic',
+  BRANDING: 'branding',
+  CHARACTER: 'character',
+  UI: 'ui',
+  MEME: 'meme',
+  OTHER: 'other'
+};
+
+/**
+ * Analyze creative task and determine type
+ */
+export function analyzeCreativeType(promptAnalysis) {
+  const text = (promptAnalysis.task_understanding || promptAnalysis.enhanced_prompt || '').toLowerCase();
+
+  // Infographic — always Nano Banana Pro
+  if (text.includes('инфографик') || text.includes('infographic') ||
+      text.includes('диаграмм') || text.includes('chart') ||
+      text.includes('схем') || text.includes('diagram')) {
+    return CREATIVE_TYPES.INFOGRAPHIC;
+  }
+
+  // Social media
+  if (text.includes('instagram') || text.includes('tiktok') ||
+      text.includes('youtube') || text.includes('twitter') ||
+      text.includes('thumbnail') || text.includes('story') ||
+      text.includes('stories') || text.includes('reels')) {
+    return CREATIVE_TYPES.SOCIAL;
+  }
+
+  // Character/mascot
+  if (text.includes('персонаж') || text.includes('character') ||
+      text.includes('маскот') || text.includes('mascot') ||
+      text.includes('аватар') || text.includes('avatar')) {
+    return CREATIVE_TYPES.CHARACTER;
+  }
+
+  // Meme
+  if (text.includes('мем') || text.includes('meme') ||
+      text.includes('смешн') || text.includes('funny') ||
+      text.includes('viral')) {
+    return CREATIVE_TYPES.MEME;
+  }
+
+  // Product
+  if (text.includes('продукт') || text.includes('product') ||
+      text.includes('packshot') || text.includes('товар')) {
+    return CREATIVE_TYPES.PRODUCT;
+  }
+
+  // Branding
+  if (text.includes('лого') || text.includes('logo') ||
+      text.includes('бренд') || text.includes('brand') ||
+      text.includes('айдентик')) {
+    return CREATIVE_TYPES.BRANDING;
+  }
+
+  // UI/UX
+  if (text.includes('ui') || text.includes('ux') ||
+      text.includes('interface') || text.includes('интерфейс') ||
+      text.includes('иконк') || text.includes('icon')) {
+    return CREATIVE_TYPES.UI;
+  }
+
+  // Default — advertising banner
+  return CREATIVE_TYPES.BANNER;
+}
+
+/**
+ * Determine optimal strategy based on task complexity
+ */
+export function selectStrategy(promptAnalysis, options = {}) {
+  const { hasReference = false, numVariants = 1 } = options;
+  const complexity = promptAnalysis.complexity || 'simple';
+
+  // A/B test — parallel generation
+  if (numVariants > 1 && !hasReference) {
+    return STRATEGIES.PARALLEL;
+  }
+
+  // Has reference for editing — iterative refinement
+  if (hasReference && promptAnalysis.suggested_model === 'kontext') {
+    return STRATEGIES.ITERATIVE;
+  }
+
+  // Character consistency needed — sequential
+  if (promptAnalysis.needs_character_consistency) {
+    return STRATEGIES.SEQUENTIAL;
+  }
+
+  // Complex multi-element composition
+  if (complexity === 'composite' || complexity === 'complex') {
+    return STRATEGIES.COMPOSITE;
+  }
+
+  // Style transfer from reference
+  if (hasReference && promptAnalysis.reference_purpose === 'style') {
+    return STRATEGIES.STYLE_TRANSFER;
+  }
+
+  // Default — single generation
+  return STRATEGIES.SEQUENTIAL;
+}
+
+/**
  * Автоматический выбор лучшей модели для задачи
+ * Based on Universal Creative Engine rules
  */
 export function selectModel(promptAnalysis, options = {}) {
   const { hasReference = false, userPreference = 'auto' } = options;
@@ -15,41 +137,199 @@ export function selectModel(promptAnalysis, options = {}) {
     return userPreference;
   }
 
-  // Автоматический выбор на основе анализа
+  const creativeType = analyzeCreativeType(promptAnalysis);
 
-  // 1. Нужен точный текст на баннере? → Google Nano Banana (лучший text rendering)
+  // RULE 1: Infographic ALWAYS uses Nano Banana Pro
+  if (creativeType === CREATIVE_TYPES.INFOGRAPHIC) {
+    if (config.googleApiKey) {
+      log.debug('Selected google-nano-pro for infographic (REQUIRED)');
+      return 'google-nano-pro';
+    }
+    log.warn('Infographic requested but Google API not available!');
+  }
+
+  // RULE 2: Text on image → Nano Banana Pro (best text rendering)
   if (promptAnalysis.needs_text && promptAnalysis.text_content) {
-    // Проверяем доступность Google API
+    const textLength = (promptAnalysis.text_content || '').split(' ').length;
+
+    // Text longer than 4 words — definitely Nano Banana
+    if (textLength > 4 && config.googleApiKey) {
+      log.debug('Selected google-nano-pro for long text rendering', {
+        textContent: promptAnalysis.text_content?.substring(0, 30),
+        wordCount: textLength
+      });
+      return 'google-nano-pro';
+    }
+
+    // Shorter text — also prefer Nano Banana if available
     if (config.googleApiKey) {
       log.debug('Selected google-nano for text rendering', {
         textContent: promptAnalysis.text_content?.substring(0, 30)
       });
       return 'google-nano';
     }
-    // Fallback на Runware если Google недоступен
-    log.warn('Google API not available, falling back to Runware for text');
+
+    log.warn('Text needed but Google API not available, falling back to Runware');
   }
 
-  // 2. Есть референс для редактирования? → Runware Kontext
+  // RULE 3: Character consistency with reference → Nano Banana Pro (Identity Lock)
+  if (hasReference && promptAnalysis.needs_character_consistency && config.googleApiKey) {
+    log.debug('Selected google-nano-pro for character consistency (Identity Lock)');
+    return 'google-nano-pro';
+  }
+
+  // RULE 4: Reference for editing → Runware Kontext
   if (hasReference) {
     if (promptAnalysis.suggested_model === 'kontext') {
       log.debug('Selected runware-kontext for reference editing');
       return 'runware-kontext';
     }
-    // Для стилизации по референсу тоже используем Kontext
+    // Style transfer — use Redux/IP-Adapter through FLUX Dev
+    if (promptAnalysis.reference_purpose === 'style') {
+      log.debug('Selected runware-flux-dev with style reference');
+      return 'runware-flux-dev';
+    }
     log.debug('Selected runware-kontext for reference-based generation');
     return 'runware-kontext';
   }
 
-  // 3. Рекомендация от Claude — flux-schnell (быстрый черновик)?
+  // RULE 5: Memes — speed over quality
+  if (creativeType === CREATIVE_TYPES.MEME) {
+    log.debug('Selected runware-schnell for meme (speed priority)');
+    return 'runware-schnell';
+  }
+
+  // RULE 6: Claude suggests flux-schnell (quick draft)
   if (promptAnalysis.suggested_model === 'flux-schnell') {
     log.debug('Selected runware-schnell for quick draft');
     return 'runware-schnell';
   }
 
-  // 4. По умолчанию — Runware FLUX Dev (баланс качества и скорости)
+  // RULE 7: Default — FLUX Dev (quality + speed balance)
   log.debug('Selected runware-flux-dev as default');
   return 'runware-flux-dev';
+}
+
+/**
+ * Create execution plan based on strategy
+ */
+export function createExecutionPlan(promptAnalysis, options = {}) {
+  const strategy = selectStrategy(promptAnalysis, options);
+  const model = selectModel(promptAnalysis, options);
+  const creativeType = analyzeCreativeType(promptAnalysis);
+
+  const plan = {
+    strategy,
+    creativeType,
+    steps: [],
+    qualityCheckpoints: []
+  };
+
+  switch (strategy) {
+    case STRATEGIES.SEQUENTIAL:
+      plan.steps.push({
+        step: 1,
+        model,
+        purpose: 'Main generation',
+        prompt: promptAnalysis.enhanced_prompt,
+        parameters: options
+      });
+      break;
+
+    case STRATEGIES.PARALLEL:
+      // Generate multiple variants simultaneously
+      const numVariants = options.numVariants || 3;
+      for (let i = 0; i < numVariants; i++) {
+        plan.steps.push({
+          step: i + 1,
+          model: i < numVariants - 1 ? 'runware-flux-dev' : model,
+          purpose: `Variant ${i + 1}`,
+          prompt: promptAnalysis.enhanced_prompt,
+          parameters: { ...options, variant: i + 1 }
+        });
+      }
+      break;
+
+    case STRATEGIES.ITERATIVE:
+      plan.steps.push(
+        {
+          step: 1,
+          model: 'runware-flux-dev',
+          purpose: 'Base image (80% quality)',
+          prompt: promptAnalysis.enhanced_prompt,
+          parameters: options
+        },
+        {
+          step: 2,
+          model: 'runware-kontext',
+          purpose: 'Refine details',
+          prompt: 'Improve lighting, sharpen details, enhance colors',
+          parameters: { ...options, editStrength: 0.5 }
+        }
+      );
+      break;
+
+    case STRATEGIES.COMPOSITE:
+      // Multi-element composition
+      plan.steps.push(
+        {
+          step: 1,
+          model: 'runware-flux-dev',
+          purpose: 'Generate background',
+          prompt: extractBackgroundPrompt(promptAnalysis.enhanced_prompt),
+          parameters: options
+        },
+        {
+          step: 2,
+          model: config.googleApiKey ? 'google-nano-pro' : 'runware-flux-dev',
+          purpose: 'Generate main element with text',
+          prompt: promptAnalysis.enhanced_prompt,
+          parameters: options
+        },
+        {
+          step: 3,
+          model: 'runware-kontext',
+          purpose: 'Composite and finalize',
+          prompt: 'Combine elements seamlessly, ensure text is readable',
+          parameters: { ...options, editStrength: 0.7 }
+        }
+      );
+      break;
+
+    case STRATEGIES.STYLE_TRANSFER:
+      plan.steps.push({
+        step: 1,
+        model: 'runware-flux-dev',
+        purpose: 'Generate with style reference',
+        prompt: promptAnalysis.enhanced_prompt,
+        parameters: { ...options, useStyleReference: true }
+      });
+      break;
+  }
+
+  plan.qualityCheckpoints = [
+    'Image generated successfully',
+    'Text is readable (if any)',
+    'Colors match brand/style',
+    'Composition is balanced'
+  ];
+
+  return plan;
+}
+
+/**
+ * Helper: extract background-related parts from prompt
+ */
+function extractBackgroundPrompt(prompt) {
+  // Simple extraction — in production would use Claude for this
+  const bgKeywords = ['background', 'фон', 'environment', 'scene', 'setting'];
+  const words = prompt.split(/[,.]/).filter(part =>
+    bgKeywords.some(kw => part.toLowerCase().includes(kw))
+  );
+
+  return words.length > 0
+    ? words.join(', ') + ', professional lighting, 4K quality'
+    : 'Professional background, clean, modern, studio lighting';
 }
 
 /**
@@ -58,13 +338,15 @@ export function selectModel(promptAnalysis, options = {}) {
 export async function generateImage(prompt, options = {}) {
   const {
     model,
-    negativePrompt = '',
+    negativePrompt = 'blurry, low quality, distorted, ugly, amateur, deformed',
     width = 1200,
     height = 628,
     numImages = 1,
     referenceUrl = null,
     textContent = null,
-    textStyle = null
+    textStyle = null,
+    useStyleReference = false,
+    editStrength = 0.7
   } = options;
 
   log.info('Starting image generation', {
@@ -72,7 +354,8 @@ export async function generateImage(prompt, options = {}) {
     width,
     height,
     hasReference: !!referenceUrl,
-    hasText: !!textContent
+    hasText: !!textContent,
+    strategy: options.strategy || 'single'
   });
 
   const startTime = Date.now();
@@ -98,7 +381,9 @@ export async function generateImage(prompt, options = {}) {
         width,
         height,
         numImages,
-        referenceUrl
+        referenceUrl,
+        useStyleReference,
+        editStrength
       });
     }
 
@@ -149,6 +434,58 @@ export async function generateImage(prompt, options = {}) {
 }
 
 /**
+ * Execute full generation plan (for complex strategies)
+ */
+export async function executePlan(plan, promptAnalysis, references = []) {
+  const results = [];
+  let previousResult = null;
+
+  for (const step of plan.steps) {
+    log.info(`Executing step ${step.step}: ${step.purpose}`, { model: step.model });
+
+    try {
+      const stepOptions = {
+        ...step.parameters,
+        referenceUrl: previousResult?.images?.[0] || references[0]?.url
+      };
+
+      const result = await generateImage(step.prompt, {
+        model: step.model,
+        ...stepOptions
+      });
+
+      results.push({
+        step: step.step,
+        purpose: step.purpose,
+        model: step.model,
+        ...result
+      });
+
+      previousResult = result;
+
+    } catch (error) {
+      log.error(`Step ${step.step} failed`, { error: error.message });
+
+      // Continue with fallback
+      if (step.step < plan.steps.length) {
+        log.info('Continuing to next step with fallback');
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  return {
+    strategy: plan.strategy,
+    creativeType: plan.creativeType,
+    steps: results,
+    finalImages: results[results.length - 1]?.images || [],
+    totalTime: results.reduce((sum, r) => sum + (r.timeMs || 0), 0)
+  };
+}
+
+/**
  * Парсинг размера из строки "1200x628" или имени пресета
  */
 export function parseSize(sizeInput, presets = []) {
@@ -192,35 +529,81 @@ export function getAvailableModels() {
         name: 'FLUX Dev',
         description: 'Высокое качество, 5-8 сек',
         provider: 'runware',
-        features: ['quality', 'details']
+        features: ['quality', 'details'],
+        costPer1k: 4 // $0.004
       },
       {
         id: 'runware-schnell',
         name: 'FLUX Schnell',
         description: 'Быстрый черновик, 2-3 сек',
         provider: 'runware',
-        features: ['fast', 'draft']
+        features: ['fast', 'draft'],
+        costPer1k: 0.6 // $0.0006
       },
       {
         id: 'runware-kontext',
         name: 'FLUX Kontext',
         description: 'Редактирование с референсом',
         provider: 'runware',
-        features: ['reference', 'edit']
+        features: ['reference', 'edit'],
+        costPer1k: 10 // $0.01
       }
     );
   }
 
   // Google модели
   if (config.googleApiKey) {
-    models.push({
-      id: 'google-nano',
-      name: 'Nano Banana Pro',
-      description: 'Лучший для текста на баннерах',
-      provider: 'google',
-      features: ['text', 'quality']
-    });
+    models.push(
+      {
+        id: 'google-nano',
+        name: 'Nano Banana',
+        description: 'Быстрый, хороший текст',
+        provider: 'google',
+        features: ['text', 'fast'],
+        costPer1k: 39 // $0.039
+      },
+      {
+        id: 'google-nano-pro',
+        name: 'Nano Banana Pro',
+        description: 'Лучший для текста и инфографик',
+        provider: 'google',
+        features: ['text', 'quality', 'identity-lock'],
+        costPer1k: 130 // $0.13
+      }
+    );
   }
 
   return models;
+}
+
+/**
+ * Get size presets based on Universal Creative Engine
+ */
+export function getSizePresets() {
+  return [
+    // Social Media
+    { id: 'facebook-feed', name: 'Facebook Feed', width: 1200, height: 628, category: 'social' },
+    { id: 'facebook-story', name: 'Facebook Story', width: 1080, height: 1920, category: 'social' },
+    { id: 'instagram-square', name: 'Instagram Square', width: 1080, height: 1080, category: 'social' },
+    { id: 'instagram-portrait', name: 'Instagram Portrait', width: 1080, height: 1350, category: 'social' },
+    { id: 'instagram-story', name: 'Instagram Story', width: 1080, height: 1920, category: 'social' },
+    { id: 'twitter-post', name: 'Twitter Post', width: 1200, height: 675, category: 'social' },
+    { id: 'linkedin-post', name: 'LinkedIn Post', width: 1200, height: 627, category: 'social' },
+
+    // Video
+    { id: 'youtube-thumbnail', name: 'YouTube Thumbnail', width: 1280, height: 720, category: 'video' },
+    { id: 'tiktok-cover', name: 'TikTok Cover', width: 1080, height: 1920, category: 'video' },
+
+    // Display Ads
+    { id: 'display-leaderboard', name: 'Leaderboard', width: 728, height: 90, category: 'ads' },
+    { id: 'display-rectangle', name: 'Medium Rectangle', width: 300, height: 250, category: 'ads' },
+    { id: 'display-skyscraper', name: 'Skyscraper', width: 160, height: 600, category: 'ads' },
+    { id: 'display-billboard', name: 'Billboard', width: 970, height: 250, category: 'ads' },
+
+    // General
+    { id: 'square-1k', name: 'Square 1K', width: 1024, height: 1024, category: 'general' },
+    { id: 'square-2k', name: 'Square 2K', width: 2048, height: 2048, category: 'general' },
+    { id: 'wide-hd', name: 'Wide HD', width: 1920, height: 1080, category: 'general' },
+    { id: 'portrait-hd', name: 'Portrait HD', width: 1080, height: 1920, category: 'general' }
+  ];
 }
