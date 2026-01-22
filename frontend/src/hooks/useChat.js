@@ -618,7 +618,14 @@ export const useChatStore = create((set, get) => ({
   uploadReference: async (file) => {
     try {
       const result = await generateAPI.uploadReference(file);
-      set({ attachedReference: { url: result.url, filename: result.filename } });
+      // Сохраняем Vision анализ вместе с референсом!
+      set({
+        attachedReference: {
+          url: result.url,
+          filename: result.filename,
+          visionAnalysis: result.vision_analysis  // Добавляем Vision анализ
+        }
+      });
       return result;
     } catch (error) {
       console.error('Upload reference error:', error);

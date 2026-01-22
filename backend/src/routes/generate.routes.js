@@ -577,7 +577,7 @@ function formatDeepAnalysisMessage(analysis) {
 
 /**
  * POST /api/generate/upload
- * Загрузка референса
+ * Загрузка референса + автоматический Vision анализ
  */
 router.post('/upload',
   uploadMiddleware.single('file'),
@@ -596,11 +596,25 @@ router.post('/upload',
         size: req.file.size
       });
 
+      // Автоматически анализируем референс через Vision
+      let visionAnalysis = null;
+      try {
+        const { analyzeReferenceImage } = await import('../services/prompt.service.js');
+        visionAnalysis = await analyzeReferenceImage(url);
+        log.info('Vision analysis completed for upload', {
+          hasAnalysis: !!visionAnalysis,
+          contentType: visionAnalysis?.content_type
+        });
+      } catch (visionError) {
+        log.warn('Vision analysis failed (non-critical)', { error: visionError.message });
+      }
+
       res.json({
         success: true,
         url,
         filename: req.file.filename,
-        size: req.file.size
+        size: req.file.size,
+        vision_analysis: visionAnalysis  // Добавляем Vision анализ в ответ!
       });
 
     } catch (error) {

@@ -493,30 +493,9 @@ Remember:
       }
     }
 
-    // ПРИНУДИТЕЛЬНО: Если есть референс - ВСЕГДА задаём вопросы!
-    // Это критично для правильной генерации как у Genspark
-    if (hasReference && !result.needs_clarification) {
-      log.info('Forcing clarification for reference image');
-      result.needs_clarification = true;
-
-      // Добавляем базовые вопросы о референсе если их нет
-      if (!result.questions || result.questions.length === 0) {
-        result.questions = [
-          {
-            id: 'reference_style',
-            question: 'Как использовать референс?',
-            type: 'single_choice',
-            options: ['Как референс (похожий стиль)', 'Вдохновение (новый дизайн)', 'Редактировать (изменить)'],
-            why: 'Определяет как AI будет использовать ваше изображение'
-          }
-        ];
-      }
-
-      // Улучшаем summary если есть Vision анализ
-      if (visionAnalysis && (!result.summary || result.summary.length < 20)) {
-        result.summary = `Вижу референс: ${visionAnalysis.summary || visionAnalysis.content_type || 'изображение'}. Уточню детали:`;
-      }
-    }
+    // НЕ принудительно - пусть режим генерации (Умный/Быстрый) определяет
+    // Но если Claude решил не спрашивать при референсе - добавим Vision анализ в ответ
+    // чтобы пользователь видел что AI "увидел" на референсе
 
     log.debug('Smart clarification check', {
       needsClarification: result.needs_clarification,

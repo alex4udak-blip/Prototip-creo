@@ -398,21 +398,67 @@ export function InputArea() {
           </div>
         )}
 
-        {/* Reference preview */}
+        {/* Reference preview with Vision analysis */}
         {attachedReference && (
-          <div className="mb-3 inline-flex items-start gap-2 bg-bg-secondary rounded-xl p-2 animate-scale-in">
-            <img
-              src={attachedReference.url}
-              alt="Reference"
-              className="h-16 w-auto rounded-lg object-cover"
-            />
-            <button
-              onClick={clearAttachedReference}
-              className="p-1 hover:bg-error/20 rounded-lg transition-colors"
-              title="Удалить референс"
-            >
-              <X className="w-4 h-4 text-error" />
-            </button>
+          <div className="mb-3 bg-bg-secondary rounded-xl p-3 animate-scale-in">
+            <div className="flex items-start gap-3">
+              {/* Image preview */}
+              <img
+                src={attachedReference.url}
+                alt="Reference"
+                className="h-20 w-auto rounded-lg object-cover"
+              />
+
+              {/* Vision analysis */}
+              <div className="flex-1 min-w-0">
+                {attachedReference.visionAnalysis ? (
+                  <>
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                      <span className="text-xs font-medium text-blue-400">AI видит</span>
+                    </div>
+                    <p className="text-sm text-text-primary line-clamp-2">
+                      {attachedReference.visionAnalysis.summary}
+                    </p>
+                    {/* Tags */}
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {attachedReference.visionAnalysis.style && (
+                        <span className="px-2 py-0.5 text-xs bg-purple-500/10 text-purple-400 rounded-full">
+                          {attachedReference.visionAnalysis.style}
+                        </span>
+                      )}
+                      {attachedReference.visionAnalysis.content_type && (
+                        <span className="px-2 py-0.5 text-xs bg-cyan-500/10 text-cyan-400 rounded-full">
+                          {attachedReference.visionAnalysis.content_type}
+                        </span>
+                      )}
+                      {attachedReference.visionAnalysis.text_found?.length > 0 && (
+                        <span className="px-2 py-0.5 text-xs bg-yellow-500/10 text-yellow-400 rounded-full">
+                          Текст: {attachedReference.visionAnalysis.text_found.slice(0, 2).join(', ')}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 text-text-muted animate-spin" />
+                    <span className="text-xs text-text-muted">Анализирую...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Remove button */}
+              <button
+                onClick={clearAttachedReference}
+                className="p-1.5 hover:bg-error/20 rounded-lg transition-colors flex-shrink-0"
+                title="Удалить референс"
+              >
+                <X className="w-4 h-4 text-error" />
+              </button>
+            </div>
           </div>
         )}
 
