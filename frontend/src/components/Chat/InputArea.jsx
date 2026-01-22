@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { Send, Paperclip, X, Image, Loader2 } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Paperclip, X, Image, Loader2, CornerDownLeft } from 'lucide-react';
 import { useChatStore } from '../../hooks/useChat';
 
 // Популярные размеры для быстрого выбора
@@ -10,12 +10,15 @@ const QUICK_SIZES = [
   { label: '300×250', value: '300x250' },
 ];
 
+const MIN_HEIGHT = 52;
+const MAX_HEIGHT = 180; // ~6 строк
+const LINE_HEIGHT = 24;
+
 export function InputArea() {
   const {
     generate,
     isGenerating,
     attachedReference,
-    setAttachedReference,
     clearAttachedReference,
     uploadReference,
     settings,
@@ -25,8 +28,37 @@ export function InputArea() {
   const [message, setMessage] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const fileInputRef = useRef(null);
-  const textInputRef = useRef(null);
+  const textareaRef = useRef(null);
+
+  // Умное авторасширение textarea
+  const adjustTextareaHeight = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    // Reset height to auto to get actual scrollHeight
+    textarea.style.height = 'auto';
+
+    // Calculate new height
+    const scrollHeight = textarea.scrollHeight;
+    const newHeight = Math.min(Math.max(scrollHeight, MIN_HEIGHT), MAX_HEIGHT);
+
+    textarea.style.height = `${newHeight}px`;
+
+    // Enable/disable scrolling
+    textarea.style.overflowY = scrollHeight > MAX_HEIGHT ? 'auto' : 'hidden';
+  }, []);
+
+  // Adjust height on message change
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [message, adjustTextareaHeight]);
+
+  // Focus textarea on mount
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
 
   // Отправка сообщения
   const handleSend = async () => {
@@ -34,6 +66,11 @@ export function InputArea() {
 
     const prompt = message.trim();
     setMessage('');
+
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = `${MIN_HEIGHT}px`;
+    }
 
     try {
       await generate(prompt);
@@ -100,13 +137,15 @@ export function InputArea() {
   // Выбор размера
   const selectSize = (size) => {
     updateSettings({ size });
-    textInputRef.current?.focus();
+    textareaRef.current?.focus();
   };
+
+  const canSend = (message.trim() || attachedReference) && !isGenerating;
 
   return (
     <div
-      className={`border-t border-border p-4 bg-bg-primary transition-colors ${
-        isDragging ? 'bg-accent/10 border-accent' : ''
+      className={`border-t border-border bg-bg-primary transition-all duration-200 ${
+        isDragging ? 'bg-accent/5 border-accent' : ''
       }`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -122,114 +161,135 @@ export function InputArea() {
         </div>
       )}
 
-      {/* Attached reference preview */}
-      {attachedReference && (
-        <div className="mb-3 inline-flex items-start gap-2 bg-bg-secondary rounded-lg p-2">
-          <img
-            src={attachedReference.url}
-            alt="Reference"
-            className="h-16 w-auto rounded object-cover"
-          />
-          <button
-            onClick={clearAttachedReference}
-            className="p-1 hover:bg-error/20 rounded transition"
-            title="Удалить референс"
-          >
-            <X className="w-4 h-4 text-error" />
-          </button>
-        </div>
-      )}
+      <div className="max-w-4xl mx-auto p-4">
+        {/* Attached reference preview */}
+        {attachedReference && (
+          <div className="mb-3 inline-flex items-start gap-2 bg-bg-secondary rounded-xl p-2 animate-scale-in">
+            <img
+              src={attachedReference.url}
+              alt="Reference"
+              className="h-16 w-auto rounded-lg object-cover"
+            />
+            <button
+              onClick={clearAttachedReference}
+              className="p-1 hover:bg-error/20 rounded-lg transition-colors"
+              title="Удалить референс"
+            >
+              <X className="w-4 h-4 text-error" />
+            </button>
+          </div>
+        )}
 
-      {/* Input row */}
-      <div className="flex items-end gap-2">
-        {/* Attach button */}
-        <div className="relative">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleFileUpload(file);
-              e.target.value = '';
-            }}
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className="p-3 hover:bg-bg-secondary rounded-xl transition-colors disabled:opacity-50"
-            title="Прикрепить референс"
-          >
-            {isUploading ? (
-              <Loader2 className="w-5 h-5 text-text-secondary animate-spin" />
-            ) : (
-              <Paperclip className="w-5 h-5 text-text-secondary" />
-            )}
-          </button>
-        </div>
-
-        {/* Text input */}
-        <div className="flex-1 relative">
+        {/* Main input container - Claude-style */}
+        <div
+          className={`relative bg-bg-secondary rounded-2xl border-2 transition-all duration-200 ${
+            isFocused
+              ? 'border-accent/50 shadow-lg shadow-accent/10'
+              : 'border-transparent hover:border-border'
+          }`}
+        >
+          {/* Textarea */}
           <textarea
-            ref={textInputRef}
+            ref={textareaRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Опишите баннер... (можно на русском)"
-            rows={1}
-            className="input resize-none min-h-[48px] max-h-[120px] pr-12"
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            placeholder="Опишите баннер... Shift+Enter для новой строки"
+            className="w-full bg-transparent text-text-primary placeholder-text-muted resize-none px-4 py-3 pr-24 outline-none scrollbar-thin"
             style={{
-              height: 'auto',
-              overflowY: message.split('\n').length > 3 ? 'auto' : 'hidden'
+              minHeight: `${MIN_HEIGHT}px`,
+              maxHeight: `${MAX_HEIGHT}px`,
+              lineHeight: `${LINE_HEIGHT}px`
             }}
             disabled={isGenerating}
           />
 
-          {/* Character count */}
-          {message.length > 100 && (
-            <span className="absolute bottom-2 right-14 text-xs text-text-muted">
-              {message.length}
-            </span>
-          )}
+          {/* Bottom row with buttons */}
+          <div className="flex items-center justify-between px-3 pb-3">
+            {/* Left side - attach */}
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileUpload(file);
+                  e.target.value = '';
+                }}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="p-2 hover:bg-bg-hover rounded-xl transition-colors disabled:opacity-50 group"
+                title="Прикрепить референс (изображение)"
+              >
+                {isUploading ? (
+                  <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
+                ) : (
+                  <Paperclip className="w-5 h-5 text-text-muted group-hover:text-text-secondary transition-colors" />
+                )}
+              </button>
+
+              {/* Character count */}
+              {message.length > 50 && (
+                <span className="text-xs text-text-muted animate-fade-in">
+                  {message.length}
+                </span>
+              )}
+            </div>
+
+            {/* Right side - send button */}
+            <button
+              onClick={handleSend}
+              disabled={!canSend}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-medium text-sm transition-all duration-200 ${
+                canSend
+                  ? 'bg-accent hover:bg-accent-hover text-white shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]'
+                  : 'bg-bg-hover text-text-muted cursor-not-allowed'
+              }`}
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Генерация...</span>
+                </>
+              ) : (
+                <>
+                  <CornerDownLeft className="w-4 h-4" />
+                  <span className="hidden sm:inline">Enter</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
-        {/* Send button */}
-        <button
-          onClick={handleSend}
-          disabled={(!message.trim() && !attachedReference) || isGenerating}
-          className="p-3 bg-accent hover:bg-accent-hover rounded-xl transition-colors disabled:opacity-50 disabled:hover:bg-accent"
-        >
-          {isGenerating ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
-          ) : (
-            <Send className="w-5 h-5" />
-          )}
-        </button>
-      </div>
+        {/* Quick size buttons */}
+        <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1 scrollbar-hide">
+          <span className="text-xs text-text-muted whitespace-nowrap">Размер:</span>
+          {QUICK_SIZES.map(size => (
+            <button
+              key={size.value}
+              onClick={() => selectSize(size.value)}
+              className={`px-3 py-1.5 text-xs rounded-full whitespace-nowrap transition-all duration-200 ${
+                settings.size === size.value
+                  ? 'bg-accent text-white shadow-sm'
+                  : 'bg-bg-secondary hover:bg-bg-hover text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {size.label}
+            </button>
+          ))}
+        </div>
 
-      {/* Quick size buttons */}
-      <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1 scrollbar-hide">
-        <span className="text-xs text-text-muted whitespace-nowrap">Размер:</span>
-        {QUICK_SIZES.map(size => (
-          <button
-            key={size.value}
-            onClick={() => selectSize(size.value)}
-            className={`px-3 py-1 text-xs rounded-full whitespace-nowrap transition-colors ${
-              settings.size === size.value
-                ? 'bg-accent text-white'
-                : 'bg-bg-secondary hover:bg-bg-hover text-text-secondary'
-            }`}
-          >
-            {size.label}
-          </button>
-        ))}
+        {/* Hint */}
+        <p className="text-xs text-text-muted mt-2 opacity-70">
+          Перетащите картинку для референса
+        </p>
       </div>
-
-      {/* Hint */}
-      <p className="text-xs text-text-muted mt-2">
-        Перетащите картинку для использования как референс • Enter для отправки
-      </p>
     </div>
   );
 }

@@ -14,10 +14,12 @@ const genAI = config.googleApiKey
  * Google Nano Banana Models
  *
  * gemini-2.0-flash-exp — быстрая модель для генерации изображений с текстом
- * Nano Banana Pro — gemini-3-pro-image-preview (расширенные возможности)
+ * Nano Banana Pro — для сложных задач и Identity Lock
  *
- * Особенность: отлично рендерит текст на изображениях!
- * Поддерживает до 14 референсов для Identity Lock
+ * Особенности:
+ * - Отлично рендерит текст на изображениях!
+ * - Поддерживает референсы для Identity Lock (до 14 изображений)
+ * - Понимает контекст и инструкции на русском
  */
 const GOOGLE_MODELS = {
   'google-nano': 'gemini-2.0-flash-exp',           // Nano Banana (быстрый)
@@ -25,8 +27,60 @@ const GOOGLE_MODELS = {
 };
 
 /**
+ * Подготовка референса для Google API
+ * Конвертирует URL или локальный путь в формат для Gemini
+ */
+async function prepareReferenceForGoogle(referenceUrl) {
+  if (!referenceUrl) return null;
+
+  // Если это локальный путь или localhost URL
+  let filePath = referenceUrl;
+
+  // Извлекаем имя файла из URL типа /uploads/filename.png
+  if (referenceUrl.includes('/uploads/')) {
+    const filename = referenceUrl.split('/uploads/').pop().split('?')[0];
+    filePath = path.join(config.storagePath, filename);
+  }
+
+  // Проверяем существование файла
+  if (!fs.existsSync(filePath)) {
+    log.warn('Reference file not found for Google API', { referenceUrl, filePath });
+    return null;
+  }
+
+  try {
+    const buffer = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeType = ext === '.png' ? 'image/png' :
+                     ext === '.webp' ? 'image/webp' :
+                     ext === '.gif' ? 'image/gif' : 'image/jpeg';
+
+    log.debug('Prepared reference for Google', {
+      filePath,
+      mimeType,
+      sizeKB: Math.round(buffer.length / 1024)
+    });
+
+    return {
+      inlineData: {
+        data: buffer.toString('base64'),
+        mimeType
+      }
+    };
+  } catch (error) {
+    log.error('Failed to prepare reference for Google', { error: error.message });
+    return null;
+  }
+}
+
+/**
  * Генерация изображения через Google Gemini (Nano Banana)
  * Отлично рендерит текст на изображениях!
+ *
+ * Поддерживает:
+ * - Генерацию с текстом
+ * - Identity Lock с референсом
+ * - Инфографики и диаграммы
  */
 export async function generateWithGoogle(prompt, options = {}) {
   if (!genAI) {
@@ -38,22 +92,46 @@ export async function generateWithGoogle(prompt, options = {}) {
     width = 1200,
     height = 628,
     textContent = null,
-    textStyle = null
+    textStyle = null,
+    referenceUrl = null
   } = options;
 
-  // Формируем промпт с акцентом на текст
+  // Формируем промпт
   let finalPrompt = prompt;
 
-  if (textContent) {
-    // Добавляем инструкции для точного рендеринга текста
-    finalPrompt = `${prompt}.
-
-IMPORTANT: The image MUST contain the following text rendered clearly and legibly: "${textContent}".
-Text style: ${textStyle || 'bold, prominent, easy to read'}.
-The text should be the focal point and perfectly readable.`;
+  // Добавляем инструкции по размеру
+  const aspectRatio = width / height;
+  let sizeHint = '';
+  if (aspectRatio > 1.5) {
+    sizeHint = 'wide horizontal banner format';
+  } else if (aspectRatio < 0.7) {
+    sizeHint = 'tall vertical format';
+  } else if (Math.abs(aspectRatio - 1) < 0.1) {
+    sizeHint = 'square format';
   }
 
-  log.debug('Google Nano Banana request', { model, hasText: !!textContent });
+  if (sizeHint) {
+    finalPrompt = `${finalPrompt}. Create in ${sizeHint} (${width}x${height} pixels).`;
+  }
+
+  // Добавляем инструкции для текста
+  if (textContent) {
+    finalPrompt = `${finalPrompt}
+
+CRITICAL TEXT REQUIREMENT: The image MUST prominently display this exact text: "${textContent}"
+Text rendering rules:
+- Text must be 100% legible and correctly spelled
+- Style: ${textStyle || 'bold, high contrast, easy to read'}
+- Text should be a focal point of the composition
+- Ensure proper spacing and alignment`;
+  }
+
+  log.debug('Google Nano Banana request', {
+    model,
+    hasText: !!textContent,
+    hasReference: !!referenceUrl,
+    promptLength: finalPrompt.length
+  });
 
   const startTime = Date.now();
 
@@ -67,7 +145,26 @@ The text should be the focal point and perfectly readable.`;
       }
     });
 
-    const result = await aiModel.generateContent(finalPrompt);
+    // Подготавливаем контент для запроса
+    const contentParts = [];
+
+    // Если есть референс — добавляем его первым (Identity Lock)
+    if (referenceUrl) {
+      const referencePart = await prepareReferenceForGoogle(referenceUrl);
+      if (referencePart) {
+        contentParts.push(referencePart);
+        // Добавляем инструкцию для Identity Lock
+        finalPrompt = `Reference image is provided above. Use it to maintain visual consistency (Identity Lock).
+
+${finalPrompt}`;
+        log.debug('Added reference for Identity Lock');
+      }
+    }
+
+    // Добавляем текстовый промпт
+    contentParts.push({ text: finalPrompt });
+
+    const result = await aiModel.generateContent(contentParts);
 
     const response = result.response;
     const timeMs = Date.now() - startTime;
@@ -86,16 +183,25 @@ The text should be the focal point and perfectly readable.`;
     }
 
     if (images.length === 0) {
-      // Попробуем получить текстовый ответ как fallback
-      const text = response.text();
-      log.warn('Google API не вернул изображение, получен текст', { text: text?.substring(0, 100) });
-      throw new Error('Google API не вернул изображение');
+      // Попробуем получить текстовый ответ для диагностики
+      let textResponse = '';
+      try {
+        textResponse = response.text();
+      } catch (e) {
+        // ignore
+      }
+      log.warn('Google API не вернул изображение', {
+        textResponse: textResponse?.substring(0, 200),
+        candidates: response.candidates?.length || 0
+      });
+      throw new Error('Google API не вернул изображение. Попробуйте изменить запрос.');
     }
 
     log.info('Google Nano Banana generation complete', {
       model,
       timeMs,
-      numImages: images.length
+      numImages: images.length,
+      usedReference: !!referenceUrl
     });
 
     return {
@@ -105,7 +211,20 @@ The text should be the focal point and perfectly readable.`;
     };
 
   } catch (error) {
-    log.error('Google generation failed', { error: error.message });
+    log.error('Google generation failed', {
+      error: error.message,
+      model,
+      hasReference: !!referenceUrl
+    });
+
+    // Улучшаем сообщение об ошибке
+    if (error.message.includes('SAFETY')) {
+      throw new Error('Google отклонил запрос по соображениям безопасности. Попробуйте изменить описание.');
+    }
+    if (error.message.includes('quota') || error.message.includes('rate')) {
+      throw new Error('Превышен лимит запросов к Google API. Попробуйте позже.');
+    }
+
     throw error;
   }
 }

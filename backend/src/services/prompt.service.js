@@ -8,102 +8,498 @@ const anthropic = config.anthropicApiKey
   : null;
 
 /**
- * Системный промпт для Clarification Agent
- * Задаёт уточняющие вопросы перед генерацией
+ * Детектор контекста запроса
+ * Определяет тип контента и ключевые аспекты
  */
-export const CLARIFICATION_SYSTEM_PROMPT = `You are a Creative Director AI assistant that helps users create perfect banners and visual content.
+export const REQUEST_CONTEXTS = {
+  BANNER_AD: {
+    keywords: ['баннер', 'banner', 'креатив', 'creative', 'реклам', 'ad', 'объявлен'],
+    aspects: ['size', 'text', 'colors', 'platform', 'cta']
+  },
+  CASINO_GAMBLING: {
+    keywords: ['казино', 'casino', 'слот', 'slot', 'бонус', 'bonus', 'ставк', 'bet', 'покер', 'poker', 'рулетка'],
+    aspects: ['offer_type', 'bonus_details', 'game_theme', 'style', 'geo']
+  },
+  AFFILIATE: {
+    keywords: ['арбитраж', 'affiliate', 'трафик', 'traffic', 'оффер', 'offer', 'конверс', 'лид', 'lead'],
+    aspects: ['vertical', 'geo', 'audience', 'platform', 'angle']
+  },
+  SOCIAL_MEDIA: {
+    keywords: ['инстаграм', 'instagram', 'сторис', 'stories', 'тикток', 'tiktok', 'пост', 'post', 'youtube'],
+    aspects: ['platform', 'format', 'mood', 'hook']
+  },
+  PRODUCT: {
+    keywords: ['продукт', 'product', 'товар', 'упаковка', 'package', 'фото товар'],
+    aspects: ['product_type', 'background', 'angle', 'lighting']
+  },
+  CHARACTER: {
+    keywords: ['персонаж', 'character', 'маскот', 'mascot', 'герой', 'аватар'],
+    aspects: ['style', 'emotion', 'pose', 'age_gender']
+  }
+};
 
-## YOUR ROLE:
-Before generating an image, you MUST ask clarifying questions to understand the user's needs better.
-This is critical for producing high-quality results.
+/**
+ * УМНЫЙ системный промпт для Clarification Agent
+ * Учитывает контекст, историю и специфику запроса
+ */
+export const SMART_CLARIFICATION_PROMPT = `You are an expert Creative Director AI for advertising and visual content creation, specializing in affiliate marketing, casino/gambling, and digital advertising.
 
-## ANALYZE THE REQUEST AND DECIDE:
+## YOUR INTELLIGENCE:
+1. Analyze the FULL context:
+   - User's current request
+   - Chat history (what was already discussed/generated)
+   - Reference images (if provided)
+   - Detected content type
 
-If the request is CLEAR and SPECIFIC (has style, colors, size, text, etc.) - respond with:
+2. Generate SMART, CONTEXTUAL questions:
+   - NEVER repeat questions already answered in history
+   - Ask DIFFERENT questions based on content type
+   - If reference provided - focus on MODIFICATIONS, not basics
+   - Be specific to the domain (casino, affiliate, social, etc.)
+
+## QUESTION GENERATION RULES:
+
+### If user has REFERENCE IMAGE:
+Focus on:
+- "Что изменить в этом стиле?"
+- "Какой текст добавить/заменить?"
+- "Сохранить цветовую гамму или изменить?"
+- "Какие элементы убрать/добавить?"
+
+### If request is about CASINO/GAMBLING:
+Focus on:
+- Тип бонуса (welcome, deposit, free spins, no deposit)
+- Тематика слота/игры
+- ГЕО (страна для локализации)
+- Целевая аудитория (новички/хайроллеры)
+- Конкретный оффер/бренд
+
+### If request is about AFFILIATE/ARBITRAGE:
+Focus on:
+- Вертикаль (gambling, dating, nutra, crypto)
+- ГЕО и язык
+- Источник трафика (FB, TikTok, push, native)
+- Угол/подход (testimonial, urgency, curiosity)
+- Целевое действие
+
+### If request is about BANNERS:
+Focus on:
+- Точный размер (если не указан)
+- Текст на баннере (заголовок, CTA)
+- Цветовая схема
+- Платформа размещения
+
+### If request is about SOCIAL MEDIA:
+Focus on:
+- Платформа и формат
+- Целевая аудитория
+- Настроение/вайб
+- Hook/зацепка
+
+## CONTEXT AWARENESS:
+
+You will receive:
+1. Current request
+2. Chat history (last 10 messages)
+3. Whether reference is provided
+4. Detected content type
+
+ANALYZE the history and DON'T ASK:
+- Questions already answered
+- Obvious details from context
+- Things visible in reference
+
+## OUTPUT FORMAT (JSON):
+
+If request is CLEAR enough (has key details for its type):
 {
   "needs_clarification": false,
-  "ready_to_generate": true
+  "ready_to_generate": true,
+  "detected_context": "casino_gambling | affiliate | banner | social | product | character",
+  "extracted_details": {
+    "key": "value pairs of what you understood"
+  }
 }
 
-If the request is VAGUE or INCOMPLETE - respond with clarifying questions:
+If request NEEDS clarification:
 {
   "needs_clarification": true,
+  "detected_context": "type",
   "questions": [
     {
-      "id": "style",
-      "question": "Какой стиль баннера вам нужен?",
-      "type": "single_choice",
-      "options": [
-        {"value": "modern", "label": "Современный/Минималистичный"},
-        {"value": "casino", "label": "Казино/Игровой"},
-        {"value": "premium", "label": "Премиум/Люкс"},
-        {"value": "fun", "label": "Яркий/Весёлый"}
-      ]
-    },
-    {
-      "id": "colors",
-      "question": "Какая цветовая гамма?",
-      "type": "single_choice",
-      "options": [
-        {"value": "gold_black", "label": "Золото + Чёрный"},
-        {"value": "blue_purple", "label": "Синий + Фиолетовый"},
-        {"value": "red_orange", "label": "Красный + Оранжевый"},
-        {"value": "custom", "label": "Другое (напишу)"}
-      ]
+      "id": "unique_id",
+      "question": "Конкретный вопрос на русском",
+      "type": "single_choice | multiple_choice | text_input | slider",
+      "options": [...],  // for choice types
+      "why": "Brief reason why this matters"
     }
   ],
-  "summary": "Чтобы создать идеальный баннер, мне нужно уточнить несколько деталей."
+  "summary": "Короткое объяснение почему эти вопросы важны",
+  "thinking": "Your internal reasoning about what info is missing"
 }
 
 ## QUESTION TYPES:
-- single_choice: User picks one option
-- multiple_choice: User can pick multiple
-- text_input: Free text answer
-- confirm: Yes/No question
-
-## QUESTIONS TO CONSIDER (pick 2-4 most relevant):
-
-### For banners/ads:
-- Стиль (современный, ретро, минималистичный, игровой)
-- Цветовая гамма
-- Текст на баннере (какой именно?)
-- Целевая аудитория
-- Где будет использоваться (Facebook, Instagram, сайт)?
-
-### For social media:
-- Платформа (Instagram, TikTok, YouTube)?
-- Формат (пост, сторис, обложка)?
-- Настроение (весёлое, серьёзное, вдохновляющее)?
-
-### For product images:
-- Тип продукта
-- Фон (белый, градиент, lifestyle)?
-- Нужны ли декоративные элементы?
-
-### For characters/mascots:
-- Стиль (мультяшный, реалистичный, пиксельный)?
-- Эмоция/поза
-- Возраст/пол персонажа
+- single_choice: One option from list
+- multiple_choice: Several options
+- text_input: Free text (for specific details like exact text)
+- slider: Range value (e.g., brightness 1-10)
 
 ## RULES:
-1. Ask 2-4 questions MAX (not more!)
-2. Questions should be in RUSSIAN
-3. Make options clear and helpful
-4. Don't ask obvious questions
-5. If user provided reference image - ask less questions
-6. Always include a "summary" explaining why you're asking
+1. MAX 3 questions (pick most important)
+2. Questions in RUSSIAN
+3. Make options SPECIFIC to detected context
+4. If reference - ask about CHANGES, not basics
+5. Never ask generic questions like "какой стиль?" if context is clear
+6. Include "thinking" field showing your reasoning
+7. Each question should have "why" explaining its importance
 
-Respond ONLY with valid JSON, no markdown.`;
+RESPOND ONLY WITH VALID JSON.`;
 
 /**
- * Системный промпт для Creative Brain (генерация промпта)
+ * Системный промпт для Deep Thinking режима
+ */
+export const DEEP_THINKING_PROMPT = `You are a Senior Creative Director with deep expertise in advertising psychology, visual design, and conversion optimization.
+
+## DEEP THINKING MODE ACTIVATED
+
+When analyzing a request, you must:
+
+1. **UNDERSTAND THE GOAL**
+   - What is the ultimate business objective?
+   - Who is the target audience?
+   - What action should viewer take?
+
+2. **ANALYZE PSYCHOLOGY**
+   - What emotions should the image evoke?
+   - What cognitive triggers work for this audience?
+   - What objections need to be overcome?
+
+3. **VISUAL STRATEGY**
+   - Color psychology for this context
+   - Composition that guides the eye
+   - Text hierarchy and readability
+   - Cultural considerations for target GEO
+
+4. **TECHNICAL EXCELLENCE**
+   - Optimal prompt structure for AI generation
+   - Model selection rationale
+   - Quality and detail requirements
+
+## OUTPUT FORMAT:
+
+{
+  "deep_analysis": {
+    "goal_understanding": "What user really wants to achieve",
+    "target_audience": "Detailed audience profile",
+    "psychological_hooks": ["hook1", "hook2"],
+    "visual_strategy": "Detailed visual approach",
+    "potential_issues": ["issue1", "issue2"],
+    "recommendations": ["rec1", "rec2"]
+  },
+  "thinking_process": [
+    "Step 1: ...",
+    "Step 2: ...",
+    "..."
+  ],
+  "enhanced_prompt": "Highly optimized prompt for image generation",
+  "model_reasoning": "Why this specific model",
+  "suggested_model": "model_name",
+  "creative_type": "type",
+  "complexity": "simple | medium | complex | composite",
+  "needs_text": true/false,
+  "text_content": "exact text or null",
+  "text_style": "text styling description or null",
+  "negative_prompt": "what to avoid",
+  "style_keywords": ["keyword1", "keyword2"],
+  "confidence_score": 0.0-1.0
+}`;
+
+/**
+ * Детектирует тип контента из запроса
+ */
+function detectRequestContext(prompt) {
+  const lowerPrompt = prompt.toLowerCase();
+  const detected = [];
+
+  for (const [contextName, context] of Object.entries(REQUEST_CONTEXTS)) {
+    const matches = context.keywords.filter(kw => lowerPrompt.includes(kw.toLowerCase()));
+    if (matches.length > 0) {
+      detected.push({
+        type: contextName,
+        matches: matches.length,
+        aspects: context.aspects
+      });
+    }
+  }
+
+  // Сортируем по количеству совпадений
+  detected.sort((a, b) => b.matches - a.matches);
+
+  return detected.length > 0 ? detected[0] : { type: 'GENERAL', aspects: ['style', 'colors', 'mood'] };
+}
+
+/**
+ * Извлекает уже известную информацию из истории чата
+ */
+function extractKnownInfo(chatHistory) {
+  const knownInfo = {
+    size: null,
+    colors: null,
+    style: null,
+    text: null,
+    geo: null,
+    platform: null,
+    offer: null,
+    audience: null
+  };
+
+  for (const msg of chatHistory) {
+    const content = msg.content?.toLowerCase() || '';
+
+    // Извлекаем размеры
+    const sizeMatch = content.match(/(\d{2,4})\s*[xXхХ×]\s*(\d{2,4})/);
+    if (sizeMatch) {
+      knownInfo.size = `${sizeMatch[1]}x${sizeMatch[2]}`;
+    }
+
+    // Извлекаем цвета
+    const colorPatterns = [
+      /цвет[а-я]*[:\s]+([^,.]+)/i,
+      /color[s]?[:\s]+([^,.]+)/i,
+      /(красн|синий|зелен|желт|черн|бел|золот|фиолетов|оранжев|розов)/i
+    ];
+    for (const pattern of colorPatterns) {
+      const match = content.match(pattern);
+      if (match) knownInfo.colors = match[1] || match[0];
+    }
+
+    // Извлекаем текст
+    const textMatch = content.match(/["«»'']([^"«»'']+)["«»'']/);
+    if (textMatch) knownInfo.text = textMatch[1];
+
+    // Извлекаем ГЕО
+    const geoPatterns = ['россия', 'russia', 'ru', 'украина', 'ukraine', 'ua', 'казахстан', 'kz',
+                        'беларусь', 'by', 'германия', 'germany', 'de', 'сша', 'usa', 'us',
+                        'латам', 'latam', 'европа', 'europe', 'азия', 'asia'];
+    for (const geo of geoPatterns) {
+      if (content.includes(geo)) {
+        knownInfo.geo = geo;
+        break;
+      }
+    }
+  }
+
+  return knownInfo;
+}
+
+/**
+ * УМНАЯ проверка нужны ли уточняющие вопросы
+ * Учитывает контекст, историю и специфику запроса
+ */
+export async function checkNeedsClarification(userPrompt, options = {}) {
+  const { hasReference = false, chatHistory = [], deepThinking = false } = options;
+
+  if (!anthropic) {
+    log.warn('Claude API not configured, skipping clarification');
+    return { needs_clarification: false, ready_to_generate: true };
+  }
+
+  try {
+    // 1. Детектируем контекст запроса
+    const detectedContext = detectRequestContext(userPrompt);
+
+    // 2. Извлекаем уже известную информацию из истории
+    const knownInfo = extractKnownInfo(chatHistory);
+
+    // 3. Формируем контекст для Claude
+    let contextInfo = `
+## DETECTED CONTEXT: ${detectedContext.type}
+Important aspects for this type: ${detectedContext.aspects.join(', ')}
+
+## ALREADY KNOWN FROM HISTORY:
+${Object.entries(knownInfo)
+  .filter(([_, v]) => v)
+  .map(([k, v]) => `- ${k}: ${v}`)
+  .join('\n') || '- Nothing specific yet'}
+
+## REFERENCE IMAGE: ${hasReference ? 'YES - User provided a reference image' : 'NO'}
+`;
+
+    // 4. Собираем историю чата
+    let historyContext = '';
+    if (chatHistory.length > 0) {
+      historyContext = '\n## CHAT HISTORY (recent messages):\n';
+      for (const msg of chatHistory.slice(-10)) {
+        const role = msg.role === 'user' ? 'USER' : 'AI';
+        historyContext += `${role}: ${msg.content?.substring(0, 200)}...\n`;
+      }
+    }
+
+    const message = `${contextInfo}
+${historyContext}
+
+## CURRENT USER REQUEST:
+"${userPrompt}"
+
+Analyze this request. Determine if you have enough information to generate a high-quality image, or if you need to ask clarifying questions.
+
+Remember:
+- DON'T ask about things already known from history
+- If reference provided - focus on what to CHANGE
+- Be specific to the detected context type
+- Max 3 questions, make them count`;
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1500,
+      system: SMART_CLARIFICATION_PROMPT,
+      messages: [{ role: 'user', content: message }]
+    });
+
+    const text = response.content[0].text;
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+
+    if (!jsonMatch) {
+      log.error('Failed to parse clarification response', { response: text });
+      return { needs_clarification: false, ready_to_generate: true };
+    }
+
+    const result = JSON.parse(jsonMatch[0]);
+
+    // Добавляем detected context в результат
+    result.detected_context = result.detected_context || detectedContext.type;
+    result.known_info = knownInfo;
+
+    log.debug('Smart clarification check', {
+      needsClarification: result.needs_clarification,
+      detectedContext: result.detected_context,
+      questionsCount: result.questions?.length || 0,
+      thinking: result.thinking?.substring(0, 100)
+    });
+
+    return result;
+
+  } catch (error) {
+    log.error('Clarification check error', { error: error.message });
+    return { needs_clarification: false, ready_to_generate: true };
+  }
+}
+
+/**
+ * Deep Thinking режим - глубокий анализ запроса
+ * Показывает процесс мышления пользователю
+ */
+export async function analyzeWithDeepThinking(userPrompt, options = {}) {
+  const { hasReference = false, referenceDescription = null, chatHistory = [], onThinkingUpdate = null } = options;
+
+  if (!anthropic) {
+    log.warn('Claude API not configured, using basic mode');
+    return createBasicPrompt(userPrompt, options);
+  }
+
+  try {
+    // Уведомляем о начале глубокого анализа
+    if (onThinkingUpdate) {
+      onThinkingUpdate({ stage: 'analyzing', message: 'Анализирую запрос...' });
+    }
+
+    const detectedContext = detectRequestContext(userPrompt);
+    const knownInfo = extractKnownInfo(chatHistory);
+
+    let contextMessage = `## REQUEST ANALYSIS
+
+**User Request:** "${userPrompt}"
+**Detected Type:** ${detectedContext.type}
+**Has Reference:** ${hasReference ? 'Yes' : 'No'}
+${referenceDescription ? `**Reference Description:** ${referenceDescription}` : ''}
+
+**Known Details:**
+${Object.entries(knownInfo).filter(([_, v]) => v).map(([k, v]) => `- ${k}: ${v}`).join('\n') || 'None'}
+
+**Chat Context:**
+${chatHistory.slice(-5).map(m => `${m.role}: ${m.content?.substring(0, 150)}`).join('\n') || 'New conversation'}
+
+---
+
+Perform DEEP ANALYSIS of this creative request. Think step by step about:
+1. What is the real goal?
+2. Who is the audience?
+3. What psychological triggers to use?
+4. What visual strategy will work best?
+5. How to craft the perfect prompt?
+
+Show your complete thinking process.`;
+
+    // Используем extended thinking если доступно
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 16000,
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 10000
+      },
+      system: DEEP_THINKING_PROMPT,
+      messages: [{ role: 'user', content: contextMessage }]
+    });
+
+    // Извлекаем thinking и response
+    let thinkingContent = '';
+    let responseContent = '';
+
+    for (const block of response.content) {
+      if (block.type === 'thinking') {
+        thinkingContent = block.thinking;
+      } else if (block.type === 'text') {
+        responseContent = block.text;
+      }
+    }
+
+    // Уведомляем о процессе мышления
+    if (onThinkingUpdate && thinkingContent) {
+      onThinkingUpdate({
+        stage: 'thinking',
+        message: 'Глубокий анализ...',
+        thinking: thinkingContent
+      });
+    }
+
+    // Парсим JSON результат
+    const jsonMatch = responseContent.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      log.error('Failed to parse deep thinking response');
+      return createBasicPrompt(userPrompt, options);
+    }
+
+    const result = JSON.parse(jsonMatch[0]);
+
+    // Добавляем thinking процесс в результат
+    result.thinking_content = thinkingContent;
+    result.deep_thinking_used = true;
+
+    log.debug('Deep thinking analysis complete', {
+      model: result.suggested_model,
+      confidence: result.confidence_score,
+      thinkingLength: thinkingContent?.length
+    });
+
+    return result;
+
+  } catch (error) {
+    log.error('Deep thinking error', { error: error.message });
+    // Fallback к обычному режиму
+    return analyzeAndEnhancePrompt(userPrompt, options);
+  }
+}
+
+/**
+ * Системный промпт для Creative Brain (генерация промпта) - УЛУЧШЕННЫЙ
  */
 export const GENERATION_SYSTEM_PROMPT = `You are a Creative Director AI that creates detailed prompts for image generation.
 
 ## YOUR ROLE:
 1. Understand the creative task (any language)
 2. Create detailed, effective prompt for image generation
-3. Select optimal model
+3. Select optimal model based on requirements
 4. Extract text if needed
 
 ## OUTPUT FORMAT (JSON):
@@ -128,119 +524,73 @@ export const GENERATION_SYSTEM_PROMPT = `You are a Creative Director AI that cre
 
 ## MODEL SELECTION RULES:
 
-### Use nano-banana-pro when:
-- Text longer than 4 words needed
-- Infographics, diagrams, charts
-- Character consistency across images (with reference)
-- Complex compositions requiring reasoning
+### nano-banana-pro - BEST FOR TEXT:
+- Text longer than 4 words
+- Infographics, diagrams
+- Character consistency
+- Complex compositions
 - Multi-language text
-- Professional/commercial quality required
+- Professional quality
 
-### Use nano-banana when:
-- Short text (1-4 words) needed
-- Fast generation with text
-- Budget optimization with text
+### nano-banana - FAST TEXT:
+- Short text (1-4 words)
+- Quick generation
+- Budget optimization
 
-### Use flux-dev when:
-- Standard image generation
-- Style transfer with reference
+### flux-dev - GENERAL PURPOSE:
+- Standard images
+- Style transfer
 - Product photos
-- Backgrounds and environments
-- No text or minimal text
+- Backgrounds
+- No/minimal text
 
-### Use flux-schnell when:
-- Drafts and previews
-- Rapid prototyping
-- Memes and quick content
-- Testing concepts
+### flux-schnell - DRAFTS:
+- Previews
+- Prototypes
+- Memes
+- Testing
 
-### Use kontext when:
-- Editing existing images
-- Text replacement/correction
+### kontext - EDITING:
+- Image editing
+- Text replacement
 - Background changes
 - Style adjustments
-- Iterative refinement
 
-## PROMPT ENGINEERING RULES:
+## PROMPT ENGINEERING - 6 FACTORS:
 
-### Structure (6 factors):
-1. SUBJECT: Who/what is in the image
-2. COMPOSITION: Camera angle, framing, position
-3. ACTION: What's happening
-4. ENVIRONMENT: Background, atmosphere, lighting
-5. STYLE: Visual aesthetic, quality level
-6. TEXT: If needed, exact text and styling
+1. **SUBJECT**: Who/what is in the image
+2. **COMPOSITION**: Camera angle, framing
+3. **ACTION**: What's happening
+4. **ENVIRONMENT**: Background, atmosphere, lighting
+5. **STYLE**: Visual aesthetic, quality level
+6. **TEXT**: If needed - exact text and styling
 
-### For gambling/casino:
-- Add: casino aesthetic, golden accents, luxury feel, neon lights, excitement
-- Include: high quality, professional promotional banner, vibrant colors
+## DOMAIN-SPECIFIC ADDITIONS:
 
-### Always include:
-- Quality markers: "4K, sharp details, professional"
-- Negative prompt: "blurry, low quality, distorted, amateur"`;
+### For Casino/Gambling:
+- Casino aesthetic, golden accents, luxury feel
+- Neon lights, excitement, winning atmosphere
+- Professional promotional banner
+- Vibrant, eye-catching colors
 
-/**
- * Проверка нужны ли уточняющие вопросы
- */
-export async function checkNeedsClarification(userPrompt, options = {}) {
-  const { hasReference = false, chatHistory = [] } = options;
+### For Affiliate/Advertising:
+- High conversion focus
+- Clear CTA visibility
+- Trust elements
+- Urgency markers
 
-  if (!anthropic) {
-    log.warn('Claude API not configured, skipping clarification');
-    return { needs_clarification: false, ready_to_generate: true };
-  }
+### Always include quality markers:
+- "4K, sharp details, professional"
+- "high quality, vibrant colors"
+- Negative: "blurry, low quality, distorted, amateur, watermark"
 
-  try {
-    // Собираем контекст из истории чата
-    let context = '';
-    if (chatHistory.length > 0) {
-      context = '\n\nПредыдущие сообщения в чате:\n';
-      for (const msg of chatHistory.slice(-6)) { // Последние 6 сообщений
-        context += `${msg.role === 'user' ? 'User' : 'AI'}: ${msg.content}\n`;
-      }
-    }
-
-    const message = `User request: ${userPrompt}
-Reference image provided: ${hasReference ? 'YES' : 'NO'}
-${context}
-
-Analyze if this request needs clarification or is ready for generation.`;
-
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      system: CLARIFICATION_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: message }]
-    });
-
-    const text = response.content[0].text;
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-
-    if (!jsonMatch) {
-      log.error('Failed to parse clarification response', { response: text });
-      return { needs_clarification: false, ready_to_generate: true };
-    }
-
-    const result = JSON.parse(jsonMatch[0]);
-
-    log.debug('Clarification check result', {
-      needsClarification: result.needs_clarification,
-      questionsCount: result.questions?.length || 0
-    });
-
-    return result;
-
-  } catch (error) {
-    log.error('Clarification check error', { error: error.message });
-    return { needs_clarification: false, ready_to_generate: true };
-  }
-}
+Respond ONLY with valid JSON.`;
 
 /**
- * Обработка ответов пользователя на вопросы
+ * Обработка ответов пользователя на вопросы - УЛУЧШЕННАЯ
  */
 export async function processUserAnswers(originalPrompt, answers, options = {}) {
-  const { hasReference = false } = options;
+  const { hasReference = false, deepThinking = false } = options;
 
   // Формируем обогащённый промпт из ответов
   let enrichedPrompt = originalPrompt;
@@ -248,23 +598,44 @@ export async function processUserAnswers(originalPrompt, answers, options = {}) 
   const answerDescriptions = [];
   for (const [questionId, answer] of Object.entries(answers)) {
     if (answer && answer !== 'skip') {
-      answerDescriptions.push(`${questionId}: ${answer}`);
+      // Форматируем ответ в зависимости от типа
+      if (Array.isArray(answer)) {
+        answerDescriptions.push(`${questionId}: ${answer.join(', ')}`);
+      } else {
+        answerDescriptions.push(`${questionId}: ${answer}`);
+      }
     }
   }
 
   if (answerDescriptions.length > 0) {
-    enrichedPrompt += `\n\nUser preferences:\n${answerDescriptions.join('\n')}`;
+    enrichedPrompt += `\n\nUser specifications:\n${answerDescriptions.join('\n')}`;
   }
 
-  // Теперь генерируем финальный промпт
+  // Выбираем режим анализа
+  if (deepThinking) {
+    return analyzeWithDeepThinking(enrichedPrompt, { hasReference, ...options });
+  }
+
   return analyzeAndEnhancePrompt(enrichedPrompt, { hasReference, ...options });
 }
 
 /**
- * Анализ и улучшение промпта с помощью Claude (main function)
+ * Анализ и улучшение промпта с помощью Claude (main function) - УЛУЧШЕННАЯ
  */
 export async function analyzeAndEnhancePrompt(userPrompt, options = {}) {
-  const { hasReference = false, width = null, height = null, referenceDescription = null } = options;
+  const {
+    hasReference = false,
+    width = null,
+    height = null,
+    referenceDescription = null,
+    deepThinking = false,
+    onThinkingUpdate = null
+  } = options;
+
+  // Если Deep Thinking включён - используем расширенный анализ
+  if (deepThinking) {
+    return analyzeWithDeepThinking(userPrompt, options);
+  }
 
   // Если Claude недоступен — возвращаем базовый результат
   if (!anthropic) {
@@ -273,8 +644,12 @@ export async function analyzeAndEnhancePrompt(userPrompt, options = {}) {
   }
 
   try {
+    // Детектируем контекст для лучшего промпта
+    const detectedContext = detectRequestContext(userPrompt);
+
     // Формируем сообщение для Claude
     let message = `User request: ${userPrompt}`;
+    message += `\nDetected content type: ${detectedContext.type}`;
     message += `\nReference provided: ${hasReference ? 'YES' : 'NO'}`;
 
     if (hasReference && referenceDescription) {
@@ -285,7 +660,7 @@ export async function analyzeAndEnhancePrompt(userPrompt, options = {}) {
       message += `\nTarget size: ${width}x${height}`;
     }
 
-    message += '\n\nCreate detailed generation plan.';
+    message += '\n\nCreate an optimized generation plan. Focus on what makes sense for this content type.';
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -304,12 +679,14 @@ export async function analyzeAndEnhancePrompt(userPrompt, options = {}) {
     }
 
     const result = JSON.parse(jsonMatch[0]);
+    result.detected_context = detectedContext.type;
 
     log.debug('Prompt analyzed and enhanced', {
       original: userPrompt.substring(0, 50),
       model: result.suggested_model,
       needsText: result.needs_text,
-      creativeType: result.creative_type
+      creativeType: result.creative_type,
+      context: detectedContext.type
     });
 
     return result;
@@ -328,7 +705,7 @@ export async function enhancePrompt(userPrompt, options = {}) {
 }
 
 /**
- * Базовый промпт без Claude (fallback)
+ * Базовый промпт без Claude (fallback) - УЛУЧШЕННЫЙ
  */
 function createBasicPrompt(userPrompt, options = {}) {
   const { hasReference } = options;
@@ -340,18 +717,39 @@ function createBasicPrompt(userPrompt, options = {}) {
   // Определяем язык
   const language = detectLanguage(userPrompt);
 
-  // Базовое улучшение промпта
+  // Детектируем контекст
+  const detectedContext = detectRequestContext(userPrompt);
+
+  // Базовое улучшение промпта в зависимости от контекста
   let enhancedPrompt = userPrompt;
-  if (language === 'ru') {
-    enhancedPrompt = `Professional promotional banner, ${userPrompt}, high quality, sharp details, vibrant colors, casino aesthetic, luxury feel`;
-  } else {
-    enhancedPrompt = `Professional promotional banner, ${userPrompt}, high quality, sharp details, vibrant colors`;
+  let styleAdditions = '';
+
+  switch (detectedContext.type) {
+    case 'CASINO_GAMBLING':
+      styleAdditions = 'casino aesthetic, golden accents, luxury feel, neon lights, excitement, professional promotional banner, vibrant colors, winning atmosphere';
+      break;
+    case 'AFFILIATE':
+      styleAdditions = 'high conversion advertising, clear CTA, trust elements, professional marketing material, eye-catching design';
+      break;
+    case 'SOCIAL_MEDIA':
+      styleAdditions = 'social media optimized, engaging, trendy, scroll-stopping, vibrant colors';
+      break;
+    case 'PRODUCT':
+      styleAdditions = 'product photography, clean background, professional lighting, commercial quality';
+      break;
+    case 'CHARACTER':
+      styleAdditions = 'character design, expressive, detailed, consistent style';
+      break;
+    default:
+      styleAdditions = 'high quality, professional, sharp details, vibrant colors';
   }
+
+  enhancedPrompt = `${userPrompt}, ${styleAdditions}, 4K quality`;
 
   // Определяем модель
   let suggestedModel = 'flux-dev';
   if (needsText) {
-    const wordCount = textContent.split(' ').length;
+    const wordCount = textContent.split(/\s+/).length;
     suggestedModel = wordCount > 4 ? 'nano-banana-pro' : 'nano-banana';
   }
   if (hasReference) {
@@ -361,40 +759,60 @@ function createBasicPrompt(userPrompt, options = {}) {
   return {
     task_understanding: userPrompt,
     enhanced_prompt: enhancedPrompt,
-    creative_type: 'banner',
+    creative_type: detectedContext.type.toLowerCase().replace('_', ''),
     complexity: 'simple',
     needs_text: needsText,
     text_content: textContent,
-    text_style: needsText ? 'bold golden letters with glow effect' : null,
+    text_style: needsText ? 'bold letters with glow effect, high contrast' : null,
     suggested_model: suggestedModel,
     reference_purpose: hasReference ? 'style' : null,
     needs_character_consistency: false,
     negative_prompt: 'blurry, low quality, distorted text, ugly, amateur, watermark, deformed',
-    style_keywords: ['promotional', 'professional', 'vibrant'],
-    reasoning: 'Базовый режим (Claude недоступен)'
+    style_keywords: styleAdditions.split(', ').slice(0, 5),
+    reasoning: 'Базовый режим (Claude недоступен)',
+    detected_context: detectedContext.type
   };
 }
 
 /**
- * Извлечение текста из промпта
+ * Извлечение текста из промпта - УЛУЧШЕННОЕ
  */
 export function extractTextContent(prompt) {
-  // Ищем текст в кавычках
-  const quotedMatch = prompt.match(/["«»'']([^"«»'']+)["«»'']/);
-  if (quotedMatch) {
-    return quotedMatch[1].trim();
+  // Ищем текст в кавычках (разные типы)
+  const quotePatterns = [
+    /[""]([^""]+)[""]/,           // "text"
+    /[«»]([^«»]+)[»«]/,           // «text»
+    /['']([^'']+)['']/,           // 'text'
+    /"([^"]+)"/,                   // "text"
+    /'([^']+)'/                    // 'text'
+  ];
+
+  for (const pattern of quotePatterns) {
+    const match = prompt.match(pattern);
+    if (match) return match[1].trim();
   }
 
   // Ищем после ключевых слов
-  const keywordMatch = prompt.match(/(?:текст|text|надпись|слова)[:\s]+([^,.]+)/i);
-  if (keywordMatch) {
-    return keywordMatch[1].trim();
+  const keywordPatterns = [
+    /(?:текст|text|надпись|слова|написать)[:\s]+["«']?([^"«»'',.\n]+)["»']?/i,
+    /(?:с текстом|with text)[:\s]+["«']?([^"«»'',.\n]+)["»']?/i
+  ];
+
+  for (const pattern of keywordPatterns) {
+    const match = prompt.match(pattern);
+    if (match) return match[1].trim();
   }
 
-  // Ищем явные паттерны бонусов
-  const bonusMatch = prompt.match(/(\d+[%€$₽]\s*(?:бонус|bonus)?|\bBONUS\s+\d+[%€$]?|\bWELCOME\s+\d+)/i);
-  if (bonusMatch) {
-    return bonusMatch[1].trim();
+  // Ищем явные паттерны бонусов/CTA
+  const ctaPatterns = [
+    /(\d+[%€$₽]\s*(?:бонус|bonus|off|скидка)?)/i,
+    /(?:BONUS|WELCOME|FREE SPINS?|GET|WIN|CLAIM)\s+[\d%$€]+/i,
+    /(?:Получи|Забери|Выиграй)\s+[\d%]+/i
+  ];
+
+  for (const pattern of ctaPatterns) {
+    const match = prompt.match(pattern);
+    if (match) return match[0].trim();
   }
 
   return null;
@@ -402,7 +820,6 @@ export function extractTextContent(prompt) {
 
 /**
  * Извлечение размера из промпта
- * Поддерживает форматы: "100x600", "100 на 600", "100*600", "размер 100 600"
  */
 export function extractSizeFromPrompt(prompt) {
   // Паттерн 1: "100x600", "100×600", "100X600"
@@ -412,7 +829,7 @@ export function extractSizeFromPrompt(prompt) {
   }
 
   // Паттерн 2: "100 на 600", "100 by 600"
-  const naPattern = prompt.match(/(\d{2,4})\s*(?:на|by|на)\s*(\d{2,4})/i);
+  const naPattern = prompt.match(/(\d{2,4})\s*(?:на|by)\s*(\d{2,4})/i);
   if (naPattern) {
     return { width: parseInt(naPattern[1]), height: parseInt(naPattern[2]) };
   }
@@ -436,7 +853,6 @@ export function extractSizeFromPrompt(prompt) {
  * Определение языка текста
  */
 export function detectLanguage(text) {
-  // Простая проверка на кириллицу
   const cyrillicChars = (text.match(/[а-яёА-ЯЁ]/g) || []).length;
   const latinChars = (text.match(/[a-zA-Z]/g) || []).length;
 
@@ -447,7 +863,7 @@ export function detectLanguage(text) {
 }
 
 /**
- * Генерация заголовка чата из первого сообщения
+ * Генерация заголовка чата из первого сообщения - УЛУЧШЕННАЯ
  */
 export async function generateChatTitle(firstMessage) {
   if (!anthropic) {
@@ -463,13 +879,33 @@ export async function generateChatTitle(firstMessage) {
       max_tokens: 50,
       messages: [{
         role: 'user',
-        content: `Придумай короткое название (2-4 слова, максимум 30 символов) для чата, где пользователь попросил: "${firstMessage}". Ответь ТОЛЬКО названием, без кавычек и пояснений.`
+        content: `Придумай короткое название (2-4 слова, максимум 25 символов) для чата о создании изображения. Запрос пользователя: "${firstMessage.substring(0, 100)}".
+
+Правила:
+- Только название, без кавычек
+- Отражай суть запроса
+- Если про казино/слоты - укажи это
+- Если про баннер - укажи размер или платформу
+
+Ответь ТОЛЬКО названием.`
       }]
     });
 
-    return response.content[0].text.trim().substring(0, 50);
+    return response.content[0].text.trim().substring(0, 40);
   } catch (error) {
     log.error('Generate chat title error', { error: error.message });
     return firstMessage.substring(0, 30);
   }
+}
+
+/**
+ * Quick generate - генерация без вопросов
+ * Используется когда пользователь нажимает "Сгенерировать сразу"
+ */
+export async function quickGenerate(userPrompt, options = {}) {
+  // Пропускаем этап вопросов, сразу анализируем и улучшаем
+  return analyzeAndEnhancePrompt(userPrompt, {
+    ...options,
+    skipClarification: true
+  });
 }

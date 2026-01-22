@@ -2,7 +2,36 @@ import { create } from 'zustand';
 import { chatsAPI, generateAPI, wsManager } from '../services/api';
 
 /**
- * Chat Store (Zustand)
+ * Generation status types for beautiful UI states
+ */
+export const GENERATION_PHASES = {
+  STARTING: 'starting',
+  ANALYZING: 'analyzing',
+  ENHANCING: 'enhancing',
+  GENERATING: 'generating',
+  FINALIZING: 'finalizing',
+  COMPLETE: 'complete',
+  ERROR: 'error',
+  // Deep Thinking phases
+  DEEP_THINKING: 'deep_thinking',
+  THINKING: 'thinking'
+};
+
+export const PHASE_LABELS = {
+  [GENERATION_PHASES.STARTING]: 'Начинаю обработку...',
+  [GENERATION_PHASES.ANALYZING]: 'Анализирую запрос...',
+  [GENERATION_PHASES.ENHANCING]: 'Улучшаю промпт...',
+  [GENERATION_PHASES.GENERATING]: 'Генерирую изображение...',
+  [GENERATION_PHASES.FINALIZING]: 'Завершаю...',
+  [GENERATION_PHASES.COMPLETE]: 'Готово!',
+  [GENERATION_PHASES.ERROR]: 'Ошибка',
+  [GENERATION_PHASES.DEEP_THINKING]: 'Глубокий анализ...',
+  [GENERATION_PHASES.THINKING]: 'Claude думает...'
+};
+
+/**
+ * Chat Store (Zustand) - УЛУЧШЕННЫЙ
+ * Поддерживает Deep Thinking, умные вопросы и быструю генерацию
  */
 export const useChatStore = create((set, get) => ({
   // Список чатов
@@ -16,11 +45,16 @@ export const useChatStore = create((set, get) => ({
 
   // Генерация
   isGenerating: false,
-  generationStatus: null,
+  generationPhase: null,
   generationProgress: null,
+  generationMessageId: null,
+  generationMode: null, // 'standard' | 'deep_thinking' | 'quick'
+
+  // Deep Thinking данные
+  deepThinkingData: null, // { stage, message, thinking, analysis }
 
   // Уточняющие вопросы
-  pendingClarification: null,  // { questions, summary, originalPrompt }
+  pendingClarification: null,  // { questions, summary, originalPrompt, detected_context, thinking, known_info }
 
   // Референс (прикреплённая картинка)
   attachedReference: null,
@@ -29,7 +63,8 @@ export const useChatStore = create((set, get) => ({
   settings: {
     model: 'auto',
     size: '1200x628',
-    variations: 1
+    variations: 1,
+    deepThinking: false // По умолчанию выключен
   },
 
   // Пресеты
@@ -64,12 +99,12 @@ export const useChatStore = create((set, get) => ({
 
   selectChat: async (chatId) => {
     if (!chatId) {
-      set({ currentChat: null, messages: [] });
+      set({ currentChat: null, messages: [], pendingClarification: null });
       wsManager.unsubscribe();
       return;
     }
 
-    set({ chatLoading: true });
+    set({ chatLoading: true, pendingClarification: null });
     try {
       const chat = await chatsAPI.getById(chatId);
       set({
@@ -92,7 +127,8 @@ export const useChatStore = create((set, get) => ({
       set(state => ({
         chats: state.chats.filter(c => c.id !== chatId),
         currentChat: state.currentChat?.id === chatId ? null : state.currentChat,
-        messages: state.currentChat?.id === chatId ? [] : state.messages
+        messages: state.currentChat?.id === chatId ? [] : state.messages,
+        pendingClarification: state.currentChat?.id === chatId ? null : state.pendingClarification
       }));
     } catch (error) {
       console.error('Delete chat error:', error);
@@ -116,13 +152,51 @@ export const useChatStore = create((set, get) => ({
   },
 
   // ==========================================
-  // Generation
+  // Messages - Direct manipulation
   // ==========================================
 
-  generate: async (prompt, answers = null) => {
-    const { currentChat, attachedReference, settings, pendingClarification } = get();
+  addMessage: (message) => {
+    set(state => ({
+      messages: [...state.messages, message]
+    }));
+  },
 
-    set({ isGenerating: true, generationStatus: 'starting', generationProgress: null });
+  updateMessage: (messageId, updates) => {
+    set(state => ({
+      messages: state.messages.map(msg =>
+        msg.id === messageId ? { ...msg, ...updates } : msg
+      )
+    }));
+  },
+
+  // ==========================================
+  // Generation - УЛУЧШЕННАЯ
+  // ==========================================
+
+  generate: async (prompt, answers = null, options = {}) => {
+    const { currentChat, attachedReference, settings, pendingClarification } = get();
+    const { deepThinking = settings.deepThinking, quickGenerate = false } = options;
+
+    // СРАЗУ добавляем сообщение пользователя в чат!
+    const tempUserMessageId = `user-${Date.now()}`;
+    const userMessage = {
+      id: tempUserMessageId,
+      role: 'user',
+      content: prompt,
+      referenceUrl: attachedReference?.url,
+      createdAt: new Date().toISOString()
+    };
+
+    // Добавляем сообщение пользователя немедленно
+    set(state => ({
+      messages: [...state.messages, userMessage],
+      isGenerating: true,
+      generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.STARTING,
+      generationProgress: null,
+      generationMode: deepThinking ? 'deep_thinking' : (quickGenerate ? 'quick' : 'standard'),
+      deepThinkingData: deepThinking ? { stage: 'starting', message: 'Начинаю глубокий анализ...' } : null,
+      attachedReference: null
+    }));
 
     try {
       // Если есть ответы на вопросы — используем оригинальный промпт
@@ -138,22 +212,21 @@ export const useChatStore = create((set, get) => ({
         model: settings.model,
         variations: settings.variations,
         answers: answers,
-        skip_clarification: !!answers  // Пропускаем вопросы если уже ответили
+        skip_clarification: !!answers || quickGenerate,
+        deep_thinking: deepThinking,
+        quick_generate: quickGenerate
       });
+
+      // Обновляем ID сообщения пользователя если сервер вернул
+      if (response.userMessageId) {
+        get().updateMessage(tempUserMessageId, { id: response.userMessageId });
+      }
 
       // Очищаем pending clarification
       set({ pendingClarification: null });
 
       // Если сервер вернул вопросы
       if (response.status === 'needs_clarification') {
-        const userMessage = {
-          id: response.userMessageId || Date.now(),
-          role: 'user',
-          content: prompt,
-          referenceUrl: attachedReference?.url,
-          createdAt: new Date().toISOString()
-        };
-
         const clarificationMessage = {
           id: response.messageId,
           role: 'assistant',
@@ -163,14 +236,16 @@ export const useChatStore = create((set, get) => ({
         };
 
         set(state => ({
-          messages: [...state.messages, userMessage, clarificationMessage],
+          messages: [...state.messages, clarificationMessage],
           pendingClarification: {
             ...response.clarification,
             originalPrompt: prompt,
             messageId: response.messageId
           },
           isGenerating: false,
-          attachedReference: null
+          generationPhase: null,
+          generationMode: null,
+          deepThinkingData: null
         }));
 
         // Обновляем чат если новый
@@ -182,63 +257,70 @@ export const useChatStore = create((set, get) => ({
         return response;
       }
 
-      // Обычная генерация
+      // Обычная генерация - добавляем placeholder для ответа ассистента
+      const assistantMessageId = response.messageId || `assistant-${Date.now()}`;
+      const assistantMessage = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: null,
+        isGenerating: true,
+        generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.ANALYZING,
+        deepThinking: deepThinking,
+        createdAt: new Date().toISOString()
+      };
+
+      set(state => ({
+        messages: [...state.messages, assistantMessage],
+        generationMessageId: assistantMessageId,
+        generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.ANALYZING
+      }));
+
       // Обновляем текущий чат если его не было
       if (!currentChat && response.chatId) {
-        await get().selectChat(response.chatId);
+        // Не перезагружаем сообщения, просто обновляем currentChat
+        const chat = await chatsAPI.getById(response.chatId);
+        set({ currentChat: chat });
         await get().loadChats();
-      } else {
-        // Если чат уже есть - добавляем сообщения локально
-        const userMessage = {
-          id: response.userMessageId || Date.now(),
-          role: 'user',
-          content: answers ? `${actualPrompt}` : prompt,
-          referenceUrl: attachedReference?.url,
-          createdAt: new Date().toISOString()
-        };
-
-        const assistantMessage = {
-          id: response.messageId,
-          role: 'assistant',
-          content: 'Генерирую...',
-          isGenerating: true,
-          createdAt: new Date().toISOString()
-        };
-
-        set(state => ({
-          messages: [...state.messages, userMessage, assistantMessage],
-          attachedReference: null
-        }));
-      }
-
-      // Очищаем референс в любом случае
-      if (currentChat) {
-        set({ attachedReference: null });
+        wsManager.subscribe(response.chatId);
       }
 
       return response;
 
     } catch (error) {
       console.error('Generate error:', error);
-      set({ isGenerating: false, generationStatus: 'error' });
+      set({
+        isGenerating: false,
+        generationPhase: GENERATION_PHASES.ERROR,
+        generationProgress: error.message,
+        generationMode: null,
+        deepThinkingData: null
+      });
       throw error;
     }
   },
 
-  // Отправка ответов на уточняющие вопросы
-  submitClarificationAnswers: async (answers) => {
+  // Отправка ответов на уточняющие вопросы - УЛУЧШЕННАЯ
+  submitClarificationAnswers: async (answers, options = {}) => {
     const { pendingClarification } = get();
     if (!pendingClarification) return;
 
-    return get().generate(pendingClarification.originalPrompt, answers);
+    return get().generate(pendingClarification.originalPrompt, answers, options);
   },
 
-  // Пропустить вопросы и генерировать сразу
-  skipClarification: async () => {
+  // Пропустить вопросы и генерировать сразу - УЛУЧШЕННАЯ
+  skipClarification: async (options = {}) => {
     const { pendingClarification, currentChat, attachedReference, settings } = get();
     if (!pendingClarification) return;
 
-    set({ isGenerating: true, pendingClarification: null });
+    const { deepThinking = false } = options;
+
+    set({
+      isGenerating: true,
+      generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.STARTING,
+      generationMode: deepThinking ? 'deep_thinking' : 'standard',
+      deepThinkingData: deepThinking ? { stage: 'starting', message: 'Начинаю глубокий анализ...' } : null,
+      pendingClarification: null
+    });
 
     try {
       const response = await generateAPI.generate({
@@ -248,52 +330,188 @@ export const useChatStore = create((set, get) => ({
         size: settings.size,
         model: settings.model,
         variations: settings.variations,
-        skip_clarification: true
+        skip_clarification: true,
+        deep_thinking: deepThinking
       });
 
+      const assistantMessageId = response.messageId || `assistant-${Date.now()}`;
       const assistantMessage = {
-        id: response.messageId,
+        id: assistantMessageId,
         role: 'assistant',
-        content: 'Генерирую...',
+        content: null,
         isGenerating: true,
+        generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.ANALYZING,
+        deepThinking: deepThinking,
         createdAt: new Date().toISOString()
       };
 
       set(state => ({
         messages: [...state.messages, assistantMessage],
+        generationMessageId: assistantMessageId,
+        generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.ANALYZING,
         attachedReference: null
       }));
 
       return response;
     } catch (error) {
       console.error('Skip clarification error:', error);
-      set({ isGenerating: false });
+      set({
+        isGenerating: false,
+        generationPhase: GENERATION_PHASES.ERROR,
+        generationMode: null,
+        deepThinkingData: null
+      });
       throw error;
     }
   },
 
-  // Обновление прогресса генерации (из WebSocket)
-  updateGenerationProgress: (data) => {
+  // Быстрая генерация без вопросов - НОВАЯ
+  quickGenerate: async (options = {}) => {
+    const { pendingClarification, currentChat, attachedReference, settings } = get();
+    if (!pendingClarification) return;
+
+    const { deepThinking = false } = options;
+
     set({
-      generationStatus: data.status,
-      generationProgress: data.message
+      isGenerating: true,
+      generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.STARTING,
+      generationMode: 'quick',
+      deepThinkingData: deepThinking ? { stage: 'starting', message: 'Быстрый глубокий анализ...' } : null,
+      pendingClarification: null
     });
+
+    try {
+      const response = await generateAPI.generate({
+        chat_id: currentChat?.id,
+        prompt: pendingClarification.originalPrompt,
+        reference_url: attachedReference?.url,
+        size: settings.size,
+        model: settings.model,
+        variations: settings.variations,
+        quick_generate: true,
+        deep_thinking: deepThinking
+      });
+
+      const assistantMessageId = response.messageId || `assistant-${Date.now()}`;
+      const assistantMessage = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: null,
+        isGenerating: true,
+        generationPhase: GENERATION_PHASES.GENERATING,
+        deepThinking: deepThinking,
+        createdAt: new Date().toISOString()
+      };
+
+      set(state => ({
+        messages: [...state.messages, assistantMessage],
+        generationMessageId: assistantMessageId,
+        generationPhase: GENERATION_PHASES.GENERATING,
+        attachedReference: null
+      }));
+
+      return response;
+    } catch (error) {
+      console.error('Quick generate error:', error);
+      set({
+        isGenerating: false,
+        generationPhase: GENERATION_PHASES.ERROR,
+        generationMode: null,
+        deepThinkingData: null
+      });
+      throw error;
+    }
+  },
+
+  // Обновление прогресса генерации (из WebSocket) - УЛУЧШЕННАЯ
+  updateGenerationProgress: (data) => {
+    // Маппинг статусов от сервера на наши фазы
+    const phaseMap = {
+      'analyzing': GENERATION_PHASES.ANALYZING,
+      'enhancing': GENERATION_PHASES.ENHANCING,
+      'enhancing_prompt': GENERATION_PHASES.ENHANCING,
+      'generating': GENERATION_PHASES.GENERATING,
+      'generating_image': GENERATION_PHASES.GENERATING,
+      'finalizing': GENERATION_PHASES.FINALIZING,
+      'processing': GENERATION_PHASES.GENERATING,
+      'deep_thinking': GENERATION_PHASES.DEEP_THINKING,
+      'thinking': GENERATION_PHASES.THINKING
+    };
+
+    const phase = phaseMap[data.status] || GENERATION_PHASES.GENERATING;
+
+    const updates = {
+      generationPhase: phase,
+      generationProgress: data.message
+    };
+
+    // Обновляем Deep Thinking данные если это thinking update
+    if (data.status === 'deep_thinking' || data.type === 'thinking_update') {
+      updates.deepThinkingData = {
+        stage: data.stage || 'thinking',
+        message: data.message,
+        thinking: data.thinking
+      };
+    }
+
+    set(updates);
 
     // Обновляем сообщение
     if (data.messageId) {
       set(state => ({
         messages: state.messages.map(msg =>
           msg.id === data.messageId
-            ? { ...msg, content: data.message || msg.content }
+            ? {
+                ...msg,
+                generationPhase: phase,
+                generationProgress: data.message,
+                enhancedPromptPreview: data.enhanced_prompt
+              }
             : msg
         )
       }));
     }
   },
 
-  // Завершение генерации (из WebSocket)
+  // Обработка Deep Analysis Complete (из WebSocket) - НОВАЯ
+  handleDeepAnalysisComplete: (data) => {
+    set({
+      deepThinkingData: {
+        stage: 'complete',
+        message: 'Анализ завершён',
+        analysis: data.analysis,
+        thinking_process: data.thinking_process,
+        confidence: data.confidence
+      }
+    });
+
+    // Обновляем сообщение с результатами анализа
+    if (data.messageId) {
+      set(state => ({
+        messages: state.messages.map(msg =>
+          msg.id === data.messageId
+            ? {
+                ...msg,
+                deepAnalysis: data.analysis,
+                thinkingProcess: data.thinking_process,
+                confidence: data.confidence
+              }
+            : msg
+        )
+      }));
+    }
+  },
+
+  // Завершение генерации (из WebSocket) - УЛУЧШЕННАЯ
   completeGeneration: (data) => {
-    set({ isGenerating: false, generationStatus: 'complete', generationProgress: null });
+    set({
+      isGenerating: false,
+      generationPhase: GENERATION_PHASES.COMPLETE,
+      generationProgress: null,
+      generationMessageId: null,
+      generationMode: null,
+      deepThinkingData: null
+    });
 
     // Обновляем сообщение с результатом
     if (data.messageId) {
@@ -307,7 +525,11 @@ export const useChatStore = create((set, get) => ({
                 modelUsed: data.model,
                 generationTimeMs: data.timeMs,
                 enhancedPrompt: data.enhancedPrompt,
-                isGenerating: false
+                isGenerating: false,
+                generationPhase: null,
+                deepThinking: data.deepThinking,
+                deepAnalysis: data.deepAnalysis,
+                detectedContext: data.detectedContext
               }
             : msg
         )
@@ -320,13 +542,26 @@ export const useChatStore = create((set, get) => ({
 
   // Ошибка генерации (из WebSocket)
   failGeneration: (data) => {
-    set({ isGenerating: false, generationStatus: 'error', generationProgress: null });
+    set({
+      isGenerating: false,
+      generationPhase: GENERATION_PHASES.ERROR,
+      generationProgress: null,
+      generationMessageId: null,
+      generationMode: null,
+      deepThinkingData: null
+    });
 
     if (data.messageId) {
       set(state => ({
         messages: state.messages.map(msg =>
           msg.id === data.messageId
-            ? { ...msg, content: null, errorMessage: data.error, isGenerating: false }
+            ? {
+                ...msg,
+                content: null,
+                errorMessage: data.error,
+                isGenerating: false,
+                generationPhase: GENERATION_PHASES.ERROR
+              }
             : msg
         )
       }));
@@ -366,6 +601,13 @@ export const useChatStore = create((set, get) => ({
     }));
   },
 
+  // Переключатель Deep Thinking - НОВЫЙ
+  toggleDeepThinking: () => {
+    set(state => ({
+      settings: { ...state.settings, deepThinking: !state.settings.deepThinking }
+    }));
+  },
+
   loadPresets: async () => {
     try {
       const [presets, models] = await Promise.all([
@@ -379,7 +621,7 @@ export const useChatStore = create((set, get) => ({
   },
 
   // ==========================================
-  // WebSocket handlers
+  // WebSocket handlers - УЛУЧШЕННЫЕ
   // ==========================================
 
   initWebSocket: () => {
@@ -389,6 +631,14 @@ export const useChatStore = create((set, get) => ({
 
     wsManager.on('generation_progress', (data) => {
       get().updateGenerationProgress(data);
+    });
+
+    wsManager.on('thinking_update', (data) => {
+      get().updateGenerationProgress(data);
+    });
+
+    wsManager.on('deep_analysis_complete', (data) => {
+      get().handleDeepAnalysisComplete(data);
     });
 
     wsManager.on('generation_complete', (data) => {

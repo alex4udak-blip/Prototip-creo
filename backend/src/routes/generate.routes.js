@@ -2,7 +2,14 @@ import { Router } from 'express';
 import { db } from '../db/client.js';
 import { authMiddleware, checkGenerationLimit, incrementGenerationStats } from '../middleware/auth.middleware.js';
 import { uploadMiddleware, handleUploadError, getFileUrl } from '../middleware/upload.middleware.js';
-import { checkNeedsClarification, processUserAnswers, enhancePrompt, generateChatTitle } from '../services/prompt.service.js';
+import {
+  checkNeedsClarification,
+  processUserAnswers,
+  enhancePrompt,
+  generateChatTitle,
+  analyzeWithDeepThinking,
+  quickGenerate
+} from '../services/prompt.service.js';
 import { selectModel, generateImage, parseSize, getAvailableModels } from '../services/router.service.js';
 import { broadcastToChat } from '../websocket/handler.js';
 import { log } from '../utils/logger.js';
@@ -14,11 +21,12 @@ router.use(authMiddleware);
 
 /**
  * POST /api/generate/clarify
- * Проверка нужны ли уточняющие вопросы
+ * Проверка нужны ли уточняющие вопросы - УЛУЧШЕННАЯ
+ * Теперь учитывает контекст, историю и тип контента
  */
 router.post('/clarify', async (req, res) => {
   try {
-    const { prompt, reference_url, chat_id } = req.body;
+    const { prompt, reference_url, chat_id, force_questions = false } = req.body;
 
     if (!prompt || prompt.trim().length === 0) {
       return res.status(400).json({ error: 'Введите описание баннера' });
@@ -34,13 +42,22 @@ router.post('/clarify', async (req, res) => {
       chatHistory = messages.reverse();
     }
 
-    // Проверяем нужны ли вопросы
+    // Проверяем нужны ли вопросы (умный анализ)
     const clarificationResult = await checkNeedsClarification(prompt, {
       hasReference: !!reference_url,
-      chatHistory
+      chatHistory,
+      forceQuestions: force_questions
     });
 
-    res.json(clarificationResult);
+    // Добавляем информацию о детектированном контексте
+    res.json({
+      ...clarificationResult,
+      prompt_analysis: {
+        detected_context: clarificationResult.detected_context,
+        known_info: clarificationResult.known_info,
+        thinking: clarificationResult.thinking
+      }
+    });
 
   } catch (error) {
     log.error('Clarification check error', { error: error.message });
@@ -50,7 +67,8 @@ router.post('/clarify', async (req, res) => {
 
 /**
  * POST /api/generate
- * Главный endpoint генерации баннера
+ * Главный endpoint генерации баннера - УЛУЧШЕННЫЙ
+ * Поддерживает Deep Thinking режим и умные вопросы
  */
 router.post('/', checkGenerationLimit, async (req, res) => {
   const startTime = Date.now();
@@ -65,8 +83,10 @@ router.post('/', checkGenerationLimit, async (req, res) => {
       size,
       model: userModel,
       variations = 1,
-      answers = null,  // Ответы на уточняющие вопросы
-      skip_clarification = false  // Пропустить этап вопросов
+      answers = null,           // Ответы на уточняющие вопросы
+      skip_clarification = false,  // Пропустить этап вопросов
+      deep_thinking = false,    // Включить режим глубокого анализа
+      quick_generate = false    // Быстрая генерация без вопросов
     } = req.body;
 
     // Валидация
@@ -103,6 +123,23 @@ router.post('/', checkGenerationLimit, async (req, res) => {
     );
     chatHistory = existingMessages.reverse();
 
+    // РЕЖИМ: Быстрая генерация (без вопросов)
+    if (quick_generate) {
+      return handleQuickGenerate(req, res, {
+        chatId,
+        chat,
+        prompt,
+        referenceUrl: reference_url,
+        size,
+        userModel,
+        variations,
+        userId: req.user.id,
+        startTime,
+        deepThinking: deep_thinking,
+        chatHistory
+      });
+    }
+
     // ЭТАП 1: Проверяем нужны ли уточняющие вопросы (если нет ответов и не пропускаем)
     if (!answers && !skip_clarification) {
       const clarificationResult = await checkNeedsClarification(prompt, {
@@ -127,7 +164,9 @@ router.post('/', checkGenerationLimit, async (req, res) => {
           metadata: JSON.stringify({
             type: 'clarification',
             questions: clarificationResult.questions,
-            originalPrompt: prompt
+            originalPrompt: prompt,
+            detectedContext: clarificationResult.detected_context,
+            thinking: clarificationResult.thinking
           })
         });
 
@@ -140,7 +179,10 @@ router.post('/', checkGenerationLimit, async (req, res) => {
           status: 'needs_clarification',
           clarification: {
             summary: clarificationResult.summary,
-            questions: clarificationResult.questions
+            questions: clarificationResult.questions,
+            detected_context: clarificationResult.detected_context,
+            thinking: clarificationResult.thinking,
+            known_info: clarificationResult.known_info
           }
         });
       }
@@ -152,7 +194,7 @@ router.post('/', checkGenerationLimit, async (req, res) => {
     let userContent = prompt;
     if (answers) {
       const answerText = Object.entries(answers)
-        .map(([q, a]) => `${q}: ${a}`)
+        .map(([q, a]) => `${q}: ${Array.isArray(a) ? a.join(', ') : a}`)
         .join(', ');
       userContent = `${prompt}\n[Уточнения: ${answerText}]`;
     }
@@ -168,7 +210,7 @@ router.post('/', checkGenerationLimit, async (req, res) => {
     const assistantMessage = await db.insert('messages', {
       chat_id: chatId,
       role: 'assistant',
-      content: 'Генерирую...'
+      content: deep_thinking ? 'Глубокий анализ...' : 'Генерирую...'
     });
     messageId = assistantMessage.id;
 
@@ -178,7 +220,8 @@ router.post('/', checkGenerationLimit, async (req, res) => {
       chatId,
       messageId,
       userMessageId: userMessage.id,
-      status: 'processing'
+      status: 'processing',
+      mode: deep_thinking ? 'deep_thinking' : 'standard'
     });
 
     // Продолжаем генерацию асинхронно
@@ -193,7 +236,9 @@ router.post('/', checkGenerationLimit, async (req, res) => {
       variations,
       userId: req.user.id,
       startTime,
-      chatTitle: chat.title
+      chatTitle: chat.title,
+      deepThinking: deep_thinking,
+      chatHistory
     }).catch(error => {
       log.error('Background generation failed', { error: error.message, messageId });
     });
@@ -222,7 +267,80 @@ router.post('/', checkGenerationLimit, async (req, res) => {
 });
 
 /**
- * Асинхронная обработка генерации
+ * Быстрая генерация без уточняющих вопросов
+ */
+async function handleQuickGenerate(req, res, params) {
+  const {
+    chatId,
+    chat,
+    prompt,
+    referenceUrl,
+    size,
+    userModel,
+    variations,
+    userId,
+    startTime,
+    deepThinking,
+    chatHistory
+  } = params;
+
+  try {
+    // Сохраняем сообщение пользователя
+    const userMessage = await db.insert('messages', {
+      chat_id: chatId,
+      role: 'user',
+      content: prompt,
+      reference_url: referenceUrl || null
+    });
+
+    // Создаём placeholder
+    const assistantMessage = await db.insert('messages', {
+      chat_id: chatId,
+      role: 'assistant',
+      content: deepThinking ? 'Глубокий анализ...' : 'Быстрая генерация...'
+    });
+
+    // Отправляем ответ
+    res.json({
+      success: true,
+      chatId,
+      messageId: assistantMessage.id,
+      userMessageId: userMessage.id,
+      status: 'processing',
+      mode: 'quick'
+    });
+
+    // Запускаем генерацию
+    processGeneration({
+      chatId,
+      messageId: assistantMessage.id,
+      prompt,
+      answers: null,
+      referenceUrl,
+      size,
+      userModel,
+      variations,
+      userId,
+      startTime,
+      chatTitle: chat.title,
+      deepThinking,
+      chatHistory,
+      skipClarification: true
+    }).catch(error => {
+      log.error('Quick generation failed', { error: error.message });
+    });
+
+  } catch (error) {
+    log.error('Quick generate error', { error: error.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Ошибка быстрой генерации' });
+    }
+  }
+}
+
+/**
+ * Асинхронная обработка генерации - УЛУЧШЕННАЯ
+ * Поддерживает Deep Thinking режим
  */
 async function processGeneration(params) {
   const {
@@ -236,7 +354,9 @@ async function processGeneration(params) {
     variations,
     userId,
     startTime,
-    chatTitle
+    chatTitle,
+    deepThinking = false,
+    chatHistory = []
   } = params;
 
   try {
@@ -244,20 +364,53 @@ async function processGeneration(params) {
     broadcastToChat(chatId, {
       type: 'generation_progress',
       messageId,
-      status: 'enhancing_prompt',
-      message: 'Анализирую запрос...'
+      status: deepThinking ? 'deep_thinking' : 'enhancing_prompt',
+      message: deepThinking ? 'Глубокий анализ запроса...' : 'Анализирую запрос...'
     });
 
-    // 2. Улучшаем промпт через Claude (с учётом ответов если есть)
+    // 2. Улучшаем промпт через Claude
     let promptAnalysis;
-    if (answers && Object.keys(answers).length > 0) {
+
+    if (deepThinking) {
+      // Deep Thinking режим с extended thinking
+      promptAnalysis = await analyzeWithDeepThinking(prompt, {
+        hasReference: !!referenceUrl,
+        chatHistory,
+        onThinkingUpdate: (update) => {
+          // Отправляем процесс мышления клиенту
+          broadcastToChat(chatId, {
+            type: 'thinking_update',
+            messageId,
+            stage: update.stage,
+            message: update.message,
+            thinking: update.thinking?.substring(0, 500) // Ограничиваем размер
+          });
+        }
+      });
+
+      // Отправляем результат глубокого анализа
+      if (promptAnalysis.deep_analysis) {
+        broadcastToChat(chatId, {
+          type: 'deep_analysis_complete',
+          messageId,
+          analysis: promptAnalysis.deep_analysis,
+          thinking_process: promptAnalysis.thinking_process,
+          confidence: promptAnalysis.confidence_score
+        });
+      }
+
+    } else if (answers && Object.keys(answers).length > 0) {
+      // Обработка ответов на вопросы
       promptAnalysis = await processUserAnswers(prompt, answers, {
         hasReference: !!referenceUrl,
+        chatHistory,
         size
       });
     } else {
+      // Стандартный режим
       promptAnalysis = await enhancePrompt(prompt, {
         hasReference: !!referenceUrl,
+        chatHistory,
         size
       });
     }
@@ -273,7 +426,8 @@ async function processGeneration(params) {
       messageId,
       status: 'generating_image',
       message: `Генерирую изображение (${selectedModel})...`,
-      model: selectedModel
+      model: selectedModel,
+      enhanced_prompt: promptAnalysis.enhanced_prompt?.substring(0, 200)
     });
 
     // 4. Парсим размер
@@ -294,38 +448,57 @@ async function processGeneration(params) {
 
     const totalTime = Date.now() - startTime;
 
-    // 6. Обновляем сообщение с результатом
+    // 6. Формируем контент сообщения
+    let messageContent = promptAnalysis.reasoning || 'Готово!';
+
+    // Добавляем информацию о глубоком анализе если был
+    if (deepThinking && promptAnalysis.deep_analysis) {
+      messageContent = formatDeepAnalysisMessage(promptAnalysis);
+    }
+
+    // 7. Обновляем сообщение с результатом
     await db.update('messages', messageId, {
-      content: promptAnalysis.reasoning || 'Готово!',
+      content: messageContent,
       image_urls: result.images,
       model_used: selectedModel,
       generation_time_ms: totalTime,
-      enhanced_prompt: promptAnalysis.enhanced_prompt
+      enhanced_prompt: promptAnalysis.enhanced_prompt,
+      metadata: JSON.stringify({
+        deep_thinking: deepThinking,
+        detected_context: promptAnalysis.detected_context,
+        confidence_score: promptAnalysis.confidence_score,
+        deep_analysis: promptAnalysis.deep_analysis
+      })
     });
 
-    // 7. Обновляем название чата если это первое сообщение
+    // 8. Обновляем название чата если это первое сообщение
     if (chatTitle === 'Новый чат') {
       const newTitle = await generateChatTitle(prompt);
       await db.update('chats', chatId, { title: newTitle });
     }
 
-    // 8. Обновляем статистику
+    // 9. Обновляем статистику
     await incrementGenerationStats(userId, totalTime);
 
-    // 9. Уведомляем о завершении
+    // 10. Уведомляем о завершении
     broadcastToChat(chatId, {
       type: 'generation_complete',
       messageId,
       images: result.images,
       model: selectedModel,
       timeMs: totalTime,
-      enhancedPrompt: promptAnalysis.enhanced_prompt
+      enhancedPrompt: promptAnalysis.enhanced_prompt,
+      deepThinking: deepThinking,
+      deepAnalysis: promptAnalysis.deep_analysis,
+      detectedContext: promptAnalysis.detected_context
     });
 
     log.generation(userId, selectedModel, totalTime, {
       chatId,
       messageId,
-      imagesCount: result.images.length
+      imagesCount: result.images.length,
+      deepThinking,
+      detectedContext: promptAnalysis.detected_context
     });
 
   } catch (error) {
@@ -347,6 +520,39 @@ async function processGeneration(params) {
       error: error.message
     });
   }
+}
+
+/**
+ * Форматирование сообщения с результатами глубокого анализа
+ */
+function formatDeepAnalysisMessage(analysis) {
+  const parts = [];
+
+  if (analysis.deep_analysis) {
+    const da = analysis.deep_analysis;
+
+    if (da.goal_understanding) {
+      parts.push(`**Цель:** ${da.goal_understanding}`);
+    }
+
+    if (da.target_audience) {
+      parts.push(`**Аудитория:** ${da.target_audience}`);
+    }
+
+    if (da.psychological_hooks?.length > 0) {
+      parts.push(`**Психологические триггеры:** ${da.psychological_hooks.join(', ')}`);
+    }
+
+    if (da.recommendations?.length > 0) {
+      parts.push(`**Рекомендации:** ${da.recommendations.join('; ')}`);
+    }
+  }
+
+  if (analysis.reasoning) {
+    parts.push(`\n${analysis.reasoning}`);
+  }
+
+  return parts.join('\n\n') || 'Глубокий анализ завершён';
 }
 
 /**
@@ -413,7 +619,7 @@ router.get('/presets', async (req, res) => {
         name: preset.name,
         width: preset.width,
         height: preset.height,
-        label: `${preset.name} (${preset.width}×${preset.height})`
+        label: `${preset.name} (${preset.width}x${preset.height})`
       });
       return acc;
     }, {});
@@ -423,6 +629,50 @@ router.get('/presets', async (req, res) => {
   } catch (error) {
     log.error('Get presets error', { error: error.message });
     res.status(500).json({ error: 'Ошибка получения пресетов' });
+  }
+});
+
+/**
+ * POST /api/generate/analyze
+ * Только анализ запроса без генерации (для превью)
+ */
+router.post('/analyze', async (req, res) => {
+  try {
+    const { prompt, reference_url, deep_thinking = false } = req.body;
+
+    if (!prompt || prompt.trim().length === 0) {
+      return res.status(400).json({ error: 'Введите описание' });
+    }
+
+    let analysis;
+    if (deep_thinking) {
+      analysis = await analyzeWithDeepThinking(prompt, {
+        hasReference: !!reference_url
+      });
+    } else {
+      analysis = await enhancePrompt(prompt, {
+        hasReference: !!reference_url
+      });
+    }
+
+    res.json({
+      success: true,
+      analysis: {
+        detected_context: analysis.detected_context,
+        creative_type: analysis.creative_type,
+        suggested_model: analysis.suggested_model,
+        needs_text: analysis.needs_text,
+        text_content: analysis.text_content,
+        enhanced_prompt_preview: analysis.enhanced_prompt?.substring(0, 300),
+        reasoning: analysis.reasoning,
+        deep_analysis: analysis.deep_analysis,
+        confidence_score: analysis.confidence_score
+      }
+    });
+
+  } catch (error) {
+    log.error('Analyze error', { error: error.message });
+    res.status(500).json({ error: 'Ошибка анализа' });
   }
 });
 

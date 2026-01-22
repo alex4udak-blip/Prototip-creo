@@ -1,6 +1,123 @@
 import { useState } from 'react';
-import { Download, Copy, Check, ExternalLink, AlertCircle, Sparkles, User, Maximize2 } from 'lucide-react';
+import { Download, Copy, Check, ExternalLink, AlertCircle, Sparkles, User, Maximize2, Brain, Wand2, ImageIcon, CheckCircle2 } from 'lucide-react';
 import { ClarificationQuestions } from './ClarificationQuestions';
+import { GENERATION_PHASES, PHASE_LABELS } from '../../hooks/useChat';
+
+/**
+ * Generation Status Indicator Component
+ * Beautiful animated status like Claude/Genspark
+ */
+function GenerationStatus({ phase, progress }) {
+  const phaseConfig = {
+    [GENERATION_PHASES.STARTING]: {
+      icon: Sparkles,
+      color: 'text-accent',
+      bgColor: 'bg-accent/10'
+    },
+    [GENERATION_PHASES.ANALYZING]: {
+      icon: Brain,
+      color: 'text-blue-400',
+      bgColor: 'bg-blue-500/10'
+    },
+    [GENERATION_PHASES.ENHANCING]: {
+      icon: Wand2,
+      color: 'text-purple-400',
+      bgColor: 'bg-purple-500/10'
+    },
+    [GENERATION_PHASES.GENERATING]: {
+      icon: ImageIcon,
+      color: 'text-green-400',
+      bgColor: 'bg-green-500/10'
+    },
+    [GENERATION_PHASES.FINALIZING]: {
+      icon: CheckCircle2,
+      color: 'text-emerald-400',
+      bgColor: 'bg-emerald-500/10'
+    },
+    [GENERATION_PHASES.ERROR]: {
+      icon: AlertCircle,
+      color: 'text-error',
+      bgColor: 'bg-error/10'
+    }
+  };
+
+  const config = phaseConfig[phase] || phaseConfig[GENERATION_PHASES.GENERATING];
+  const Icon = config.icon;
+  const label = PHASE_LABELS[phase] || 'Обработка...';
+
+  return (
+    <div className={`flex items-center gap-3 p-4 rounded-xl ${config.bgColor} animate-fade-in`}>
+      {/* Animated icon */}
+      <div className={`relative ${config.color}`}>
+        <Icon className="w-5 h-5 animate-pulse" />
+        {/* Rotating ring */}
+        <div className="absolute inset-0 -m-1">
+          <svg className="w-7 h-7 animate-spin-slow" viewBox="0 0 24 24">
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeDasharray="15 85"
+              strokeLinecap="round"
+              className="opacity-30"
+            />
+          </svg>
+        </div>
+      </div>
+
+      {/* Text */}
+      <div className="flex-1">
+        <p className={`text-sm font-medium ${config.color}`}>
+          {label}
+        </p>
+        {progress && (
+          <p className="text-xs text-text-muted mt-0.5 animate-fade-in">
+            {progress}
+          </p>
+        )}
+      </div>
+
+      {/* Animated dots */}
+      <div className="flex gap-1">
+        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-40 animate-bounce-dot-1" style={{ color: config.color.replace('text-', '') }}></span>
+        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-40 animate-bounce-dot-2" style={{ color: config.color.replace('text-', '') }}></span>
+        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-40 animate-bounce-dot-3" style={{ color: config.color.replace('text-', '') }}></span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Phase Progress Bar
+ */
+function PhaseProgress({ phase }) {
+  const phases = [
+    GENERATION_PHASES.ANALYZING,
+    GENERATION_PHASES.ENHANCING,
+    GENERATION_PHASES.GENERATING,
+    GENERATION_PHASES.FINALIZING
+  ];
+
+  const currentIndex = phases.indexOf(phase);
+
+  return (
+    <div className="flex items-center gap-1 mt-3">
+      {phases.map((p, index) => (
+        <div
+          key={p}
+          className={`h-1 flex-1 rounded-full transition-all duration-500 ${
+            index <= currentIndex
+              ? 'bg-accent'
+              : 'bg-bg-hover'
+          }`}
+        />
+      ))}
+    </div>
+  );
+}
 
 export function Message({ message }) {
   const isUser = message.role === 'user';
@@ -62,8 +179,8 @@ export function Message({ message }) {
                 ? 'bg-accent/20 border border-accent/30'
                 : 'bg-bg-secondary border border-border'
             }`}>
-              {/* Text content */}
-              {message.content && (
+              {/* Text content (only if not generating and has content) */}
+              {message.content && !message.isGenerating && (
                 <p className="text-text-primary whitespace-pre-wrap">
                   {message.content}
                 </p>
@@ -84,13 +201,13 @@ export function Message({ message }) {
 
               {/* Generated images */}
               {message.imageUrls?.length > 0 && (
-                <div className={`grid gap-2 mt-3 ${
+                <div className={`grid gap-2 ${message.content ? 'mt-3' : ''} ${
                   message.imageUrls.length === 1 ? 'grid-cols-1' :
                   message.imageUrls.length === 2 ? 'grid-cols-2' :
                   'grid-cols-2'
                 }`}>
                   {message.imageUrls.map((url, index) => (
-                    <div key={index} className="relative group rounded-lg overflow-hidden">
+                    <div key={index} className="relative group rounded-lg overflow-hidden animate-scale-in">
                       <img
                         src={url}
                         alt={`Generated ${index + 1}`}
@@ -135,22 +252,21 @@ export function Message({ message }) {
                 </div>
               )}
 
-              {/* Generating indicator */}
+              {/* Beautiful Generation Status - NEW! */}
               {message.isGenerating && (
-                <div className="mt-3 flex items-center gap-2">
-                  <div className="typing-indicator">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                  </div>
-                  <span className="text-sm text-text-muted">Генерирую...</span>
+                <div className="min-w-[280px]">
+                  <GenerationStatus
+                    phase={message.generationPhase}
+                    progress={message.generationProgress}
+                  />
+                  <PhaseProgress phase={message.generationPhase} />
                 </div>
               )}
             </div>
 
             {/* Meta info (model, time) */}
             {(message.modelUsed || message.generationTimeMs) && (
-              <div className="flex items-center gap-3 mt-2 text-xs text-text-muted">
+              <div className="flex items-center gap-3 mt-2 text-xs text-text-muted animate-fade-in">
                 {message.modelUsed && (
                   <span className="badge-accent">
                     {message.modelUsed}
@@ -184,13 +300,13 @@ export function Message({ message }) {
       {/* Image Preview Modal */}
       {previewImage && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 animate-fade-in"
           onClick={() => setPreviewImage(null)}
         >
           <img
             src={previewImage}
             alt="Preview"
-            className="max-w-full max-h-full object-contain rounded-lg"
+            className="max-w-full max-h-full object-contain rounded-lg animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           />
 

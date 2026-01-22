@@ -4,6 +4,29 @@ import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
 
 /**
+ * MODEL SELECTION MATRIX - Based on task requirements
+ *
+ * RULE 1: TEXT ON IMAGE
+ *   - Long text (>4 words) or infographic: Google Nano Banana Pro
+ *   - Short text (1-4 words): Google Nano Banana
+ *   - No Google API: Fallback to Runware FLUX Dev (text will be imperfect)
+ *
+ * RULE 2: REFERENCE IMAGE
+ *   - Edit/modify reference: Runware Kontext
+ *   - Style transfer: Runware FLUX Dev with style reference
+ *   - Character consistency: Google Nano Banana Pro (Identity Lock)
+ *
+ * RULE 3: SPEED vs QUALITY
+ *   - Quick draft/meme: Runware Schnell
+ *   - High quality: Runware FLUX Dev
+ *   - Default balance: Runware FLUX Dev
+ *
+ * COMBINATION STRATEGY:
+ *   - Claude ALWAYS analyzes the prompt first
+ *   - Then routes to best generation model
+ */
+
+/**
  * Execution Strategies based on Universal Creative Engine
  */
 export const STRATEGIES = {
@@ -127,6 +150,17 @@ export function selectStrategy(promptAnalysis, options = {}) {
 /**
  * Автоматический выбор лучшей модели для задачи
  * Based on Universal Creative Engine rules
+ *
+ * DECISION TREE:
+ * 1. User explicit choice → use it
+ * 2. Infographic/diagram → Google Nano Pro (REQUIRED)
+ * 3. Long text (>4 words) → Google Nano Pro
+ * 4. Short text (1-4 words) → Google Nano
+ * 5. Reference + edit needed → Runware Kontext
+ * 6. Reference + character consistency → Google Nano Pro (Identity Lock)
+ * 7. Reference + style transfer → Runware FLUX Dev
+ * 8. Quick draft/meme → Runware Schnell
+ * 9. Default → Runware FLUX Dev
  */
 export function selectModel(promptAnalysis, options = {}) {
   const { hasReference = false, userPreference = 'auto' } = options;
@@ -138,75 +172,124 @@ export function selectModel(promptAnalysis, options = {}) {
   }
 
   const creativeType = analyzeCreativeType(promptAnalysis);
+  const hasGoogleApi = !!config.googleApiKey;
+  const suggestedModel = promptAnalysis.suggested_model || '';
 
-  // RULE 1: Infographic ALWAYS uses Nano Banana Pro
+  // Логируем входные данные для отладки
+  log.debug('Model selection input', {
+    creativeType,
+    suggestedModel,
+    hasReference,
+    needsText: promptAnalysis.needs_text,
+    textContent: promptAnalysis.text_content?.substring(0, 20),
+    referencePurpose: promptAnalysis.reference_purpose,
+    needsCharacterConsistency: promptAnalysis.needs_character_consistency,
+    hasGoogleApi
+  });
+
+  // PRIORITY 1: Infographic ALWAYS uses Nano Banana Pro
   if (creativeType === CREATIVE_TYPES.INFOGRAPHIC) {
-    if (config.googleApiKey) {
-      log.debug('Selected google-nano-pro for infographic (REQUIRED)');
+    if (hasGoogleApi) {
+      log.info('MODEL DECISION: google-nano-pro for infographic (REQUIRED)', { reason: 'infographic' });
       return 'google-nano-pro';
     }
-    log.warn('Infographic requested but Google API not available!');
+    log.warn('Infographic requested but Google API not available! Using FLUX Dev fallback');
+    return 'runware-flux-dev';
   }
 
-  // RULE 2: Text on image → Nano Banana Pro (best text rendering)
+  // PRIORITY 2: Text on image — critical for readability
   if (promptAnalysis.needs_text && promptAnalysis.text_content) {
-    const textLength = (promptAnalysis.text_content || '').split(' ').length;
+    const textLength = (promptAnalysis.text_content || '').split(/\s+/).filter(w => w.length > 0).length;
 
-    // Text longer than 4 words — definitely Nano Banana
-    if (textLength > 4 && config.googleApiKey) {
-      log.debug('Selected google-nano-pro for long text rendering', {
-        textContent: promptAnalysis.text_content?.substring(0, 30),
-        wordCount: textLength
-      });
-      return 'google-nano-pro';
+    // Long text (>4 words) — Google Nano Pro is MUCH better
+    if (textLength > 4) {
+      if (hasGoogleApi) {
+        log.info('MODEL DECISION: google-nano-pro for long text', {
+          reason: 'long_text',
+          wordCount: textLength,
+          text: promptAnalysis.text_content?.substring(0, 30)
+        });
+        return 'google-nano-pro';
+      }
+      log.warn('Long text needs Google API for quality! Falling back to FLUX Dev');
+      return 'runware-flux-dev';
     }
 
-    // Shorter text — also prefer Nano Banana if available
-    if (config.googleApiKey) {
-      log.debug('Selected google-nano for text rendering', {
-        textContent: promptAnalysis.text_content?.substring(0, 30)
+    // Short text (1-4 words) — Google Nano is good enough
+    if (hasGoogleApi) {
+      log.info('MODEL DECISION: google-nano for short text', {
+        reason: 'short_text',
+        wordCount: textLength,
+        text: promptAnalysis.text_content?.substring(0, 30)
       });
       return 'google-nano';
     }
 
-    log.warn('Text needed but Google API not available, falling back to Runware');
+    log.warn('Text rendering needs Google API! Falling back to FLUX Dev (text may be imperfect)');
+    return 'runware-flux-dev';
   }
 
-  // RULE 3: Character consistency with reference → Nano Banana Pro (Identity Lock)
-  if (hasReference && promptAnalysis.needs_character_consistency && config.googleApiKey) {
-    log.debug('Selected google-nano-pro for character consistency (Identity Lock)');
-    return 'google-nano-pro';
-  }
-
-  // RULE 4: Reference for editing → Runware Kontext
+  // PRIORITY 3: Reference image handling
   if (hasReference) {
-    if (promptAnalysis.suggested_model === 'kontext') {
-      log.debug('Selected runware-kontext for reference editing');
+    // Claude suggested Kontext — trust it for editing
+    if (suggestedModel === 'kontext' || suggestedModel === 'flux-kontext') {
+      log.info('MODEL DECISION: runware-kontext for reference editing', { reason: 'claude_suggested_kontext' });
       return 'runware-kontext';
     }
-    // Style transfer — use Redux/IP-Adapter through FLUX Dev
-    if (promptAnalysis.reference_purpose === 'style') {
-      log.debug('Selected runware-flux-dev with style reference');
+
+    // Character consistency with reference — Google Identity Lock
+    if (promptAnalysis.needs_character_consistency && hasGoogleApi) {
+      log.info('MODEL DECISION: google-nano-pro for character consistency', { reason: 'identity_lock' });
+      return 'google-nano-pro';
+    }
+
+    // Reference purpose determines model
+    const purpose = promptAnalysis.reference_purpose || 'edit';
+
+    if (purpose === 'style') {
+      log.info('MODEL DECISION: runware-flux-dev for style transfer', { reason: 'style_reference' });
       return 'runware-flux-dev';
     }
-    log.debug('Selected runware-kontext for reference-based generation');
+
+    if (purpose === 'edit' || purpose === 'modify' || purpose === 'composition') {
+      log.info('MODEL DECISION: runware-kontext for reference editing', { reason: 'edit_reference' });
+      return 'runware-kontext';
+    }
+
+    // Default for reference — Kontext
+    log.info('MODEL DECISION: runware-kontext (default for reference)', { reason: 'has_reference' });
     return 'runware-kontext';
   }
 
-  // RULE 5: Memes — speed over quality
+  // PRIORITY 4: Speed requirements
   if (creativeType === CREATIVE_TYPES.MEME) {
-    log.debug('Selected runware-schnell for meme (speed priority)');
+    log.info('MODEL DECISION: runware-schnell for meme', { reason: 'meme_speed' });
     return 'runware-schnell';
   }
 
-  // RULE 6: Claude suggests flux-schnell (quick draft)
-  if (promptAnalysis.suggested_model === 'flux-schnell') {
-    log.debug('Selected runware-schnell for quick draft');
+  if (suggestedModel === 'flux-schnell' || suggestedModel === 'schnell') {
+    log.info('MODEL DECISION: runware-schnell for quick draft', { reason: 'claude_suggested_schnell' });
     return 'runware-schnell';
   }
 
-  // RULE 7: Default — FLUX Dev (quality + speed balance)
-  log.debug('Selected runware-flux-dev as default');
+  // PRIORITY 5: Claude's suggestion (if not handled above)
+  if (suggestedModel === 'nano-banana-pro' && hasGoogleApi) {
+    log.info('MODEL DECISION: google-nano-pro (Claude suggested)', { reason: 'claude_suggested' });
+    return 'google-nano-pro';
+  }
+
+  if (suggestedModel === 'nano-banana' && hasGoogleApi) {
+    log.info('MODEL DECISION: google-nano (Claude suggested)', { reason: 'claude_suggested' });
+    return 'google-nano';
+  }
+
+  if (suggestedModel === 'flux-dev') {
+    log.info('MODEL DECISION: runware-flux-dev (Claude suggested)', { reason: 'claude_suggested' });
+    return 'runware-flux-dev';
+  }
+
+  // PRIORITY 6: Default — FLUX Dev for quality
+  log.info('MODEL DECISION: runware-flux-dev (default)', { reason: 'default_quality' });
   return 'runware-flux-dev';
 }
 
@@ -334,6 +417,15 @@ function extractBackgroundPrompt(prompt) {
 
 /**
  * Генерация изображения через выбранную модель
+ *
+ * Routing logic:
+ * - google-* models -> generateWithGoogle
+ * - runware-* models -> generateWithRunware
+ *
+ * Reference handling:
+ * - Google: может использовать для Identity Lock
+ * - Runware Kontext: для редактирования
+ * - Runware FLUX: для style transfer
  */
 export async function generateImage(prompt, options = {}) {
   const {
@@ -346,7 +438,7 @@ export async function generateImage(prompt, options = {}) {
     textContent = null,
     textStyle = null,
     useStyleReference = false,
-    editStrength = 0.7
+    strength = 0.7  // Renamed from editStrength for clarity
   } = options;
 
   log.info('Starting image generation', {
@@ -355,7 +447,7 @@ export async function generateImage(prompt, options = {}) {
     height,
     hasReference: !!referenceUrl,
     hasText: !!textContent,
-    strategy: options.strategy || 'single'
+    strength: referenceUrl ? strength : null
   });
 
   const startTime = Date.now();
@@ -364,26 +456,27 @@ export async function generateImage(prompt, options = {}) {
     let result;
 
     // Выбираем провайдера по модели
-    if (model.startsWith('google')) {
-      // Google Nano Banana
+    if (model && model.startsWith('google')) {
+      // Google Nano Banana / Nano Banana Pro
       result = await generateWithGoogle(prompt, {
         model,
         width,
         height,
         textContent,
-        textStyle
+        textStyle,
+        referenceUrl  // Google может использовать для Identity Lock
       });
     } else {
-      // Runware (FLUX)
+      // Runware (FLUX Schnell, FLUX Dev, Kontext)
       result = await generateWithRunware(prompt, {
-        model,
+        model: model || 'runware-flux-dev',
         negativePrompt,
         width,
         height,
         numImages,
         referenceUrl,
-        useStyleReference,
-        editStrength
+        strength,  // Для img2img и Kontext
+        useStyleReference
       });
     }
 
@@ -392,7 +485,7 @@ export async function generateImage(prompt, options = {}) {
     log.info('Image generation complete', {
       model,
       totalTime,
-      numImages: result.images.length
+      numImages: result.images?.length || 0
     });
 
     return {
@@ -403,12 +496,47 @@ export async function generateImage(prompt, options = {}) {
   } catch (error) {
     log.error('Image generation failed', {
       model,
-      error: error.message
+      error: error.message,
+      stack: error.stack?.substring(0, 200)
     });
 
-    // Пробуем fallback если основная модель упала
-    if (model !== 'runware-flux-dev') {
-      log.info('Attempting fallback to runware-flux-dev');
+    const timeElapsed = Date.now() - startTime;
+
+    // Fallback strategy: try alternative model
+    const shouldFallback = model !== 'runware-flux-dev' && !model?.startsWith('google');
+
+    if (shouldFallback) {
+      log.info('Attempting fallback to runware-flux-dev', { originalModel: model });
+
+      try {
+        const fallbackResult = await generateWithRunware(prompt, {
+          model: 'runware-flux-dev',
+          negativePrompt,
+          width,
+          height,
+          numImages
+          // Note: не передаём референс в fallback — может быть причиной ошибки
+        });
+
+        return {
+          ...fallbackResult,
+          totalTime: Date.now() - startTime,
+          fallback: true,
+          originalModel: model,
+          fallbackReason: error.message
+        };
+      } catch (fallbackError) {
+        log.error('Fallback also failed', {
+          error: fallbackError.message,
+          originalError: error.message
+        });
+      }
+    }
+
+    // If Google failed, try Runware as fallback
+    if (model?.startsWith('google') && config.runwareApiKey) {
+      log.info('Google failed, trying Runware fallback');
+
       try {
         const fallbackResult = await generateWithRunware(prompt, {
           model: 'runware-flux-dev',
@@ -422,10 +550,11 @@ export async function generateImage(prompt, options = {}) {
           ...fallbackResult,
           totalTime: Date.now() - startTime,
           fallback: true,
-          originalModel: model
+          originalModel: model,
+          fallbackReason: `Google API error: ${error.message}`
         };
       } catch (fallbackError) {
-        log.error('Fallback also failed', { error: fallbackError.message });
+        log.error('Runware fallback also failed', { error: fallbackError.message });
       }
     }
 
