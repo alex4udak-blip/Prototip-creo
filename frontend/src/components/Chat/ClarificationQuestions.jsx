@@ -316,21 +316,25 @@ function QuestionBlock({
         {/* Single Choice */}
         {type === 'single_choice' && options && (
           <div className="flex flex-wrap gap-2">
-            {options.map(option => {
-              const isSelected = answer === option.label || answer === option.value;
+            {options.map((option, optIdx) => {
+              // Нормализуем option — может быть объект или строка
+              const optionLabel = typeof option === 'string' ? option : option.label;
+              const optionValue = typeof option === 'string' ? option : (option.value || option.label);
+              const isSelected = answer === optionLabel || answer === optionValue;
+
               return (
                 <button
-                  key={option.value}
-                  onClick={() => onSelect(option.label)}
+                  key={optionValue || optIdx}
+                  onClick={() => !isGenerating && onSelect(optionLabel)}
                   disabled={isGenerating}
-                  className={`px-3 py-1.5 text-sm rounded-lg border transition-all ${
+                  className={`px-3 py-2 text-sm rounded-xl border-2 transition-all cursor-pointer ${
                     isSelected
-                      ? 'bg-accent border-accent text-white'
-                      : 'bg-bg-primary border-border hover:border-accent/50 text-text-secondary hover:text-text-primary'
-                  } ${isGenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      ? 'bg-accent border-accent text-white shadow-lg shadow-accent/25'
+                      : 'bg-bg-primary border-border hover:border-accent hover:bg-accent/5 text-text-secondary hover:text-text-primary'
+                  } ${isGenerating ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}`}
                 >
-                  {isSelected && <Check className="w-3 h-3 inline mr-1" />}
-                  {option.label}
+                  {isSelected && <Check className="w-3.5 h-3.5 inline mr-1.5" />}
+                  {optionLabel}
                 </button>
               );
             })}
@@ -340,21 +344,25 @@ function QuestionBlock({
         {/* Multiple Choice */}
         {type === 'multiple_choice' && options && (
           <div className="flex flex-wrap gap-2">
-            {options.map(option => {
-              const selected = Array.isArray(answer) && answer.includes(option.label);
+            {options.map((option, optIdx) => {
+              // Нормализуем option
+              const optionLabel = typeof option === 'string' ? option : option.label;
+              const optionValue = typeof option === 'string' ? option : (option.value || option.label);
+              const selected = Array.isArray(answer) && answer.includes(optionLabel);
+
               return (
                 <button
-                  key={option.value}
-                  onClick={() => onMultiSelect(option.label)}
+                  key={optionValue || optIdx}
+                  onClick={() => !isGenerating && onMultiSelect(optionLabel)}
                   disabled={isGenerating}
-                  className={`px-3 py-1.5 text-sm rounded-lg border transition-all ${
+                  className={`px-3 py-2 text-sm rounded-xl border-2 transition-all cursor-pointer ${
                     selected
-                      ? 'bg-accent border-accent text-white'
-                      : 'bg-bg-primary border-border hover:border-accent/50 text-text-secondary hover:text-text-primary'
-                  } ${isGenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      ? 'bg-accent border-accent text-white shadow-lg shadow-accent/25'
+                      : 'bg-bg-primary border-border hover:border-accent hover:bg-accent/5 text-text-secondary hover:text-text-primary'
+                  } ${isGenerating ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}`}
                 >
-                  {selected && <Check className="w-3 h-3 inline mr-1" />}
-                  {option.label}
+                  {selected && <Check className="w-3.5 h-3.5 inline mr-1.5" />}
+                  {optionLabel}
                 </button>
               );
             })}

@@ -1,5 +1,6 @@
 import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
+import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
@@ -138,9 +139,12 @@ export async function generateWithRunware(prompt, options = {}) {
   const startTime = Date.now();
 
   try {
-    // Runware API требует массив задач
+    // Runware API требует массив задач с уникальным taskUUID
+    const taskUUID = randomUUID();
+
     const requestPayload = [{
       taskType: 'imageInference',
+      taskUUID: taskUUID,
       ...payload
     }];
 

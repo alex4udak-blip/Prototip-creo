@@ -175,7 +175,8 @@ export const useChatStore = create((set, get) => ({
 
   generate: async (prompt, answers = null, options = {}) => {
     const { currentChat, attachedReference, settings, pendingClarification } = get();
-    const { deepThinking = settings.deepThinking, quickGenerate = false } = options;
+    // deepThinking берётся из options или из режима 'deep'
+    const { deepThinking = (settings.mode === 'deep'), quickGenerate = false } = options;
 
     // СРАЗУ добавляем сообщение пользователя в чат!
     const tempUserMessageId = `user-${Date.now()}`;
@@ -187,6 +188,9 @@ export const useChatStore = create((set, get) => ({
       createdAt: new Date().toISOString()
     };
 
+    // Сохраняем referenceUrl до того как сбросим attachedReference
+    const referenceUrl = attachedReference?.url;
+
     // Добавляем сообщение пользователя немедленно
     set(state => ({
       messages: [...state.messages, userMessage],
@@ -195,7 +199,7 @@ export const useChatStore = create((set, get) => ({
       generationProgress: null,
       generationMode: deepThinking ? 'deep_thinking' : (quickGenerate ? 'quick' : 'standard'),
       deepThinkingData: deepThinking ? { stage: 'starting', message: 'Начинаю глубокий анализ...' } : null,
-      attachedReference: null
+      attachedReference: null // Сбрасываем после сохранения URL
     }));
 
     try {
@@ -207,7 +211,7 @@ export const useChatStore = create((set, get) => ({
       const response = await generateAPI.generate({
         chat_id: currentChat?.id,
         prompt: actualPrompt,
-        reference_url: attachedReference?.url,
+        reference_url: referenceUrl,
         size: settings.size,
         model: settings.model,
         variations: settings.variations,
