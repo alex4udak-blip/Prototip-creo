@@ -157,31 +157,34 @@ Text rendering rules:
     // Подготавливаем контент для запроса
     const contentParts = [];
 
-    // Если есть референс — добавляем его первым для Style Transfer
+    // Если есть референс — добавляем его первым для Identity Lock
     if (referenceUrl) {
       const referencePart = await prepareReferenceForGoogle(referenceUrl);
       if (referencePart) {
         contentParts.push(referencePart);
-        // УЛУЧШЕННЫЙ промпт для Style Transfer согласно документации Google
-        // Нужно чётко указать что делать со стилем референса
-        finalPrompt = `STYLE TRANSFER TASK:
-Look at the reference image above. Apply its EXACT visual style to create a new image.
+        // IDENTITY LOCK промпт - как Genspark!
+        // Сохраняем персонажа, стиль, элементы - меняем только текст/контент
+        finalPrompt = `IDENTITY LOCK TASK - Create a variation of this reference image.
 
-STYLE ELEMENTS TO COPY FROM REFERENCE:
-- Color palette and color grading
-- Lighting style and atmosphere
-- Visual aesthetic (3D, neon, premium, etc.)
-- Typography style if present
-- Composition approach
-- Overall mood and feeling
+CRITICAL - PRESERVE THESE ELEMENTS FROM THE REFERENCE:
+1. SAME CHARACTER/PERSON - keep the exact same person, their appearance, pose style, clothing
+2. SAME VISUAL STYLE - 3D render quality, lighting, color grading
+3. SAME BRAND ELEMENTS - logos, UI elements, gift boxes, treasure chests if present
+4. SAME BACKGROUND STYLE - warehouse, neon, casino atmosphere
+5. SAME COMPOSITION APPROACH - layout structure, element placement
 
-DO NOT copy the content/subject - create NEW content with the SAME STYLE.
+WHAT TO CHANGE:
+- Update text/copy as specified in the request
+- Adapt for the target language/market
+- Minor composition adjustments for new text
 
-NEW IMAGE REQUIREMENTS:
+THE NEW IMAGE MUST LOOK LIKE IT'S FROM THE SAME AD CAMPAIGN AS THE REFERENCE.
+
+REQUEST:
 ${finalPrompt}
 
-CRITICAL: The new image must look like it belongs to the same design series as the reference.`;
-        log.info('Added reference for Style Transfer', { referenceUrl });
+Generate a promotional banner that maintains visual consistency with the reference.`;
+        log.info('Added reference for Identity Lock', { referenceUrl });
       }
     }
 
