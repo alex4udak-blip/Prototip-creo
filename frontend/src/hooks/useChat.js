@@ -64,7 +64,7 @@ export const useChatStore = create((set, get) => ({
     model: 'auto',
     size: '1200x628',
     variations: 1,
-    deepThinking: false // По умолчанию выключен
+    mode: 'smart' // 'smart' | 'fast' | 'deep'
   },
 
   // Пресеты
@@ -365,25 +365,49 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
-  // Быстрая генерация без вопросов - НОВАЯ
-  quickGenerate: async (options = {}) => {
+  /**
+   * Быстрая генерация без вопросов
+   * Может вызываться:
+   * 1. Напрямую с промптом (из InputArea в режиме fast)
+   * 2. Для пропуска вопросов (из ClarificationQuestions)
+   */
+  quickGenerate: async (promptOrOptions = {}) => {
     const { pendingClarification, currentChat, attachedReference, settings } = get();
-    if (!pendingClarification) return;
 
+    // Определяем режим вызова
+    const isDirectPrompt = typeof promptOrOptions === 'string';
+    const prompt = isDirectPrompt ? promptOrOptions : pendingClarification?.originalPrompt;
+    const options = isDirectPrompt ? {} : promptOrOptions;
     const { deepThinking = false } = options;
 
-    set({
+    if (!prompt) {
+      console.error('quickGenerate: no prompt available');
+      return;
+    }
+
+    // СРАЗУ добавляем сообщение пользователя
+    const tempUserMessageId = `user-${Date.now()}`;
+    const userMessage = {
+      id: tempUserMessageId,
+      role: 'user',
+      content: prompt,
+      referenceUrl: attachedReference?.url,
+      createdAt: new Date().toISOString()
+    };
+
+    set(state => ({
+      messages: [...state.messages, userMessage],
       isGenerating: true,
       generationPhase: deepThinking ? GENERATION_PHASES.DEEP_THINKING : GENERATION_PHASES.STARTING,
       generationMode: 'quick',
       deepThinkingData: deepThinking ? { stage: 'starting', message: 'Быстрый глубокий анализ...' } : null,
       pendingClarification: null
-    });
+    }));
 
     try {
       const response = await generateAPI.generate({
         chat_id: currentChat?.id,
-        prompt: pendingClarification.originalPrompt,
+        prompt: prompt,
         reference_url: attachedReference?.url,
         size: settings.size,
         model: settings.model,
@@ -392,6 +416,12 @@ export const useChatStore = create((set, get) => ({
         deep_thinking: deepThinking
       });
 
+      // Обновляем ID сообщения пользователя
+      if (response.userMessageId) {
+        get().updateMessage(tempUserMessageId, { id: response.userMessageId });
+      }
+
+      // Добавляем placeholder для ответа AI
       const assistantMessageId = response.messageId || `assistant-${Date.now()}`;
       const assistantMessage = {
         id: assistantMessageId,
