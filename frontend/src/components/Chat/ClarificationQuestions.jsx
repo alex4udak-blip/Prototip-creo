@@ -56,7 +56,7 @@ export function ClarificationQuestions({ clarification, messageId }) {
 
   if (!clarification?.questions) return null;
 
-  const { questions, summary, detected_context, thinking, known_info } = clarification;
+  const { questions, summary, detected_context, thinking, known_info, vision_analysis, reference_analysis } = clarification;
 
   // Обработчики выбора
   const handleSelect = (questionId, value) => {
@@ -189,6 +189,41 @@ export function ClarificationQuestions({ clarification, messageId }) {
 
         {/* Саммари */}
         <p className="mt-2 text-sm text-text-primary">{summary}</p>
+
+        {/* Vision анализ референса */}
+        {(vision_analysis || reference_analysis) && (
+          <div className="mt-3 p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              <span className="text-xs font-medium text-blue-400">Анализ референса</span>
+            </div>
+            <p className="text-sm text-text-primary">
+              {vision_analysis?.summary || reference_analysis}
+            </p>
+            {vision_analysis && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {vision_analysis.style && (
+                  <span className="px-2 py-0.5 text-xs bg-purple-500/10 text-purple-400 rounded-full">
+                    {vision_analysis.style}
+                  </span>
+                )}
+                {vision_analysis.format && (
+                  <span className="px-2 py-0.5 text-xs bg-cyan-500/10 text-cyan-400 rounded-full">
+                    {vision_analysis.format}
+                  </span>
+                )}
+                {vision_analysis.text_found?.length > 0 && (
+                  <span className="px-2 py-0.5 text-xs bg-yellow-500/10 text-yellow-400 rounded-full">
+                    Текст: {vision_analysis.text_found.slice(0, 2).join(', ')}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Известная информация */}
         {known_info && Object.values(known_info).some(v => v) && (

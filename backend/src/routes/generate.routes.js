@@ -42,20 +42,22 @@ router.post('/clarify', async (req, res) => {
       chatHistory = messages.reverse();
     }
 
-    // Проверяем нужны ли вопросы (умный анализ)
+    // Проверяем нужны ли вопросы (умный анализ) + Vision для референса
     const clarificationResult = await checkNeedsClarification(prompt, {
       hasReference: !!reference_url,
+      referenceUrl: reference_url,  // Передаём URL для Vision анализа
       chatHistory,
       forceQuestions: force_questions
     });
 
-    // Добавляем информацию о детектированном контексте
+    // Добавляем информацию о детектированном контексте и Vision анализе
     res.json({
       ...clarificationResult,
       prompt_analysis: {
         detected_context: clarificationResult.detected_context,
         known_info: clarificationResult.known_info,
-        thinking: clarificationResult.thinking
+        thinking: clarificationResult.thinking,
+        vision_analysis: clarificationResult.vision_analysis  // Vision результат
       }
     });
 
@@ -144,6 +146,7 @@ router.post('/', checkGenerationLimit, async (req, res) => {
     if (!answers && !skip_clarification) {
       const clarificationResult = await checkNeedsClarification(prompt, {
         hasReference: !!reference_url,
+        referenceUrl: reference_url,  // Для Vision анализа
         chatHistory
       });
 

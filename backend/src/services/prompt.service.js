@@ -250,11 +250,136 @@ function extractKnownInfo(chatHistory) {
 }
 
 /**
+ * Анализ референса через Claude Vision
+ * Возвращает детальное описание того что на картинке
+ */
+export async function analyzeReferenceImage(referenceUrl) {
+  if (!anthropic || !referenceUrl) {
+    return null;
+  }
+
+  try {
+    log.debug('Analyzing reference image with Vision', { url: referenceUrl?.substring(0, 50) });
+
+    // Подготавливаем изображение для Claude Vision
+    let imageContent;
+
+    if (referenceUrl.startsWith('data:')) {
+      // Уже base64
+      const matches = referenceUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (matches) {
+        imageContent = {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: matches[1],
+            data: matches[2]
+          }
+        };
+      }
+    } else if (referenceUrl.startsWith('http')) {
+      // URL - Claude может работать напрямую с URL
+      imageContent = {
+        type: 'image',
+        source: {
+          type: 'url',
+          url: referenceUrl
+        }
+      };
+    } else {
+      // Локальный файл - нужно прочитать и конвертировать
+      const fs = await import('fs');
+      const path = await import('path');
+      const { config } = await import('../config/env.js');
+
+      let filePath = referenceUrl;
+      if (referenceUrl.includes('/uploads/')) {
+        const filename = referenceUrl.split('/uploads/').pop().split('?')[0];
+        filePath = path.join(config.storagePath, filename);
+      }
+
+      if (fs.existsSync(filePath)) {
+        const buffer = fs.readFileSync(filePath);
+        const ext = path.extname(filePath).toLowerCase();
+        const mimeType = ext === '.png' ? 'image/png' :
+                        ext === '.webp' ? 'image/webp' : 'image/jpeg';
+
+        imageContent = {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: mimeType,
+            data: buffer.toString('base64')
+          }
+        };
+      }
+    }
+
+    if (!imageContent) {
+      log.warn('Could not prepare image for Vision analysis');
+      return null;
+    }
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      messages: [{
+        role: 'user',
+        content: [
+          imageContent,
+          {
+            type: 'text',
+            text: `Analyze this reference image for advertising/banner creation. Describe in Russian:
+
+1. **Тип контента**: что это (казино, игра, продукт, etc)
+2. **Текст на изображении**: точный текст который видишь (если есть)
+3. **Визуальные элементы**: персонажи, объекты, иконки
+4. **Цветовая схема**: основные цвета
+5. **Стиль**: неон, премиум, 3D, минимализм, etc
+6. **Формат**: примерное соотношение сторон (9:16 stories, 1:1 квадрат, etc)
+7. **Для генерации**: что можно использовать как основу
+
+Отвечай кратко, по делу, на русском. Формат: JSON
+{
+  "content_type": "casino/game/product/social",
+  "text_found": ["текст 1", "текст 2"],
+  "visual_elements": ["элемент 1", "элемент 2"],
+  "colors": ["цвет 1", "цвет 2"],
+  "style": "неон/премиум/3D/минимализм",
+  "format": "9:16/1:1/16:9",
+  "summary": "Краткое описание на русском для пользователя"
+}`
+          }
+        ]
+      }]
+    });
+
+    const text = response.content[0].text;
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+
+    if (jsonMatch) {
+      const analysis = JSON.parse(jsonMatch[0]);
+      log.debug('Reference analysis complete', {
+        contentType: analysis.content_type,
+        style: analysis.style
+      });
+      return analysis;
+    }
+
+    return { summary: text };
+
+  } catch (error) {
+    log.error('Reference image analysis error', { error: error.message });
+    return null;
+  }
+}
+
+/**
  * УМНАЯ проверка нужны ли уточняющие вопросы
  * Учитывает контекст, историю и специфику запроса
  */
 export async function checkNeedsClarification(userPrompt, options = {}) {
-  const { hasReference = false, chatHistory = [], deepThinking = false } = options;
+  const { hasReference = false, referenceUrl = null, chatHistory = [], deepThinking = false } = options;
 
   if (!anthropic) {
     log.warn('Claude API not configured, skipping clarification');
@@ -268,7 +393,15 @@ export async function checkNeedsClarification(userPrompt, options = {}) {
     // 2. Извлекаем уже известную информацию из истории
     const knownInfo = extractKnownInfo(chatHistory);
 
-    // 3. Формируем контекст для Claude
+    // 3. VISION: Анализируем референс если есть
+    let referenceAnalysis = null;
+    if (hasReference && referenceUrl) {
+      log.debug('Analyzing reference with Vision...', { url: referenceUrl?.substring(0, 50) });
+      referenceAnalysis = await analyzeReferenceImage(referenceUrl);
+      log.debug('Reference analysis result', { analysis: referenceAnalysis });
+    }
+
+    // 4. Формируем контекст для Claude
     let contextInfo = `
 ## DETECTED CONTEXT: ${detectedContext.type}
 Important aspects for this type: ${detectedContext.aspects.join(', ')}
@@ -282,7 +415,21 @@ ${Object.entries(knownInfo)
 ## REFERENCE IMAGE: ${hasReference ? 'YES - User provided a reference image' : 'NO'}
 `;
 
-    // 4. Собираем историю чата
+    // Добавляем Vision анализ если есть
+    if (referenceAnalysis) {
+      contextInfo += `
+## REFERENCE ANALYSIS (from Vision):
+- Content type: ${referenceAnalysis.content_type || 'unknown'}
+- Text found: ${referenceAnalysis.text_found?.join(', ') || 'none'}
+- Visual elements: ${referenceAnalysis.visual_elements?.join(', ') || 'none'}
+- Colors: ${referenceAnalysis.colors?.join(', ') || 'unknown'}
+- Style: ${referenceAnalysis.style || 'unknown'}
+- Format: ${referenceAnalysis.format || 'unknown'}
+- Summary: ${referenceAnalysis.summary || 'no summary'}
+`;
+    }
+
+    // 5. Собираем историю чата
     let historyContext = '';
     if (chatHistory.length > 0) {
       historyContext = '\n## CHAT HISTORY (recent messages):\n';
@@ -302,7 +449,7 @@ Analyze this request. Determine if you have enough information to generate a hig
 
 Remember:
 - DON'T ask about things already known from history
-- If reference provided - focus on what to CHANGE
+- If reference provided - USE the Vision analysis above, mention what you see!
 - Be specific to the detected context type
 - Max 3 questions, make them count`;
 
@@ -312,6 +459,9 @@ Remember:
       system: SMART_CLARIFICATION_PROMPT,
       messages: [{ role: 'user', content: message }]
     });
+
+    // Сохраняем referenceAnalysis для возврата
+    const visionAnalysis = referenceAnalysis;
 
     const text = response.content[0].text;
     const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -327,11 +477,20 @@ Remember:
     result.detected_context = result.detected_context || detectedContext.type;
     result.known_info = knownInfo;
 
+    // Добавляем Vision анализ референса
+    if (visionAnalysis) {
+      result.vision_analysis = visionAnalysis;
+      // Если summary есть в vision, используем его для reference_analysis
+      if (!result.reference_analysis && visionAnalysis.summary) {
+        result.reference_analysis = visionAnalysis.summary;
+      }
+    }
+
     log.debug('Smart clarification check', {
       needsClarification: result.needs_clarification,
       detectedContext: result.detected_context,
       questionsCount: result.questions?.length || 0,
-      thinking: result.thinking?.substring(0, 100)
+      hasVisionAnalysis: !!visionAnalysis
     });
 
     return result;
