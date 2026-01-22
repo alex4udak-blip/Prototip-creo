@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # Основное приложение
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://bannergen:bannergen@db:5432/bannergen
+      - JWT_SECRET=dev-jwt-secret-change-in-production
+      - STORAGE_PATH=/app/uploads
+      # API Keys (заполни в .env)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - RUNWARE_API_KEY=${RUNWARE_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # PostgreSQL
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bannergen
+      POSTGRES_PASSWORD: bannergen
+      POSTGRES_DB: bannergen
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bannergen -d bannergen"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  uploads:

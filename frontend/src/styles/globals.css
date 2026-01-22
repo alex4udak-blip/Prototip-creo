@@ -1,0 +1,173 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3a3a5a;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4a4a6a;
+}
+
+/* Утилиты */
+@layer utilities {
+  /* Скрытие скроллбара */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Градиент текста */
+  .text-gradient {
+    background: linear-gradient(135deg, #e94560 0%, #ff6b6b 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Glow эффект */
+  .glow {
+    box-shadow: 0 0 20px rgba(233, 69, 96, 0.3);
+  }
+
+  .glow-sm {
+    box-shadow: 0 0 10px rgba(233, 69, 96, 0.2);
+  }
+}
+
+/* Компоненты */
+@layer components {
+  /* Кнопки */
+  .btn {
+    @apply px-4 py-2 rounded-xl font-medium transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-accent hover:bg-accent-hover text-white;
+  }
+
+  .btn-secondary {
+    @apply btn bg-bg-secondary hover:bg-bg-hover text-text-primary border border-border;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent hover:bg-bg-secondary text-text-secondary hover:text-text-primary;
+  }
+
+  /* Input */
+  .input {
+    @apply w-full bg-bg-input border border-border rounded-xl px-4 py-3
+           text-text-primary placeholder-text-muted
+           focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent
+           transition-all duration-200;
+  }
+
+  /* Card */
+  .card {
+    @apply bg-bg-secondary rounded-2xl border border-border p-4;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center px-2 py-1 rounded-full text-xs font-medium;
+  }
+
+  .badge-accent {
+    @apply badge bg-accent/20 text-accent;
+  }
+
+  .badge-success {
+    @apply badge bg-success/20 text-success;
+  }
+
+  .badge-warning {
+    @apply badge bg-warning/20 text-warning;
+  }
+
+  /* Tooltip */
+  .tooltip {
+    @apply absolute z-50 px-2 py-1 text-xs bg-bg-primary border border-border rounded-lg
+           shadow-lg whitespace-nowrap animate-fade-in;
+  }
+}
+
+/* Анимация загрузки (typing indicator) */
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  background: #e94560;
+  border-radius: 50%;
+  animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(1) { animation-delay: 0s; }
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* Drag & Drop overlay */
+.drag-overlay {
+  @apply fixed inset-0 z-50 bg-accent/10 border-4 border-dashed border-accent
+         flex items-center justify-center pointer-events-none;
+}
+
+/* Image hover overlay */
+.image-overlay {
+  @apply absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100
+         transition-opacity duration-200 flex items-center justify-center gap-2;
+}
+
+/* Shimmer loading */
+.shimmer {
+  background: linear-gradient(90deg, #1e1e3f 25%, #2a2a4a 50%, #1e1e3f 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
