@@ -72,7 +72,7 @@ app.get('/api/health', async (req, res) => {
     apis: {
       claude: !!config.anthropicApiKey,
       runware: !!config.runwareApiKey,
-      google: !!config.googleApiKey
+      vertexAi: !!(config.googleCloudProject && config.googleCredentialsJson)
     }
   });
 });
@@ -149,7 +149,7 @@ server.listen(config.port, async () => {
   log.info('API Keys status:', {
     claude: !!config.anthropicApiKey,
     runware: !!config.runwareApiKey,
-    google: !!config.googleApiKey
+    vertexAi: !!(config.googleCloudProject && config.googleCredentialsJson)
   });
 
   if (config.nodeEnv === 'development') {
