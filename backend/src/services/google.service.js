@@ -343,7 +343,7 @@ Text style: ${textStyle || 'bold, high contrast, professional'}`;
 
   const startTime = Date.now();
 
-  // ПАРАЛЛЕЛЬНАЯ генерация всех вариантов
+  // ПОСЛЕДОВАТЕЛЬНАЯ генерация (квота 1 req/min, ждём увеличения)
   const generateOptions = {
     aspectRatio,
     referenceBase64,
@@ -352,12 +352,17 @@ Text style: ${textStyle || 'bold, high contrast, professional'}`;
     projectId
   };
 
-  const promises = Array.from({ length: requestedImages }, (_, i) =>
-    generateSingleImage(finalPrompt, generateOptions, i, onProgress)
-  );
-
-  const results = await Promise.all(promises);
-  const images = results.filter(url => url !== null);
+  const images = [];
+  for (let i = 0; i < requestedImages; i++) {
+    const result = await generateSingleImage(finalPrompt, generateOptions, i, onProgress);
+    if (result) {
+      images.push(result);
+    }
+    // Пауза между запросами чтобы не превышать квоту (убрать когда квота увеличится)
+    if (i < requestedImages - 1) {
+      await new Promise(resolve => setTimeout(resolve, 2000)); // 2 сек пауза
+    }
+  }
 
   const timeMs = Date.now() - startTime;
 
@@ -369,13 +374,13 @@ Text style: ${textStyle || 'bold, high contrast, professional'}`;
     timeMs,
     requestedImages,
     actualImages: images.length,
-    model: IMAGEN_MODEL
+    model: selectedModel
   });
 
   return {
     images,
     timeMs,
-    model: IMAGEN_MODEL
+    model: selectedModel
   };
 }
 
