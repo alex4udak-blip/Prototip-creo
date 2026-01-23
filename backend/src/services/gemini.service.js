@@ -164,19 +164,31 @@ const SYSTEM_PROMPT = `Ты — премиальный AI-дизайнер ре�
  */
 export function getOrCreateChat(chatId, settings = {}) {
   if (!chatSessions.has(chatId)) {
-    // Определяем aspectRatio для imageConfig
-    const aspectRatio = settings.aspectRatio || "9:16";
-    const imageSize = settings.resolution || "2K";
+    // ВАЛИДНЫЕ значения aspectRatio для Gemini API
+    const VALID_ASPECT_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
+
+    // Если aspectRatio невалидный или "auto" — используем дефолт 9:16
+    let aspectRatio = settings.aspectRatio;
+    if (!aspectRatio || aspectRatio === 'auto' || !VALID_ASPECT_RATIOS.includes(aspectRatio)) {
+      aspectRatio = '9:16';  // Дефолт — самый универсальный формат
+    }
+
+    // ВАЛИДНЫЕ значения imageSize: "1K", "2K", "4K" (или null для авто)
+    const imageSize = settings.resolution || '2K';
     const useThinking = settings.thinking !== false; // По умолчанию включен
 
     const chatConfig = {
       responseModalities: ["TEXT", "IMAGE"],
       systemInstruction: SYSTEM_PROMPT,
       imageConfig: {
-        aspectRatio: aspectRatio,
-        imageSize: imageSize
+        aspectRatio: aspectRatio
       }
     };
+
+    // imageSize добавляем только если явно указан
+    if (imageSize && imageSize !== 'auto') {
+      chatConfig.imageConfig.imageSize = imageSize;
+    }
 
     // Thinking mode - улучшает качество для сложных задач
     if (useThinking) {
@@ -216,8 +228,9 @@ export async function sendMessage(chatId, text, images = [], settings = {}) {
     fullText = '[DEEP_RESEARCH] ' + fullText;
   }
 
-  // Размер
-  if (settings.aspectRatio && settings.aspectRatio !== 'auto') {
+  // Размер — добавляем только если валидный
+  const VALID_ASPECT_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
+  if (settings.aspectRatio && VALID_ASPECT_RATIOS.includes(settings.aspectRatio)) {
     fullText += `\n[Размер: ${settings.aspectRatio}]`;
   }
 
@@ -310,7 +323,9 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
     fullText = '[DEEP_RESEARCH] ' + fullText;
   }
 
-  if (settings.aspectRatio && settings.aspectRatio !== 'auto') {
+  // Размер — добавляем только если валидный
+  const VALID_ASPECT_RATIOS_STREAM = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
+  if (settings.aspectRatio && VALID_ASPECT_RATIOS_STREAM.includes(settings.aspectRatio)) {
     fullText += `\n[Размер: ${settings.aspectRatio}]`;
   }
 

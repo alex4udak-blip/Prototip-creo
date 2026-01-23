@@ -30,9 +30,7 @@ prototip-creo/
 - React Router DOM
 
 **AI APIs:**
-- Claude API — улучшение промптов
-- Runware API — FLUX Dev/Schnell/Kontext
-- Google AI — Nano Banana Pro (текст)
+- Google Gemini — gemini-3-pro-image-preview (Nano Banana Pro) для генерации текста + изображений
 
 ## Команды
 
@@ -54,12 +52,11 @@ docker-compose up -d
 
 ## Ключевые файлы
 
-- `backend/src/services/router.service.js` — логика выбора модели
-- `backend/src/services/prompt.service.js` — Claude API
-- `backend/src/services/runware.service.js` — Runware API
-- `backend/src/services/google.service.js` — Google Nano Banana
-- `backend/src/websocket/handler.js` — WebSocket для real-time
+- `backend/src/services/gemini.service.js` — Gemini API (генерация текста + изображений)
+- `backend/src/websocket/handler.js` — WebSocket для real-time streaming
+- `backend/src/routes/generate.routes.js` — эндпоинт генерации
 - `frontend/src/hooks/useChat.js` — Zustand store для чата
+- `frontend/src/services/api.js` — API клиент + WebSocket Manager
 
 ## API Routes
 

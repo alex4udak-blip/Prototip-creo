@@ -198,10 +198,12 @@ export class WebSocketManager {
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectDelay = 1000;
+    this.currentChatId = null;
   }
 
   connect(chatId = null) {
     if (this.ws?.readyState === WebSocket.OPEN) {
+      console.log('[WS] Already connected, subscribing to chat:', chatId);
       if (chatId) {
         this.subscribe(chatId);
       }
@@ -209,7 +211,10 @@ export class WebSocketManager {
     }
 
     const token = getToken();
-    if (!token) return;
+    if (!token) {
+      console.warn('[WS] No token, cannot connect');
+      return;
+    }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
@@ -217,12 +222,14 @@ export class WebSocketManager {
 
     if (chatId) {
       url += `&chatId=${chatId}`;
+      this.currentChatId = chatId;
     }
 
+    console.log('[WS] Connecting to:', url);
     this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
-      console.log('WebSocket connected');
+      console.log('[WS] Connected, chatId:', chatId);
       this.reconnectAttempts = 0;
       this.emit('connected');
     };
@@ -230,27 +237,36 @@ export class WebSocketManager {
     this.ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        console.log('[WS] Message received:', data.type, data);
         this.emit(data.type, data);
       } catch (e) {
-        console.error('WebSocket message parse error', e);
+        console.error('[WS] Parse error:', e);
       }
     };
 
-    this.ws.onclose = () => {
-      console.log('WebSocket disconnected');
+    this.ws.onclose = (event) => {
+      console.log('[WS] Disconnected, code:', event.code);
       this.emit('disconnected');
-      this.attemptReconnect(chatId);
+      this.attemptReconnect(this.currentChatId);
     };
 
     this.ws.onerror = (error) => {
-      console.error('WebSocket error', error);
+      console.error('[WS] Error:', error);
       this.emit('error', error);
     };
   }
 
   subscribe(chatId) {
+    console.log('[WS] Subscribe to chat:', chatId, 'readyState:', this.ws?.readyState);
+    this.currentChatId = chatId;
+
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'subscribe', chatId }));
+      console.log('[WS] Sent subscribe message for chat:', chatId);
+    } else {
+      // Если WS не подключен — подключаемся с этим chatId
+      console.log('[WS] Not connected, connecting with chatId:', chatId);
+      this.connect(chatId);
     }
   }
 

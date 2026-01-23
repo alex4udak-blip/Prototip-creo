@@ -218,11 +218,18 @@ export const useChatStore = create((set, get) => ({
         get().updateMessage(tempUserMessageId, { id: response.userMessageId });
       }
 
-      // Обновляем placeholder
-      if (response.chatId && !currentChat) {
-        set({ currentChat: { id: response.chatId, title: 'Новый чат' } });
-        await get().loadChats();
+      // КРИТИЧНО: Если это новый чат или chatId изменился — переподписываемся на WebSocket
+      if (response.chatId) {
+        const needResubscribe = !currentChat || currentChat.id !== response.chatId;
+
+        if (needResubscribe) {
+          set({ currentChat: { id: response.chatId, title: prompt?.substring(0, 50) || 'Новый чат' } });
+          await get().loadChats();
+        }
+
+        // Всегда подписываемся на chatId после генерации
         wsManager.subscribe(response.chatId);
+        console.log('[useChat] Subscribed to chat:', response.chatId);
       }
 
       return response;
