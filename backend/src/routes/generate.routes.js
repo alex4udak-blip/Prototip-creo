@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { db } from '../db/client.js';
 import { authMiddleware, checkGenerationLimit, incrementGenerationStats } from '../middleware/auth.middleware.js';
 import { uploadMiddleware, handleUploadError, getFileUrl } from '../middleware/upload.middleware.js';
-import { sendMessage, deleteChat, checkHealth } from '../services/gemini.service.js';
+import { sendMessageStream, deleteChat, checkHealth } from '../services/gemini.service.js';
 import { broadcastToChat } from '../websocket/handler.js';
 import { log } from '../utils/logger.js';
 import fs from 'fs';
@@ -98,11 +98,11 @@ router.post('/',
         status: 'processing'
       });
 
-      // Отправляем прогресс через WebSocket
+      // Фаза 1: Анализ запроса
       broadcastToChat(chatId, {
         type: 'generation_progress',
-        status: 'generating',
-        message: 'Генерирую...'
+        status: 'analyzing',
+        message: 'Анализирую запрос...'
       });
 
       // Вызываем Gemini асинхронно
@@ -139,12 +139,37 @@ router.post('/',
 );
 
 /**
- * Асинхронная обработка генерации
+ * Асинхронная обработка генерации со streaming и фазами
  */
 async function processGeneration({ chatId, prompt, images, settings, userId, startTime }) {
   try {
-    // Вызываем Gemini
-    const result = await sendMessage(chatId, prompt, images, settings);
+    // Фаза 2: Генерация со streaming
+    broadcastToChat(chatId, {
+      type: 'generation_progress',
+      status: 'generating',
+      message: 'Генерирую ответ...'
+    });
+
+    // Вызываем Gemini со streaming
+    const result = await sendMessageStream(chatId, prompt, images, settings, (progress) => {
+      // Отправляем прогресс в реальном времени
+      if (progress.status === 'generating_text') {
+        broadcastToChat(chatId, {
+          type: 'generation_progress',
+          status: 'generating',
+          message: 'Генерирую ответ...',
+          partialText: progress.text
+        });
+      } else if (progress.status === 'generating_image') {
+        broadcastToChat(chatId, {
+          type: 'generation_progress',
+          status: 'generating_image',
+          message: `Создаю изображение ${progress.imagesCount}...`,
+          imagesCount: progress.imagesCount,
+          newImage: progress.newImage
+        });
+      }
+    });
 
     const totalTime = Date.now() - startTime;
 
@@ -161,7 +186,7 @@ async function processGeneration({ chatId, prompt, images, settings, userId, sta
     // Обновляем статистику
     await incrementGenerationStats(userId, totalTime);
 
-    // Отправляем результат через WebSocket
+    // Фаза 3: Готово!
     broadcastToChat(chatId, {
       type: 'generation_complete',
       messageId: assistantMessage.id,

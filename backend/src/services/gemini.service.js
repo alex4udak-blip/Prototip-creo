@@ -243,6 +243,106 @@ export async function sendMessage(chatId, text, images = [], settings = {}) {
 }
 
 /**
+ * Отправить сообщение в чат со STREAMING
+ * Позволяет получать частичные ответы в реальном времени
+ */
+export async function sendMessageStream(chatId, text, images = [], settings = {}, onProgress) {
+  const chat = getOrCreateChat(chatId, settings);
+
+  // Формируем текст с настройками
+  let fullText = text || '';
+
+  if (settings.mode === 'fast') {
+    fullText = '[FAST] ' + fullText;
+  }
+
+  if (settings.aspectRatio && settings.aspectRatio !== 'auto') {
+    fullText += `\n[Размер: ${settings.aspectRatio}]`;
+  }
+
+  if (settings.variants && settings.variants !== 'auto') {
+    fullText += `\n[VARIANTS:${settings.variants}]`;
+  }
+
+  // Собираем message
+  let message;
+
+  if (images.length > 0) {
+    message = [];
+    if (fullText.trim()) {
+      message.push({ text: fullText });
+    }
+    for (const img of images) {
+      message.push({
+        inlineData: {
+          mimeType: img.mimeType || 'image/png',
+          data: img.data
+        }
+      });
+    }
+  } else {
+    message = fullText;
+  }
+
+  log.info('Sending streaming message to Gemini', {
+    chatId,
+    textLength: fullText.length,
+    imagesCount: images.length
+  });
+
+  // Отправляем со streaming
+  const stream = await chat.sendMessageStream({ message });
+
+  const result = {
+    text: '',
+    images: []
+  };
+
+  // Обрабатываем stream
+  for await (const chunk of stream) {
+    const parts = chunk.candidates?.[0]?.content?.parts || [];
+
+    for (const part of parts) {
+      if (part.text) {
+        result.text += part.text;
+        // Отправляем прогресс текста
+        if (onProgress) {
+          onProgress({
+            status: 'generating_text',
+            text: result.text,
+            imagesCount: result.images.length
+          });
+        }
+      } else if (part.inlineData) {
+        // Сохраняем картинку
+        const imageUrl = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
+        result.images.push({
+          url: imageUrl,
+          mimeType: part.inlineData.mimeType
+        });
+        // Отправляем прогресс картинок
+        if (onProgress) {
+          onProgress({
+            status: 'generating_image',
+            text: result.text,
+            imagesCount: result.images.length,
+            newImage: imageUrl
+          });
+        }
+      }
+    }
+  }
+
+  log.info('Gemini streaming response complete', {
+    chatId,
+    hasText: !!result.text,
+    imagesCount: result.images.length
+  });
+
+  return result;
+}
+
+/**
  * Сохранить base64 картинку в файл
  */
 async function saveBase64Image(base64Data, mimeType = 'image/png') {
@@ -286,6 +386,7 @@ export async function checkHealth() {
 export default {
   getOrCreateChat,
   sendMessage,
+  sendMessageStream,
   deleteChat,
   checkHealth
 };

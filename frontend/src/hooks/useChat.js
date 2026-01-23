@@ -295,7 +295,8 @@ export const useChatStore = create((set, get) => ({
         const updatedMessages = [...messages];
         updatedMessages[targetIndex] = {
           ...updatedMessages[targetIndex],
-          generationProgress: data.message
+          generationProgress: data.message,
+          generationStatus: data.status  // analyzing, generating, generating_image
         };
 
         return { messages: updatedMessages };

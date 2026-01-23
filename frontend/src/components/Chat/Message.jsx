@@ -23,52 +23,74 @@ function parseMarkdown(text) {
 
 /**
  * Generation Status Indicator Component
- * Dynamic phases: thinking, clarifying, generating
+ * Фазы: analyzing → generating → generating_image → complete
  */
-function GenerationStatus({ phase, progress }) {
-  // Определяем текущую фазу по тексту progress
+function GenerationStatus({ phase, progress, status }) {
+  // Определяем фазу по статусу от сервера или по тексту
   const getPhaseInfo = () => {
-    const progressLower = (progress || '').toLowerCase();
-
-    // Фаза: Думает/Анализирует
-    if (progressLower.includes('анализ') || progressLower.includes('думаю') ||
-        progressLower.includes('изучаю') || progressLower.includes('смотрю') ||
-        progressLower.includes('понимаю') || progressLower.includes('читаю')) {
+    // Сначала проверяем статус от WebSocket
+    if (status === 'analyzing') {
       return {
         icon: Brain,
-        label: 'Анализирую запрос',
+        label: '🧠 Анализирую запрос...',
         color: 'text-purple-400',
         bgColor: 'bg-purple-500/10'
       };
     }
 
-    // Фаза: Уточняет
-    if (progressLower.includes('уточн') || progressLower.includes('вопрос') ||
-        progressLower.includes('clarif') || progressLower.includes('спрашиваю')) {
-      return {
-        icon: MessageSquare,
-        label: 'Уточняю детали',
-        color: 'text-blue-400',
-        bgColor: 'bg-blue-500/10'
-      };
-    }
-
-    // Фаза: Генерирует картинки
-    if (progressLower.includes('генер') || progressLower.includes('созда') ||
-        progressLower.includes('рису') || progressLower.includes('image') ||
-        progressLower.includes('картин') || progressLower.includes('баннер')) {
+    if (status === 'generating_image') {
       return {
         icon: ImageIcon,
-        label: 'Генерация изображения',
+        label: '🎨 Создаю изображение...',
         color: 'text-yellow-400',
         bgColor: 'bg-yellow-500/10'
       };
     }
 
-    // По умолчанию: работает
+    if (status === 'generating') {
+      return {
+        icon: Sparkles,
+        label: '✨ Генерирую ответ...',
+        color: 'text-green-400',
+        bgColor: 'bg-green-500/10'
+      };
+    }
+
+    // Fallback: определяем по тексту progress
+    const progressLower = (progress || '').toLowerCase();
+
+    if (progressLower.includes('анализ') || progressLower.includes('думаю')) {
+      return {
+        icon: Brain,
+        label: '🧠 Анализирую запрос...',
+        color: 'text-purple-400',
+        bgColor: 'bg-purple-500/10'
+      };
+    }
+
+    if (progressLower.includes('изображен') || progressLower.includes('картин') ||
+        progressLower.includes('image') || progressLower.includes('создаю')) {
+      return {
+        icon: ImageIcon,
+        label: '🎨 Создаю изображение...',
+        color: 'text-yellow-400',
+        bgColor: 'bg-yellow-500/10'
+      };
+    }
+
+    if (progressLower.includes('генер') || progressLower.includes('ответ')) {
+      return {
+        icon: Sparkles,
+        label: '✨ Генерирую ответ...',
+        color: 'text-green-400',
+        bgColor: 'bg-green-500/10'
+      };
+    }
+
+    // По умолчанию
     return {
       icon: Wrench,
-      label: progress || 'Обрабатываю...',
+      label: progress || '⚡ Обрабатываю...',
       color: 'text-blue-400',
       bgColor: 'bg-blue-500/10'
     };
@@ -79,19 +101,19 @@ function GenerationStatus({ phase, progress }) {
 
   return (
     <div className={`flex items-center gap-3 p-3 rounded-xl ${phaseInfo.bgColor} animate-fade-in`}>
-      {/* Dynamic phase indicator */}
+      {/* Phase indicator */}
       <div className="flex items-center gap-2 text-sm">
         <span className={`flex items-center gap-1.5 ${phaseInfo.color}`}>
-          <Icon className="w-4 h-4" />
+          <Icon className="w-4 h-4 animate-pulse" />
           <span className="font-medium">{phaseInfo.label}</span>
         </span>
       </div>
 
       {/* Animated dots */}
       <div className="flex gap-1 ml-auto">
-        <span className={`w-1.5 h-1.5 rounded-full ${phaseInfo.color.replace('text-', 'bg-')} opacity-60 animate-pulse`} style={{ animationDelay: '0ms' }}></span>
-        <span className={`w-1.5 h-1.5 rounded-full ${phaseInfo.color.replace('text-', 'bg-')} opacity-60 animate-pulse`} style={{ animationDelay: '150ms' }}></span>
-        <span className={`w-1.5 h-1.5 rounded-full ${phaseInfo.color.replace('text-', 'bg-')} opacity-60 animate-pulse`} style={{ animationDelay: '300ms' }}></span>
+        <span className={`w-1.5 h-1.5 rounded-full ${phaseInfo.color.replace('text-', 'bg-')} opacity-60 animate-bounce`} style={{ animationDelay: '0ms' }}></span>
+        <span className={`w-1.5 h-1.5 rounded-full ${phaseInfo.color.replace('text-', 'bg-')} opacity-60 animate-bounce`} style={{ animationDelay: '150ms' }}></span>
+        <span className={`w-1.5 h-1.5 rounded-full ${phaseInfo.color.replace('text-', 'bg-')} opacity-60 animate-bounce`} style={{ animationDelay: '300ms' }}></span>
       </div>
     </div>
   );
@@ -413,10 +435,14 @@ export function Message({ message }) {
                 </div>
               )}
 
-              {/* Generation status - simplified */}
+              {/* Generation status with phases */}
               {message.isGenerating && (
                 <div className="mt-3">
-                  <GenerationStatus phase={message.generationPhase} progress={message.generationProgress} />
+                  <GenerationStatus
+                    phase={message.generationPhase}
+                    progress={message.generationProgress}
+                    status={message.generationStatus}
+                  />
                 </div>
               )}
             </div>
