@@ -182,10 +182,21 @@ router.post('/',
                   const filename = refUrl.replace('/uploads/', '');
                   const filepath = path.join(config.storagePath, filename);
 
+                  log.info('Trying to load reference file', {
+                    refUrl,
+                    filename,
+                    filepath,
+                    storagePath: config.storagePath,
+                    exists: fs.existsSync(filepath)
+                  });
+
                   if (fs.existsSync(filepath)) {
                     const base64 = fs.readFileSync(filepath).toString('base64');
                     const mimeType = filename.endsWith('.jpg') ? 'image/jpeg' : 'image/png';
                     images.push({ data: base64, mimeType });
+                    log.info('Reference file loaded successfully', { filename, size: base64.length });
+                  } else {
+                    log.warn('Reference file not found', { filepath });
                   }
                 } catch (err) {
                   log.warn('Failed to load reference for follow-up', { refUrl, error: err.message });
