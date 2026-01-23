@@ -408,6 +408,80 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
     throw new Error('Запрос заблокирован модерацией. Попробуйте изменить формулировку.');
   }
 
+  // Догенерация недостающих изображений
+  // Если получили меньше картинок чем просили — просим ещё
+  const targetVariants = settings.variants || 3;
+  const maxRetries = 3; // Максимум попыток догенерации
+  let retryCount = 0;
+
+  while (result.images.length < targetVariants && retryCount < maxRetries) {
+    const remaining = targetVariants - result.images.length;
+    retryCount++;
+
+    log.info('Requesting additional images', {
+      chatId,
+      currentCount: result.images.length,
+      targetCount: targetVariants,
+      remaining,
+      retryCount
+    });
+
+    if (onProgress) {
+      onProgress({
+        status: 'generating_image',
+        text: result.text,
+        imagesCount: result.images.length,
+        message: `Генерирую ещё ${remaining} изображений...`
+      });
+    }
+
+    try {
+      const moreMessage = `Сгенерируй ещё ${remaining} изображений в том же стиле. Нужно всего ${targetVariants} вариантов, сейчас есть ${result.images.length}.`;
+      const moreStream = await chat.sendMessageStream({ message: moreMessage });
+
+      for await (const chunk of moreStream) {
+        const candidate = chunk.candidates?.[0];
+        const parts = candidate?.content?.parts || [];
+
+        if (candidate?.finishReason) {
+          result.finishReason = candidate.finishReason;
+        }
+
+        for (const part of parts) {
+          if (part.inlineData) {
+            const imageUrl = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
+            result.images.push({
+              url: imageUrl,
+              mimeType: part.inlineData.mimeType
+            });
+            log.info('Additional image generated', { chatId, imageIndex: result.images.length });
+            if (onProgress) {
+              onProgress({
+                status: 'generating_image',
+                text: result.text,
+                imagesCount: result.images.length,
+                newImage: imageUrl
+              });
+            }
+          } else if (part.text) {
+            result.text += '\n' + part.text;
+          }
+        }
+      }
+
+      // Если IMAGE_SAFETY — прекращаем догенерацию
+      if (result.finishReason === 'IMAGE_SAFETY') {
+        log.warn('Image safety triggered during additional generation', { chatId });
+        break;
+      }
+    } catch (moreError) {
+      log.error('Failed to generate additional images', { chatId, error: moreError.message });
+      break;
+    }
+  }
+
+  log.info('Final image count', { chatId, count: result.images.length, target: targetVariants });
+
   // Если это follow-up и картинок нет — АВТОМАТИЧЕСКИ пробуем сгенерировать
   // Gemini часто пишет только описание, нужно явно попросить картинки
   if (settings.isFollowUp && result.images.length === 0 && result.text && !settings._retryAttempt) {
