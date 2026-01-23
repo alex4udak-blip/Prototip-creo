@@ -204,7 +204,15 @@ IMPORTANT: [1] must look EXACTLY like the person in the reference image.`;
           aspectRatio,
           sampleCount: 1,
           personGeneration: 'allow_adult',
-          safetyFilterLevel: 'block_few'
+          safetyFilterLevel: 'block_few',
+          // Параметры качества
+          negativePrompt: 'blurry, low quality, distorted, ugly, deformed, amateur, watermark, text errors, bad anatomy, bad proportions, disfigured, poorly drawn face, mutation, extra limbs',
+          guidanceScale: 60,  // Выше = строже следует промпту (default ~7-15, max 100)
+          outputOptions: {
+            mimeType: 'image/png',
+            compressionQuality: 100  // Максимальное качество
+          },
+          addWatermark: false
         }
       };
     } else {
@@ -234,7 +242,15 @@ TASK: ${prompt}`;
           aspectRatio,
           sampleCount: 1,
           personGeneration: 'allow_adult',
-          safetyFilterLevel: 'block_few'
+          safetyFilterLevel: 'block_few',
+          // Параметры качества
+          negativePrompt: 'blurry, low quality, distorted, ugly, deformed, amateur, watermark, text errors, bad anatomy, bad proportions',
+          guidanceScale: 60,
+          outputOptions: {
+            mimeType: 'image/png',
+            compressionQuality: 100
+          },
+          addWatermark: false
         }
       };
     }
