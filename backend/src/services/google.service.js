@@ -5,27 +5,17 @@ import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
 
 /**
- * Google Imagen 3 — Nano Banana Pro
+ * Google Imagen 3 через Vertex AI
  *
- * ДВА РЕЖИМА:
- * 1. Gemini API (простой API Key) — imagen-3.0-generate-002
- * 2. Vertex AI (Service Account) — imagen-3.0-capability-001 с референсами!
- *
- * Vertex AI нужен для НАСТОЯЩЕГО Identity Lock с передачей изображения.
+ * ТОЛЬКО Vertex AI с imagen-3.0-capability-001!
+ * Поддерживает референсы для Identity Lock.
  *
  * Переменные окружения:
- * - GOOGLE_API_KEY — для Gemini API
- * - GOOGLE_CLOUD_PROJECT — для Vertex AI
+ * - GOOGLE_CLOUD_PROJECT — ID проекта
  * - GOOGLE_APPLICATION_CREDENTIALS_JSON — JSON service account
  */
 
-const IMAGEN_GENERATE_MODEL = 'imagen-3.0-generate-002';
-const IMAGEN_CAPABILITY_MODEL = 'imagen-3.0-capability-001';
-
-// API URLs
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-
-// Vertex AI endpoint: https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT}/locations/{LOCATION}/publishers/google/models/{MODEL}:predict
+const IMAGEN_MODEL = 'imagen-3.0-capability-001';
 const VERTEX_LOCATION = 'us-central1';
 
 /**
@@ -33,14 +23,15 @@ const VERTEX_LOCATION = 'us-central1';
  */
 async function getVertexAccessToken() {
   const credentialsJson = config.googleCredentialsJson;
-  if (!credentialsJson) return null;
+  if (!credentialsJson) {
+    throw new Error('GOOGLE_APPLICATION_CREDENTIALS_JSON не настроен');
+  }
 
   try {
     const credentials = typeof credentialsJson === 'string'
       ? JSON.parse(credentialsJson)
       : credentialsJson;
 
-    // Используем google-auth-library для получения токена
     const { GoogleAuth } = await import('google-auth-library');
     const auth = new GoogleAuth({
       credentials,
@@ -52,19 +43,13 @@ async function getVertexAccessToken() {
     return tokenResponse.token;
   } catch (error) {
     log.error('Failed to get Vertex AI access token', { error: error.message });
-    return null;
+    throw new Error(`Vertex AI auth failed: ${error.message}`);
   }
 }
 
 /**
- * Проверка доступности Vertex AI
- */
-function isVertexAvailable() {
-  return !!(config.googleCloudProject && config.googleCredentialsJson);
-}
-
-/**
  * Определение aspect ratio для Imagen 3
+ * Поддерживаемые: 1:1, 16:9, 9:16, 4:3, 3:4
  */
 function getAspectRatio(width, height) {
   const ratio = width / height;
@@ -124,174 +109,161 @@ async function saveBase64Image(base64Data, mimeType = 'image/png') {
 }
 
 /**
- * Генерация через Vertex AI (с референсами!)
- */
-async function generateWithVertexAI(prompt, options) {
-  const { aspectRatio, referenceBase64, visionAnalysis } = options;
-
-  const accessToken = await getVertexAccessToken();
-  if (!accessToken) {
-    throw new Error('Failed to get Vertex AI access token');
-  }
-
-  const projectId = config.googleCloudProject;
-  const url = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${VERTEX_LOCATION}/publishers/google/models/${IMAGEN_CAPABILITY_MODEL}:predict`;
-
-  // Формируем промпт с Identity Lock
-  let finalPrompt = prompt;
-
-  if (visionAnalysis) {
-    const parts = [];
-    if (visionAnalysis.summary) parts.push(visionAnalysis.summary);
-    if (visionAnalysis.character_description) parts.push(`Character: ${visionAnalysis.character_description}`);
-    if (visionAnalysis.style) parts.push(`Style: ${visionAnalysis.style}`);
-    if (visionAnalysis.colors?.length) parts.push(`Colors: ${visionAnalysis.colors.join(', ')}`);
-
-    finalPrompt = `Create a variation of [1] (reference subject).
-
-${parts.join('\n')}
-
-TASK: ${prompt}
-
-Keep the exact same character identity, style, and visual quality as [1].`;
-  } else {
-    finalPrompt = `Create a variation of [1] (reference subject).
-
-TASK: ${prompt}
-
-Keep the exact same character identity as [1].`;
-  }
-
-  const requestBody = {
-    instances: [{
-      prompt: finalPrompt,
-      referenceImages: [{
-        referenceType: 'REFERENCE_TYPE_SUBJECT',
-        referenceId: 1,
-        referenceImage: {
-          bytesBase64Encoded: referenceBase64
-        },
-        subjectImageConfig: {
-          subjectType: 'SUBJECT_TYPE_PERSON'
-        }
-      }]
-    }],
-    parameters: {
-      aspectRatio: aspectRatio,
-      sampleCount: 1,
-      personGeneration: 'allow_adult',
-      safetyFilterLevel: 'block_few'
-    }
-  };
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(requestBody)
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    log.error('Vertex AI error', { status: response.status, error: errorData });
-    throw new Error(`Vertex AI error: ${response.status}`);
-  }
-
-  const result = await response.json();
-  const predictions = result.predictions || [];
-
-  if (predictions.length > 0 && predictions[0].bytesBase64Encoded) {
-    return await saveBase64Image(predictions[0].bytesBase64Encoded, 'image/png');
-  }
-
-  return null;
-}
-
-/**
- * Генерация через Gemini API (без референсов)
- */
-async function generateWithGeminiAPI(prompt, options) {
-  const { aspectRatio } = options;
-
-  const url = `${GEMINI_API_BASE}/${IMAGEN_GENERATE_MODEL}:predict?key=${config.googleApiKey}`;
-
-  const requestBody = {
-    instances: [{ prompt: prompt }],
-    parameters: {
-      aspectRatio: aspectRatio,
-      sampleCount: 1,
-      personGeneration: 'allow_adult',
-      safetyFilterLevel: 'block_few'
-    }
-  };
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody)
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    log.warn('Gemini API error', { status: response.status, error: errorData?.error?.message });
-    return null;
-  }
-
-  const result = await response.json();
-  const predictions = result.predictions || [];
-
-  if (predictions.length > 0 && predictions[0].bytesBase64Encoded) {
-    return await saveBase64Image(predictions[0].bytesBase64Encoded, 'image/png');
-  }
-
-  return null;
-}
-
-/**
- * Генерация ОДНОГО изображения
+ * Генерация ОДНОГО изображения через Vertex AI
  */
 async function generateSingleImage(prompt, options, index, onProgress) {
-  const { aspectRatio, referenceBase64, visionAnalysis, useVertex } = options;
+  const { aspectRatio, referenceBase64, visionAnalysis, accessToken, projectId } = options;
 
   try {
     if (onProgress) {
       onProgress({ index, status: 'generating', message: `Генерирую вариант ${index + 1}...` });
     }
 
-    let imageUrl = null;
+    const url = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${VERTEX_LOCATION}/publishers/google/models/${IMAGEN_MODEL}:predict`;
 
-    // Если есть референс И Vertex AI доступен — используем Vertex для Identity Lock
-    if (referenceBase64 && useVertex) {
-      log.info(`Image ${index + 1}: Using Vertex AI with reference`);
-      imageUrl = await generateWithVertexAI(prompt, { aspectRatio, referenceBase64, visionAnalysis });
+    // Формируем запрос
+    let requestBody;
+
+    if (referenceBase64) {
+      // С референсом — Identity Lock!
+      let finalPrompt = prompt;
+
+      if (visionAnalysis) {
+        const parts = [];
+        if (visionAnalysis.summary) parts.push(visionAnalysis.summary);
+        if (visionAnalysis.character_description) parts.push(`Character: ${visionAnalysis.character_description}`);
+        if (visionAnalysis.style) parts.push(`Style: ${visionAnalysis.style}`);
+        if (visionAnalysis.colors?.length) parts.push(`Colors: ${visionAnalysis.colors.join(', ')}`);
+        if (visionAnalysis.composition) parts.push(`Composition: ${visionAnalysis.composition}`);
+        if (visionAnalysis.lighting) parts.push(`Lighting: ${visionAnalysis.lighting}`);
+        if (visionAnalysis.mood) parts.push(`Mood: ${visionAnalysis.mood}`);
+
+        finalPrompt = `Create a variation of [1] (reference subject).
+
+${parts.join('\n')}
+
+TASK: ${prompt}
+
+Keep the exact same character identity, style, and visual quality as [1].`;
+      } else {
+        finalPrompt = `Create a variation of [1] (reference subject).
+
+TASK: ${prompt}
+
+Keep the exact same character identity as [1].`;
+      }
+
+      requestBody = {
+        instances: [{
+          prompt: finalPrompt,
+          referenceImages: [{
+            referenceType: 'REFERENCE_TYPE_SUBJECT',
+            referenceId: 1,
+            referenceImage: {
+              bytesBase64Encoded: referenceBase64
+            },
+            subjectImageConfig: {
+              subjectType: 'SUBJECT_TYPE_PERSON'
+            }
+          }]
+        }],
+        parameters: {
+          aspectRatio,
+          sampleCount: 1,
+          personGeneration: 'allow_adult',
+          safetyFilterLevel: 'block_few'
+        }
+      };
     } else {
-      // Иначе Gemini API
-      log.info(`Image ${index + 1}: Using Gemini API`);
-      imageUrl = await generateWithGeminiAPI(prompt, { aspectRatio, visionAnalysis });
+      // Без референса — обычная генерация
+      let finalPrompt = prompt;
+
+      // Если есть Vision анализ — добавляем детали в промпт
+      if (visionAnalysis) {
+        const parts = [];
+        if (visionAnalysis.summary) parts.push(visionAnalysis.summary);
+        if (visionAnalysis.character_description) parts.push(`Character: ${visionAnalysis.character_description}`);
+        if (visionAnalysis.style) parts.push(`Style: ${visionAnalysis.style}`);
+        if (visionAnalysis.colors?.length) parts.push(`Colors: ${visionAnalysis.colors.join(', ')}`);
+        if (visionAnalysis.composition) parts.push(`Composition: ${visionAnalysis.composition}`);
+        if (visionAnalysis.lighting) parts.push(`Lighting: ${visionAnalysis.lighting}`);
+
+        finalPrompt = `${parts.join('\n')}
+
+TASK: ${prompt}`;
+      }
+
+      requestBody = {
+        instances: [{
+          prompt: finalPrompt
+        }],
+        parameters: {
+          aspectRatio,
+          sampleCount: 1,
+          personGeneration: 'allow_adult',
+          safetyFilterLevel: 'block_few'
+        }
+      };
     }
 
-    if (imageUrl && onProgress) {
-      onProgress({ index, status: 'complete', imageUrl });
+    log.info(`Image ${index + 1}: Calling Vertex AI`, {
+      hasReference: !!referenceBase64,
+      aspectRatio,
+      promptLength: requestBody.instances[0].prompt.length
+    });
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      log.error(`Vertex AI error for image ${index + 1}`, {
+        status: response.status,
+        error: errorData?.error?.message || JSON.stringify(errorData)
+      });
+      throw new Error(`Vertex AI error: ${response.status} - ${errorData?.error?.message || 'Unknown'}`);
     }
 
-    return imageUrl;
+    const result = await response.json();
+    const predictions = result.predictions || [];
+
+    if (predictions.length > 0 && predictions[0].bytesBase64Encoded) {
+      const imageUrl = await saveBase64Image(predictions[0].bytesBase64Encoded, 'image/png');
+
+      if (onProgress) {
+        onProgress({ index, status: 'complete', imageUrl });
+      }
+
+      return imageUrl;
+    }
+
+    log.warn(`Image ${index + 1}: No image in response`, { predictions: predictions.length });
+    return null;
 
   } catch (error) {
     log.warn(`Generation ${index + 1} error`, { error: error.message });
+    if (onProgress) {
+      onProgress({ index, status: 'error', error: error.message });
+    }
     return null;
   }
 }
 
 /**
- * Генерация изображений через Imagen 3
+ * Главная функция генерации через Vertex AI Imagen 3
  *
- * ПАРАЛЛЕЛЬНАЯ генерация + Identity Lock через Vertex AI!
+ * ПАРАЛЛЕЛЬНАЯ генерация + Identity Lock!
  */
 export async function generateWithGoogle(prompt, options = {}) {
-  if (!config.googleApiKey && !isVertexAvailable()) {
-    throw new Error('GOOGLE_API_KEY или Vertex AI credentials не настроены');
+  // Проверяем credentials
+  if (!config.googleCloudProject || !config.googleCredentialsJson) {
+    throw new Error('Vertex AI не настроен. Добавьте GOOGLE_CLOUD_PROJECT и GOOGLE_APPLICATION_CREDENTIALS_JSON');
   }
 
   const {
@@ -308,6 +280,10 @@ export async function generateWithGoogle(prompt, options = {}) {
   const aspectRatio = getAspectRatio(width, height);
   const requestedImages = Math.min(numImages || 1, 4);
 
+  // Получаем токен один раз для всех запросов
+  const accessToken = await getVertexAccessToken();
+  const projectId = config.googleCloudProject;
+
   // Формируем базовый промпт
   let finalPrompt = prompt;
 
@@ -320,41 +296,29 @@ Text style: ${textStyle || 'bold, high contrast, professional'}`;
 
   // Подготавливаем референс
   let referenceBase64 = null;
-  const useVertex = isVertexAvailable();
-
   if (referenceUrl) {
     referenceBase64 = await prepareReferenceBase64(referenceUrl);
-
-    // Если нет Vertex — добавляем описание в промпт
-    if (!useVertex && visionAnalysis) {
-      const parts = [];
-      if (visionAnalysis.summary) parts.push(`REFERENCE: ${visionAnalysis.summary}`);
-      if (visionAnalysis.character_description) parts.push(`CHARACTER: ${visionAnalysis.character_description}`);
-      if (visionAnalysis.style) parts.push(`STYLE: ${visionAnalysis.style}`);
-      if (visionAnalysis.colors?.length) parts.push(`COLORS: ${visionAnalysis.colors.join(', ')}`);
-
-      finalPrompt = `=== IDENTITY LOCK ===
-
-${parts.join('\n')}
-
-TASK: ${finalPrompt}
-
-Create a variation matching the reference description exactly.`;
-    }
+    log.info('Reference prepared', { hasBase64: !!referenceBase64 });
   }
 
   log.info('Imagen 3 generation starting', {
+    model: IMAGEN_MODEL,
     aspectRatio,
     numImages: requestedImages,
     hasReference: !!referenceBase64,
-    useVertex,
     hasVisionAnalysis: !!visionAnalysis
   });
 
   const startTime = Date.now();
 
-  // ПАРАЛЛЕЛЬНАЯ генерация
-  const generateOptions = { aspectRatio, referenceBase64, visionAnalysis, useVertex };
+  // ПАРАЛЛЕЛЬНАЯ генерация всех вариантов
+  const generateOptions = {
+    aspectRatio,
+    referenceBase64,
+    visionAnalysis,
+    accessToken,
+    projectId
+  };
 
   const promises = Array.from({ length: requestedImages }, (_, i) =>
     generateSingleImage(finalPrompt, generateOptions, i, onProgress)
@@ -366,20 +330,20 @@ Create a variation matching the reference description exactly.`;
   const timeMs = Date.now() - startTime;
 
   if (images.length === 0) {
-    throw new Error('Imagen 3 не вернул изображения. Попробуйте изменить запрос.');
+    throw new Error('Imagen 3 не вернул изображения. Попробуйте изменить запрос или проверьте Vertex AI credentials.');
   }
 
   log.info('Imagen 3 generation complete', {
     timeMs,
     requestedImages,
     actualImages: images.length,
-    usedVertex: useVertex && !!referenceBase64
+    model: IMAGEN_MODEL
   });
 
   return {
     images,
     timeMs,
-    model: (useVertex && referenceBase64) ? IMAGEN_CAPABILITY_MODEL : IMAGEN_GENERATE_MODEL
+    model: IMAGEN_MODEL
   };
 }
 
@@ -387,29 +351,34 @@ Create a variation matching the reference description exactly.`;
  * Проверка доступности API
  */
 export function isGoogleApiAvailable() {
-  return !!(config.googleApiKey || isVertexAvailable());
+  return !!(config.googleCloudProject && config.googleCredentialsJson);
 }
 
 /**
  * Health check
  */
 export async function checkGoogleHealth() {
-  const status = {
-    geminiApi: !!config.googleApiKey,
-    vertexAi: isVertexAvailable()
-  };
+  const hasCredentials = !!(config.googleCloudProject && config.googleCredentialsJson);
 
-  if (!status.geminiApi && !status.vertexAi) {
-    return { available: false, reason: 'No API credentials configured' };
+  if (!hasCredentials) {
+    return {
+      available: false,
+      reason: 'Vertex AI credentials not configured (GOOGLE_CLOUD_PROJECT, GOOGLE_APPLICATION_CREDENTIALS_JSON)'
+    };
   }
 
-  return {
-    available: true,
-    geminiApi: status.geminiApi,
-    vertexAi: status.vertexAi,
-    models: {
-      generate: IMAGEN_GENERATE_MODEL,
-      capability: status.vertexAi ? IMAGEN_CAPABILITY_MODEL : null
-    }
-  };
+  // Проверяем токен
+  try {
+    await getVertexAccessToken();
+    return {
+      available: true,
+      model: IMAGEN_MODEL,
+      features: ['text-to-image', 'identity-lock', 'reference-images']
+    };
+  } catch (error) {
+    return {
+      available: false,
+      reason: `Auth failed: ${error.message}`
+    };
+  }
 }

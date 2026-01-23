@@ -18,9 +18,8 @@ export const config = {
   // API Keys
   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
   runwareApiKey: process.env.RUNWARE_API_KEY,
-  googleApiKey: process.env.GOOGLE_API_KEY,
 
-  // Google Cloud / Vertex AI (для imagen-3.0-capability-001 с референсами)
+  // Google Cloud / Vertex AI (Imagen 3 с Identity Lock)
   googleCloudProject: process.env.GOOGLE_CLOUD_PROJECT,
   googleCredentialsJson: process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON,
 
@@ -47,8 +46,8 @@ export const config = {
     if (!this.runwareApiKey) {
       console.warn('⚠️  RUNWARE_API_KEY not set - Runware generation disabled');
     }
-    if (!this.googleApiKey) {
-      console.warn('⚠️  GOOGLE_API_KEY not set - Google Nano Banana disabled');
+    if (!this.googleCloudProject || !this.googleCredentialsJson) {
+      console.warn('⚠️  Vertex AI not configured - GOOGLE_CLOUD_PROJECT and GOOGLE_APPLICATION_CREDENTIALS_JSON required for Imagen 3');
     }
   }
 };
