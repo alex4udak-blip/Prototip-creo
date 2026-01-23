@@ -126,32 +126,64 @@ async function generateSingleImage(prompt, options, index, onProgress) {
 
     if (referenceBase64) {
       // С референсом — Identity Lock!
-      let finalPrompt = prompt;
+      // КРИТИЧНО: subjectDescription должен описывать ЧТО сохранять с референса
 
+      // Формируем subjectDescription из Vision анализа
+      let subjectDescription = 'person from reference image';
       if (visionAnalysis) {
-        const parts = [];
-        if (visionAnalysis.summary) parts.push(visionAnalysis.summary);
-        if (visionAnalysis.character_description) parts.push(`Character: ${visionAnalysis.character_description}`);
-        if (visionAnalysis.style) parts.push(`Style: ${visionAnalysis.style}`);
-        if (visionAnalysis.colors?.length) parts.push(`Colors: ${visionAnalysis.colors.join(', ')}`);
-        if (visionAnalysis.composition) parts.push(`Composition: ${visionAnalysis.composition}`);
-        if (visionAnalysis.lighting) parts.push(`Lighting: ${visionAnalysis.lighting}`);
-        if (visionAnalysis.mood) parts.push(`Mood: ${visionAnalysis.mood}`);
-
-        finalPrompt = `Create a variation of [1] (reference subject).
-
-${parts.join('\n')}
-
-TASK: ${prompt}
-
-Keep the exact same character identity, style, and visual quality as [1].`;
-      } else {
-        finalPrompt = `Create a variation of [1] (reference subject).
-
-TASK: ${prompt}
-
-Keep the exact same character identity as [1].`;
+        const descParts = [];
+        if (visionAnalysis.character_description) {
+          descParts.push(visionAnalysis.character_description);
+        }
+        if (visionAnalysis.character_clothing) {
+          descParts.push(visionAnalysis.character_clothing);
+        }
+        if (visionAnalysis.character_pose) {
+          descParts.push(visionAnalysis.character_pose);
+        }
+        if (descParts.length > 0) {
+          subjectDescription = descParts.join('. ');
+        }
       }
+
+      // Формируем промпт с [1] для ссылки на референс
+      // Модель понимает [1] как "subject from referenceId: 1"
+      let finalPrompt;
+      if (visionAnalysis) {
+        const contextParts = [];
+        if (visionAnalysis.background_description) {
+          contextParts.push(`Background: ${visionAnalysis.background_description}`);
+        }
+        if (visionAnalysis.style) {
+          contextParts.push(`Style: ${visionAnalysis.style}`);
+        }
+        if (visionAnalysis.lighting) {
+          contextParts.push(`Lighting: ${visionAnalysis.lighting}`);
+        }
+        if (visionAnalysis.colors?.length) {
+          contextParts.push(`Colors: ${visionAnalysis.colors.join(', ')}`);
+        }
+
+        finalPrompt = `A high quality image of [1] (the person from the reference).
+
+${contextParts.join('\n')}
+
+${prompt}
+
+IMPORTANT: [1] must look EXACTLY like the person in the reference image - same face, same clothing, same style.`;
+      } else {
+        finalPrompt = `A high quality image of [1] (the person from the reference).
+
+${prompt}
+
+IMPORTANT: [1] must look EXACTLY like the person in the reference image.`;
+      }
+
+      log.info('Subject customization request', {
+        subjectDescriptionLength: subjectDescription.length,
+        promptLength: finalPrompt.length,
+        hasVisionAnalysis: !!visionAnalysis
+      });
 
       requestBody = {
         instances: [{
@@ -163,7 +195,8 @@ Keep the exact same character identity as [1].`;
               bytesBase64Encoded: referenceBase64
             },
             subjectImageConfig: {
-              subjectType: 'SUBJECT_TYPE_PERSON'
+              subjectType: 'SUBJECT_TYPE_PERSON',
+              subjectDescription: subjectDescription  // КРИТИЧНО! Описание что сохранять
             }
           }]
         }],
