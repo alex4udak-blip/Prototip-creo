@@ -58,14 +58,14 @@ Analyze user request. If critical info is missing - ask 1-3 SHORT questions with
 - User explicitly said "быстро", "сразу", "без вопросов" AND no reference
 - Simple edit like "сделай ярче" AND no reference
 
-## CRITICAL RULE FOR REFERENCE IMAGES:
-If REFERENCE IMAGE is provided - you MUST ALWAYS:
-1. Set needs_clarification: true (THIS IS MANDATORY!)
-2. Acknowledge what you see on the reference (from vision_analysis)
-3. Ask: "Как использовать референс?" with options: ["Как референс (Identity Lock)", "Вдохновение (стиль)", "Редактировать"]
-4. Ask about style preference if not clear
+## REFERENCE IMAGES (AUTO MODE like Genspark):
+If REFERENCE IMAGE is provided:
+1. Set needs_clarification: true
+2. Acknowledge what you see on the reference in summary (from vision_analysis)
+3. DO NOT ask "how to use reference" - system automatically uses STYLE TRANSFER
+4. Only ask relevant questions about the TASK (size, geo, text, brand)
 
-NEVER return needs_clarification: false when there is a reference image!
+The reference will be automatically used for style/visual transfer - no need to ask user!
 
 ## OUTPUT FORMAT (JSON):
 
@@ -544,43 +544,15 @@ Remember:
         visionSummary: visionAnalysis.summary?.substring(0, 50)
       });
 
-      // Если Claude не задал вопросы - добавляем стандартные для референса
+      // Референс есть — система САМА определит как использовать (как Genspark)
+      // Не спрашиваем "как использовать референс" — всегда используем STYLE transfer
       result.needs_clarification = true;
-      result.summary = result.summary || `Вижу референс: ${visionAnalysis.summary?.substring(0, 100) || 'изображение'}. Уточню пару деталей:`;
+      result.summary = result.summary || `Вижу референс: ${visionAnalysis.summary?.substring(0, 100) || 'изображение'}. Уточню детали:`;
 
-      // Добавляем вопрос про использование референса если нет вопросов
+      // Если Claude не задал вопросы — не добавляем лишние про референс
+      // Система автоматически использует REFERENCE_TYPE_STYLE
       if (!result.questions || result.questions.length === 0) {
-        result.questions = [
-          {
-            id: 'reference_usage',
-            question: 'Как использовать референс?',
-            type: 'single_choice',
-            options: ['Как референс (Identity Lock)', 'Вдохновение (стиль)', 'Редактировать'],
-            why: 'Определяет модель и степень влияния'
-          },
-          {
-            id: 'style_preference',
-            question: 'Стиль новой картинки?',
-            type: 'single_choice',
-            options: ['Точно как референс', 'Похожий стиль', 'Свой стиль'],
-            why: 'Для точного результата'
-          }
-        ];
-      } else {
-        // Добавляем вопрос про референс в начало если его нет
-        const hasRefQuestion = result.questions.some(q =>
-          q.id?.includes('reference') || q.id?.includes('style') ||
-          q.question?.toLowerCase().includes('референс') || q.question?.toLowerCase().includes('стиль')
-        );
-        if (!hasRefQuestion) {
-          result.questions.unshift({
-            id: 'reference_usage',
-            question: 'Как использовать референс?',
-            type: 'single_choice',
-            options: ['Как референс', 'Вдохновение', 'Редактировать'],
-            why: 'Определяет модель генерации'
-          });
-        }
+        result.questions = [];
       }
 
       // Вопрос про вариации добавляется ниже, вне этого блока
@@ -881,28 +853,8 @@ export async function processUserAnswers(originalPrompt, answers, options = {}) 
     }
   }
 
-  // Detect reference usage mode from answers
-  // Identity Lock / Копировать точно = передаём референс в Vertex AI
-  // Вдохновение стилем = только описание в промпте, без референса
-  // Адаптировать = редактирование
-  let referenceUsage = null;
-  if (answers.reference_usage) {
-    const usage = answers.reference_usage.toLowerCase();
-    // Identity Lock или Копировать точно — передаём референс в модель
-    if (usage.includes('identity') || usage.includes('lock') ||
-        usage.includes('копировать') || usage.includes('точно') ||
-        usage.includes('референс') || usage.includes('как референс')) {
-      referenceUsage = 'identity_lock';
-    }
-    // Адаптировать / Редактировать
-    else if (usage.includes('адаптир') || usage.includes('редактир') || usage.includes('edit')) {
-      referenceUsage = 'edit';
-    }
-    // Вдохновение стилем — НЕ передаём референс, только описание
-    else if (usage.includes('стиль') || usage.includes('style') || usage.includes('вдохновен')) {
-      referenceUsage = 'style_only';
-    }
-  }
+  // АВТОМАТИЧЕСКИЙ РЕЖИМ (как Genspark) — не спрашиваем про reference_usage
+  // Система сама определяет что делать с референсом
 
   // Формируем обогащённый промпт из ответов (без variations_count - это не для промпта)
   let enrichedPrompt = originalPrompt;
@@ -961,32 +913,16 @@ export async function processUserAnswers(originalPrompt, answers, options = {}) 
   // Добавляем количество вариаций в результат
   result.variations_count = variationsCount;
 
-  // Обрабатываем режим использования референса
-  if (referenceUsage === 'identity_lock') {
-    // Identity Lock / Копировать точно — передаём референс в Vertex AI
+  // АВТОМАТИЧЕСКИЙ РЕЖИМ (как Genspark) — всегда передаём референс как STYLE
+  // Не спрашиваем пользователя, система сама определяет
+  if (hasReference || referenceUrl) {
     result.suggested_model = 'google-nano-pro';
-    result.reference_usage = 'identity_lock';
-    result.needs_character_consistency = true;
-    result.pass_reference_to_model = true;  // Флаг для передачи референса в модель
-    log.info('Identity Lock mode activated', {
+    result.reference_usage = 'style_transfer';  // Единый режим — style transfer
+    result.pass_reference_to_model = true;  // Всегда передаём референс
+    log.info('Auto style transfer mode (like Genspark)', {
       model: 'google-nano-pro',
-      hasVisionAnalysis: !!visionAnalysis,
-      hasCharacter: visionAnalysis?.has_character
-    });
-  } else if (referenceUsage === 'style_only') {
-    // Вдохновение стилем — НЕ передаём референс, только описание в промпте
-    result.reference_usage = 'style_only';
-    result.pass_reference_to_model = false;  // НЕ передаём референс
-    log.info('Style inspiration mode - reference NOT passed to model', {
       hasVisionAnalysis: !!visionAnalysis
     });
-  } else if (referenceUsage === 'edit') {
-    // Адаптировать/Редактировать
-    result.reference_usage = 'edit';
-    result.pass_reference_to_model = true;
-    log.info('Edit mode activated');
-  } else if (referenceUsage) {
-    result.reference_usage = referenceUsage;
   }
 
   // Pass through Vision analysis for potential use downstream
