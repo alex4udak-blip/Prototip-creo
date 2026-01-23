@@ -320,10 +320,74 @@ export const useChatStore = create((set, get) => ({
           // Streaming images - показываем по мере генерации
           imageUrls: data.newImage
             ? [...(updatedMessages[targetIndex].imageUrls || []), data.newImage]
-            : updatedMessages[targetIndex].imageUrls
+            : updatedMessages[targetIndex].imageUrls,
+          // Progress percentage
+          progress: data.progress || updatedMessages[targetIndex].progress
         };
 
         return { messages: updatedMessages };
+      });
+    });
+
+    // Tool use indicators (like Genspark)
+    wsManager.on('tool_use', (data) => {
+      set(state => {
+        const messages = [...state.messages];
+        let targetIndex = -1;
+
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].role === 'assistant' && messages[i].isGenerating) {
+            targetIndex = i;
+            break;
+          }
+        }
+
+        if (targetIndex === -1) return state;
+
+        const currentTools = messages[targetIndex].activeTools || [];
+        const toolIndex = currentTools.findIndex(t => t.tool === data.tool);
+
+        if (toolIndex === -1) {
+          currentTools.push(data);
+        } else {
+          currentTools[toolIndex] = data;
+        }
+
+        messages[targetIndex] = {
+          ...messages[targetIndex],
+          activeTools: [...currentTools]
+        };
+
+        return { messages };
+      });
+    });
+
+    wsManager.on('tool_use_complete', (data) => {
+      set(state => {
+        const messages = [...state.messages];
+        let targetIndex = -1;
+
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].role === 'assistant' && messages[i].isGenerating) {
+            targetIndex = i;
+            break;
+          }
+        }
+
+        if (targetIndex === -1) return state;
+
+        // Mark all tools as complete
+        const currentTools = (messages[targetIndex].activeTools || []).map(tool => ({
+          ...tool,
+          status: 'complete'
+        }));
+
+        messages[targetIndex] = {
+          ...messages[targetIndex],
+          activeTools: currentTools
+        };
+
+        return { messages };
       });
     });
 

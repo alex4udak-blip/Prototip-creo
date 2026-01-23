@@ -1,6 +1,36 @@
 import { useState } from 'react';
-import { Download, Copy, Check, ExternalLink, AlertCircle, Sparkles, User, Maximize2, ImageIcon, ChevronLeft, ChevronRight, X, RefreshCw, Edit3, Wrench, Brain, MessageSquare, Wand2, Palette, ZoomIn, Crop, RotateCcw } from 'lucide-react';
+import { Download, Copy, Check, ExternalLink, AlertCircle, Sparkles, User, Maximize2, ImageIcon, ChevronLeft, ChevronRight, X, RefreshCw, Edit3, Wrench, Brain, MessageSquare, Wand2, Palette, Crop, RotateCcw, Loader2, Search } from 'lucide-react';
 import { GENERATION_PHASES, PHASE_LABELS, useChatStore } from '../../hooks/useChat';
+
+/**
+ * Tool Use Indicator (like Genspark)
+ * Показывает плашки: "Использование инструмента | 🔍 Понимание изображения"
+ */
+function ToolUseIndicator({ tool, label, status }) {
+  const icons = {
+    image_understanding: '🔍',
+    analysis: '🧠',
+    clarification: '💬',
+    image_generation: '🎨',
+    thinking: '💭',
+    deep_research: '🔬'
+  };
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 bg-bg-secondary rounded-lg border border-border mb-2 animate-fade-in">
+      <span className="text-xs text-text-muted">Использование инструмента</span>
+      <span className="text-text-muted">|</span>
+      <span>{icons[tool] || '⚡'}</span>
+      <span className="text-sm text-text-primary">{label}</span>
+      {status === 'running' && (
+        <Loader2 className="w-3 h-3 animate-spin text-accent ml-auto" />
+      )}
+      {status === 'complete' && (
+        <Check className="w-3 h-3 text-green-400 ml-auto" />
+      )}
+    </div>
+  );
+}
 
 /**
  * Simple Markdown parser - removes ** and converts to clean text
@@ -285,8 +315,8 @@ export function Message({ message }) {
                 </p>
               )}
 
-              {/* Reference image (from user) */}
-              {message.referenceUrl && (
+              {/* Reference image (from user) - single */}
+              {message.referenceUrl && !message.imageUrls && (
                 <div className="mt-3">
                   <span className="text-xs text-text-muted block mb-1">Референс:</span>
                   <img
@@ -298,8 +328,28 @@ export function Message({ message }) {
                 </div>
               )}
 
-              {/* Generated images */}
-              {message.imageUrls?.length > 0 && (
+              {/* Multiple reference images (from user) - до 14 картинок */}
+              {isUser && message.imageUrls?.length > 0 && (
+                <div className="mt-3">
+                  <span className="text-xs text-text-muted block mb-2">
+                    📎 {message.imageUrls.length} референс{message.imageUrls.length > 1 ? 'ов' : ''}:
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {message.imageUrls.map((url, index) => (
+                      <img
+                        key={index}
+                        src={url}
+                        alt={`Reference ${index + 1}`}
+                        className="h-16 w-16 rounded-lg object-cover cursor-pointer hover:opacity-90 transition border border-border"
+                        onClick={() => openPreview(index)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Generated images (only for assistant) */}
+              {!isUser && message.imageUrls?.length > 0 && (
                 <div className={`${message.content ? 'mt-4' : ''}`}>
                   {/* Section header for multiple images */}
                   {message.imageUrls.length > 1 && (
@@ -530,6 +580,15 @@ export function Message({ message }) {
                 <div className="mt-3 flex items-start gap-2 text-error bg-error/10 rounded-lg p-3">
                   <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                   <span className="text-sm">{message.errorMessage}</span>
+                </div>
+              )}
+
+              {/* Tool use indicators (like Genspark) */}
+              {message.isGenerating && message.activeTools?.length > 0 && (
+                <div className="mb-3">
+                  {message.activeTools.map((tool, i) => (
+                    <ToolUseIndicator key={i} {...tool} />
+                  ))}
                 </div>
               )}
 

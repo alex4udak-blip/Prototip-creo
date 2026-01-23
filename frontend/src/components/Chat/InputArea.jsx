@@ -9,7 +9,8 @@ import {
   CheckCircle,
   Settings2,
   Zap,
-  MessageSquare
+  MessageSquare,
+  Search
 } from 'lucide-react';
 import { useChatStore } from '../../hooks/useChat';
 
@@ -175,7 +176,7 @@ export function InputArea() {
             {/* Mode */}
             <div className="mb-4">
               <label className="text-xs text-text-muted uppercase mb-2 block">Режим</label>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => updateSettings({ mode: 'smart' })}
                   className={`flex items-center gap-2 px-4 py-2 rounded-xl transition ${
@@ -193,6 +194,16 @@ export function InputArea() {
                 >
                   <Zap className="w-4 h-4" />
                   <span className="text-sm font-medium">Быстрый</span>
+                </button>
+                {/* Deep Research button (like Genspark) */}
+                <button
+                  onClick={() => updateSettings({ deepResearch: !settings.deepResearch })}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl transition ${
+                    settings.deepResearch ? 'bg-purple-500/20 text-purple-400 border-2 border-purple-500/30' : 'bg-bg-hover text-text-secondary'
+                  }`}
+                >
+                  <Search className="w-4 h-4" />
+                  <span className="text-sm font-medium">Глубокое исследование</span>
                 </button>
               </div>
             </div>

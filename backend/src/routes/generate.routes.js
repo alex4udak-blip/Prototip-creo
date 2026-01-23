@@ -140,34 +140,91 @@ router.post('/',
 );
 
 /**
- * Асинхронная обработка генерации со streaming и фазами
+ * Асинхронная обработка генерации со streaming, фазами и tool_use индикаторами
  */
 async function processGeneration({ chatId, prompt, images, settings, userId, startTime }) {
   try {
+    // Tool use: Если есть референсы — показываем "Понимание изображения"
+    if (images.length > 0) {
+      broadcastToChat(chatId, {
+        type: 'tool_use',
+        tool: 'image_understanding',
+        label: 'Понимание изображения',
+        status: 'running'
+      });
+    }
+
+    // Tool use: Анализ запроса
+    broadcastToChat(chatId, {
+      type: 'tool_use',
+      tool: 'analysis',
+      label: 'Анализ запроса',
+      status: 'running'
+    });
+
+    // Deep research mode
+    if (settings.deepResearch) {
+      broadcastToChat(chatId, {
+        type: 'tool_use',
+        tool: 'deep_research',
+        label: 'Глубокое исследование',
+        status: 'running'
+      });
+    }
+
     // Фаза 2: Генерация со streaming
     broadcastToChat(chatId, {
       type: 'generation_progress',
       status: 'generating',
-      message: 'Генерирую ответ...'
+      message: 'Генерирую ответ...',
+      progress: 20
     });
+
+    let hasAskedQuestions = false;
+    let imageCount = 0;
+    const expectedImages = settings.variants || 3;
 
     // Вызываем Gemini со streaming
     const result = await sendMessageStream(chatId, prompt, images, settings, (progress) => {
       // Отправляем прогресс в реальном времени
       if (progress.status === 'generating_text') {
+        // Проверяем задаёт ли AI вопросы
+        if (!hasAskedQuestions && progress.text && (progress.text.includes('?') || progress.text.includes('уточн'))) {
+          hasAskedQuestions = true;
+          broadcastToChat(chatId, {
+            type: 'tool_use',
+            tool: 'clarification',
+            label: 'Clarification',
+            status: 'running'
+          });
+        }
+
         broadcastToChat(chatId, {
           type: 'generation_progress',
           status: 'generating',
           message: 'Генерирую ответ...',
-          partialText: progress.text
+          partialText: progress.text,
+          progress: 20 + Math.min(progress.text.length / 20, 20)  // 20-40%
         });
       } else if (progress.status === 'generating_image') {
+        imageCount++;
+        const imageProgress = 40 + (imageCount / expectedImages) * 50;  // 40-90%
+
+        // Tool use: Генерация изображений
+        broadcastToChat(chatId, {
+          type: 'tool_use',
+          tool: 'image_generation',
+          label: `Генерация изображений (${imageCount}/${expectedImages})`,
+          status: 'running'
+        });
+
         broadcastToChat(chatId, {
           type: 'generation_progress',
           status: 'generating_image',
-          message: `Создаю изображение ${progress.imagesCount}...`,
-          imagesCount: progress.imagesCount,
-          newImage: progress.newImage
+          message: `Создаю изображение ${imageCount}/${expectedImages}...`,
+          imagesCount: imageCount,
+          newImage: progress.newImage,
+          progress: Math.round(imageProgress)
         });
       }
     });
@@ -187,13 +244,20 @@ async function processGeneration({ chatId, prompt, images, settings, userId, sta
     // Обновляем статистику
     await incrementGenerationStats(userId, totalTime);
 
+    // Завершаем все tool_use
+    broadcastToChat(chatId, {
+      type: 'tool_use_complete',
+      tools: ['image_understanding', 'analysis', 'clarification', 'image_generation', 'deep_research']
+    });
+
     // Фаза 3: Готово!
     broadcastToChat(chatId, {
       type: 'generation_complete',
       messageId: assistantMessage.id,
       content: result.text,
       images: result.images,
-      timeMs: totalTime
+      timeMs: totalTime,
+      progress: 100
     });
 
     log.info('Generation complete', {
