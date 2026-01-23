@@ -432,11 +432,24 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
     }
 
     try {
+      log.info('Starting auto-retry for image generation', { chatId, retryMessage });
       const retryStream = await chat.sendMessageStream({ message: retryMessage });
 
+      let retryChunkCount = 0;
       for await (const chunk of retryStream) {
+        retryChunkCount++;
         const candidate = chunk.candidates?.[0];
         const parts = candidate?.content?.parts || [];
+
+        // Логируем каждый chunk в retry
+        log.info('Retry chunk received', {
+          chatId,
+          chunkNumber: retryChunkCount,
+          partsCount: parts.length,
+          partTypes: parts.map(p => p.text ? 'text' : p.inlineData ? 'image' : 'unknown'),
+          finishReason: candidate?.finishReason,
+          hasInlineData: parts.some(p => p.inlineData)
+        });
 
         // Обновляем finishReason
         if (candidate?.finishReason) {
@@ -447,13 +460,15 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
           if (part.text) {
             // Добавляем текст к результату
             result.text += '\n' + part.text;
+            log.info('Retry text chunk', { chatId, textLength: part.text.length });
           } else if (part.inlineData) {
+            log.info('Retry got inlineData!', { chatId, mimeType: part.inlineData.mimeType, dataLength: part.inlineData.data?.length });
             const imageUrl = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
             result.images.push({
               url: imageUrl,
               mimeType: part.inlineData.mimeType
             });
-            log.info('Image generated in retry', { chatId, imageIndex: result.images.length });
+            log.info('Image generated in retry', { chatId, imageIndex: result.images.length, imageUrl });
             if (onProgress) {
               onProgress({
                 status: 'generating_image',
@@ -466,9 +481,9 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
         }
       }
 
-      log.info('Auto-retry completed', { chatId, imagesCount: result.images.length, finishReason: result.finishReason });
+      log.info('Auto-retry completed', { chatId, imagesCount: result.images.length, finishReason: result.finishReason, totalChunks: retryChunkCount });
     } catch (retryError) {
-      log.error('Auto-retry failed', { chatId, error: retryError.message });
+      log.error('Auto-retry failed', { chatId, error: retryError.message, stack: retryError.stack });
     }
   }
 
