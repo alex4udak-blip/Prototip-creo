@@ -103,7 +103,8 @@ router.post('/',
 
       // Проверяем запрос на редактирование изображений
       // Если пользователь просит изменить/улучшить/апскейлить — подтягиваем последние изображения из чата
-      const isEditRequest = /измен|улучш|апскейл|upscale|поменя|переделай|текст|цвет|ярче|темнее|добав|убер|увелич|уменьш/i.test(prompt);
+      const isEditRequest = /измен|улучш|апскейл|upscale|поменя|переделай|текст|цвет|ярче|темнее|добав|убер|увелич|уменьш|качеств|детализ/i.test(prompt);
+      let editImageCount = 0;
 
       if (isEditRequest && images.length === 0 && chatId) {
         // Находим последние сгенерированные изображения в этом чате
@@ -114,9 +115,10 @@ router.post('/',
         `, [chatId]);
 
         if (lastImageMessage?.image_urls?.length > 0) {
+          editImageCount = lastImageMessage.image_urls.length;
           log.info('Loading previous images for editing', {
             chatId,
-            imageCount: lastImageMessage.image_urls.length
+            imageCount: editImageCount
           });
 
           // Загружаем изображения с диска и конвертируем в base64
@@ -186,7 +188,7 @@ router.post('/',
         chatId,
         prompt,
         images,
-        settings: { ...settings, isFollowUp },  // Передаём флаг follow-up
+        settings: { ...settings, isFollowUp, isEditRequest, editImageCount },  // Передаём флаги
         userId,
         startTime,
         referenceUrls: userMessageData.reference_urls || []
