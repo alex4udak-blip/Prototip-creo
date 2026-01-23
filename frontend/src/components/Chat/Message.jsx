@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, Copy, Check, ExternalLink, AlertCircle, Sparkles, User, Maximize2, ImageIcon, ChevronLeft, ChevronRight, X, RefreshCw, Edit3, Wrench, Brain, MessageSquare } from 'lucide-react';
+import { Download, Copy, Check, ExternalLink, AlertCircle, Sparkles, User, Maximize2, ImageIcon, ChevronLeft, ChevronRight, X, RefreshCw, Edit3, Wrench, Brain, MessageSquare, Wand2, Palette, ZoomIn, Crop, RotateCcw } from 'lucide-react';
 import { GENERATION_PHASES, PHASE_LABELS, useChatStore } from '../../hooks/useChat';
 
 /**
@@ -24,8 +24,9 @@ function parseMarkdown(text) {
 /**
  * Generation Status Indicator Component
  * Фазы: analyzing → generating → generating_image → complete
+ * С progress bar и процентами
  */
-function GenerationStatus({ phase, progress, status }) {
+function GenerationStatus({ phase, progress, status, imagesCount = 0, expectedImages = 3 }) {
   // Определяем фазу по статусу от сервера или по тексту
   const getPhaseInfo = () => {
     // Сначала проверяем статус от WebSocket
@@ -34,16 +35,22 @@ function GenerationStatus({ phase, progress, status }) {
         icon: Brain,
         label: '🧠 Анализирую запрос...',
         color: 'text-purple-400',
-        bgColor: 'bg-purple-500/10'
+        bgColor: 'bg-purple-500/10',
+        progressColor: 'bg-purple-400',
+        percent: 15
       };
     }
 
     if (status === 'generating_image') {
+      // Прогресс на основе количества сгенерированных картинок
+      const imagePercent = 50 + Math.round((imagesCount / expectedImages) * 40);
       return {
         icon: ImageIcon,
-        label: '🎨 Создаю изображение...',
+        label: `🎨 Создаю изображение ${imagesCount + 1}/${expectedImages}...`,
         color: 'text-yellow-400',
-        bgColor: 'bg-yellow-500/10'
+        bgColor: 'bg-yellow-500/10',
+        progressColor: 'bg-yellow-400',
+        percent: Math.min(imagePercent, 90)
       };
     }
 
@@ -52,7 +59,9 @@ function GenerationStatus({ phase, progress, status }) {
         icon: Sparkles,
         label: '✨ Генерирую ответ...',
         color: 'text-green-400',
-        bgColor: 'bg-green-500/10'
+        bgColor: 'bg-green-500/10',
+        progressColor: 'bg-green-400',
+        percent: 35
       };
     }
 
@@ -64,7 +73,9 @@ function GenerationStatus({ phase, progress, status }) {
         icon: Brain,
         label: '🧠 Анализирую запрос...',
         color: 'text-purple-400',
-        bgColor: 'bg-purple-500/10'
+        bgColor: 'bg-purple-500/10',
+        progressColor: 'bg-purple-400',
+        percent: 15
       };
     }
 
@@ -74,7 +85,9 @@ function GenerationStatus({ phase, progress, status }) {
         icon: ImageIcon,
         label: '🎨 Создаю изображение...',
         color: 'text-yellow-400',
-        bgColor: 'bg-yellow-500/10'
+        bgColor: 'bg-yellow-500/10',
+        progressColor: 'bg-yellow-400',
+        percent: 60
       };
     }
 
@@ -83,7 +96,9 @@ function GenerationStatus({ phase, progress, status }) {
         icon: Sparkles,
         label: '✨ Генерирую ответ...',
         color: 'text-green-400',
-        bgColor: 'bg-green-500/10'
+        bgColor: 'bg-green-500/10',
+        progressColor: 'bg-green-400',
+        percent: 35
       };
     }
 
@@ -92,7 +107,9 @@ function GenerationStatus({ phase, progress, status }) {
       icon: Wrench,
       label: progress || '⚡ Обрабатываю...',
       color: 'text-blue-400',
-      bgColor: 'bg-blue-500/10'
+      bgColor: 'bg-blue-500/10',
+      progressColor: 'bg-blue-400',
+      percent: 25
     };
   };
 
@@ -100,17 +117,32 @@ function GenerationStatus({ phase, progress, status }) {
   const Icon = phaseInfo.icon;
 
   return (
-    <div className={`flex items-center gap-3 p-3 rounded-xl ${phaseInfo.bgColor} animate-fade-in`}>
+    <div className={`p-3 rounded-xl ${phaseInfo.bgColor} animate-fade-in`}>
       {/* Phase indicator */}
-      <div className="flex items-center gap-2 text-sm">
-        <span className={`flex items-center gap-1.5 ${phaseInfo.color}`}>
-          <Icon className="w-4 h-4 animate-pulse" />
-          <span className="font-medium">{phaseInfo.label}</span>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2 text-sm">
+          <span className={`flex items-center gap-1.5 ${phaseInfo.color}`}>
+            <Icon className="w-4 h-4 animate-pulse" />
+            <span className="font-medium">{phaseInfo.label}</span>
+          </span>
+        </div>
+
+        {/* Percentage */}
+        <span className={`text-xs font-medium ${phaseInfo.color}`}>
+          {phaseInfo.percent}%
         </span>
       </div>
 
+      {/* Progress bar */}
+      <div className="h-1.5 bg-black/20 rounded-full overflow-hidden">
+        <div
+          className={`h-full ${phaseInfo.progressColor} rounded-full transition-all duration-500 ease-out progress-stripe progress-glow`}
+          style={{ width: `${phaseInfo.percent}%` }}
+        />
+      </div>
+
       {/* Animated dots */}
-      <div className="flex gap-1 ml-auto">
+      <div className="flex justify-center gap-1 mt-2">
         <span className={`w-1.5 h-1.5 rounded-full ${phaseInfo.color.replace('text-', 'bg-')} opacity-60 animate-bounce`} style={{ animationDelay: '0ms' }}></span>
         <span className={`w-1.5 h-1.5 rounded-full ${phaseInfo.color.replace('text-', 'bg-')} opacity-60 animate-bounce`} style={{ animationDelay: '150ms' }}></span>
         <span className={`w-1.5 h-1.5 rounded-full ${phaseInfo.color.replace('text-', 'bg-')} opacity-60 animate-bounce`} style={{ animationDelay: '300ms' }}></span>
@@ -237,10 +269,19 @@ export function Message({ message }) {
                 ? 'bg-accent/20 border border-accent/30'
                 : 'bg-bg-secondary border border-border'
             }`}>
-              {/* Text content (only if not generating and has content) */}
-              {message.content && !message.isGenerating && (
+              {/* Text content - показываем и во время генерации (streaming) */}
+              {message.content && (
                 <p className="text-text-primary whitespace-pre-wrap">
                   {parseMarkdown(message.content)}
+                  {message.isGenerating && <span className="typing-cursor">▋</span>}
+                </p>
+              )}
+
+              {/* Partial text во время генерации (если content ещё пустой) */}
+              {!message.content && message.partialText && message.isGenerating && (
+                <p className="text-text-primary whitespace-pre-wrap">
+                  {parseMarkdown(message.partialText)}
+                  <span className="typing-cursor">▋</span>
                 </p>
               )}
 
@@ -386,13 +427,14 @@ export function Message({ message }) {
                     ))}
                   </div>
 
-                  {/* Action buttons after images */}
+                  {/* Quick actions after images - Genspark style */}
                   <div className="flex flex-wrap gap-2 mt-4">
+                    {/* Primary actions */}
                     <button
                       onClick={() => {
                         message.imageUrls.forEach((url, i) => downloadImage(url, i));
                       }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-hover hover:bg-bg-tertiary rounded-lg text-sm text-text-secondary hover:text-text-primary transition"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/20 hover:bg-accent/30 text-accent rounded-lg text-sm font-medium transition"
                     >
                       <Download className="w-4 h-4" />
                       <span>Скачать все</span>
@@ -401,7 +443,7 @@ export function Message({ message }) {
                       onClick={() => {
                         const input = document.querySelector('textarea');
                         if (input) {
-                          input.value = 'Ещё варианты';
+                          input.value = 'Ещё 3 варианта в том же стиле';
                           input.focus();
                         }
                       }}
@@ -410,19 +452,75 @@ export function Message({ message }) {
                       <RefreshCw className="w-4 h-4" />
                       <span>Ещё варианты</span>
                     </button>
-                    <button
-                      onClick={() => {
-                        const input = document.querySelector('textarea');
-                        if (input) {
-                          input.value = 'Редактировать: ';
-                          input.focus();
-                        }
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-hover hover:bg-bg-tertiary rounded-lg text-sm text-text-secondary hover:text-text-primary transition"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                      <span>Редактировать</span>
-                    </button>
+
+                    {/* Quick edit actions */}
+                    <div className="flex gap-1 ml-2 pl-2 border-l border-border">
+                      <button
+                        onClick={() => {
+                          const input = document.querySelector('textarea');
+                          if (input) {
+                            input.value = 'Измени текст на: ';
+                            input.focus();
+                          }
+                        }}
+                        className="p-2 hover:bg-bg-hover rounded-lg transition group"
+                        title="Изменить текст"
+                      >
+                        <Edit3 className="w-4 h-4 text-text-muted group-hover:text-text-primary" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          const input = document.querySelector('textarea');
+                          if (input) {
+                            input.value = 'Измени цвета на более яркие';
+                            input.focus();
+                          }
+                        }}
+                        className="p-2 hover:bg-bg-hover rounded-lg transition group"
+                        title="Изменить цвета"
+                      >
+                        <Palette className="w-4 h-4 text-text-muted group-hover:text-text-primary" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          const input = document.querySelector('textarea');
+                          if (input) {
+                            input.value = 'Улучши качество и детализацию';
+                            input.focus();
+                          }
+                        }}
+                        className="p-2 hover:bg-bg-hover rounded-lg transition group"
+                        title="Улучшить качество"
+                      >
+                        <Wand2 className="w-4 h-4 text-text-muted group-hover:text-text-primary" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          const input = document.querySelector('textarea');
+                          if (input) {
+                            input.value = 'Сделай другой размер: 1:1 (квадрат)';
+                            input.focus();
+                          }
+                        }}
+                        className="p-2 hover:bg-bg-hover rounded-lg transition group"
+                        title="Изменить размер"
+                      >
+                        <Crop className="w-4 h-4 text-text-muted group-hover:text-text-primary" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          const input = document.querySelector('textarea');
+                          if (input) {
+                            input.value = 'Переделай полностью, сохрани только концепцию';
+                            input.focus();
+                          }
+                        }}
+                        className="p-2 hover:bg-bg-hover rounded-lg transition group"
+                        title="Переделать"
+                      >
+                        <RotateCcw className="w-4 h-4 text-text-muted group-hover:text-text-primary" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -435,13 +533,15 @@ export function Message({ message }) {
                 </div>
               )}
 
-              {/* Generation status with phases */}
+              {/* Generation status with phases and progress bar */}
               {message.isGenerating && (
                 <div className="mt-3">
                   <GenerationStatus
                     phase={message.generationPhase}
                     progress={message.generationProgress}
                     status={message.generationStatus}
+                    imagesCount={message.imageUrls?.length || 0}
+                    expectedImages={3}
                   />
                 </div>
               )}

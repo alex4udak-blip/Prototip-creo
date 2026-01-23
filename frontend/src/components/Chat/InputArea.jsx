@@ -56,9 +56,10 @@ export function InputArea() {
   const {
     sendMessage,
     isGenerating,
-    attachedImage,
-    setAttachedImage,
-    clearAttachedImage,
+    attachedImages,
+    addAttachedImage,
+    removeAttachedImage,
+    clearAttachedImages,
     settings,
     updateSettings
   } = useChatStore();
@@ -86,7 +87,7 @@ export function InputArea() {
 
   // Send
   const handleSend = async () => {
-    if ((!message.trim() && !attachedImage) || isGenerating) return;
+    if ((!message.trim() && attachedImages.length === 0) || isGenerating) return;
 
     const prompt = message.trim();
     setMessage('');
@@ -94,34 +95,48 @@ export function InputArea() {
     if (textareaRef.current) textareaRef.current.style.height = '52px';
 
     try {
-      await sendMessage(prompt, attachedImage);
+      await sendMessage(prompt, attachedImages);
     } catch (error) {
       showToast('Ошибка: ' + error.message);
     }
   };
 
-  // File upload
-  const handleFile = (file) => {
-    if (!file?.type.startsWith('image/')) {
-      showToast('Только изображения');
-      return;
+  // File upload (множественные)
+  const handleFiles = (files) => {
+    const fileArray = Array.from(files);
+    let added = 0;
+
+    for (const file of fileArray) {
+      if (attachedImages.length + added >= 14) {
+        showToast('Максимум 14 картинок');
+        break;
+      }
+      if (!file?.type.startsWith('image/')) {
+        showToast('Только изображения');
+        continue;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        showToast('Максимум 10MB на файл');
+        continue;
+      }
+      addAttachedImage(file);
+      added++;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      showToast('Максимум 10MB');
-      return;
+
+    if (added > 0) {
+      showToast(`Добавлено ${added} картинок!`, 'success');
     }
-    setAttachedImage(file);
-    showToast('Картинка прикреплена!', 'success');
   };
 
-  // Drag & Drop
+  // Drag & Drop (множественные)
   const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = (e) => { e.preventDefault(); setIsDragging(false); };
   const handleDrop = (e) => {
     e.preventDefault();
     setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+    if (e.dataTransfer.files.length > 0) {
+      handleFiles(e.dataTransfer.files);
+    }
   };
 
   // Keyboard
@@ -132,7 +147,7 @@ export function InputArea() {
     }
   };
 
-  const canSend = (message.trim() || attachedImage) && !isGenerating;
+  const canSend = (message.trim() || attachedImages.length > 0) && !isGenerating;
 
   return (
     <div
@@ -238,25 +253,44 @@ export function InputArea() {
           </div>
         )}
 
-        {/* Attached image preview */}
-        {attachedImage && (
+        {/* Attached images preview (до 14 референсов) */}
+        {attachedImages.length > 0 && (
           <div className="mb-3 bg-bg-secondary rounded-xl p-3 animate-scale-in">
-            <div className="flex items-center gap-3">
-              <img
-                src={URL.createObjectURL(attachedImage)}
-                alt="Reference"
-                className="h-16 w-auto rounded-lg object-cover"
-              />
-              <div className="flex-1">
-                <p className="text-sm text-text-primary">{attachedImage.name}</p>
-                <p className="text-xs text-text-muted">{Math.round(attachedImage.size / 1024)} KB</p>
-              </div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-text-muted">
+                📎 {attachedImages.length} / 14 референсов
+              </span>
               <button
-                onClick={clearAttachedImage}
-                className="p-1.5 hover:bg-error/20 rounded-lg transition"
+                onClick={clearAttachedImages}
+                className="text-xs text-error hover:underline"
               >
-                <X className="w-4 h-4 text-error" />
+                Удалить все
               </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {attachedImages.map((img, index) => (
+                <div key={index} className="relative group">
+                  <img
+                    src={URL.createObjectURL(img)}
+                    alt={`Reference ${index + 1}`}
+                    className="h-16 w-16 rounded-lg object-cover border border-border"
+                  />
+                  <button
+                    onClick={() => removeAttachedImage(index)}
+                    className="absolute -top-1 -right-1 p-1 bg-error rounded-full opacity-0 group-hover:opacity-100 transition shadow-md"
+                  >
+                    <X className="w-3 h-3 text-white" />
+                  </button>
+                </div>
+              ))}
+              {attachedImages.length < 14 && (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-16 w-16 rounded-lg border-2 border-dashed border-border hover:border-accent flex items-center justify-center transition"
+                >
+                  <span className="text-2xl text-text-muted">+</span>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -276,12 +310,13 @@ export function InputArea() {
 
           <div className="flex items-center justify-between px-3 pb-3">
             <div className="flex items-center gap-1">
-              {/* File input */}
+              {/* File input (множественный) */}
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
-                onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]); e.target.value = ''; }}
+                multiple
+                onChange={(e) => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value = ''; }}
                 className="hidden"
               />
               <button
@@ -342,7 +377,7 @@ export function InputArea() {
         </div>
 
         <p className="text-xs text-text-muted mt-2 opacity-70">
-          💡 Перетащите картинку • Нажмите ⚙️ для настроек
+          💡 Перетащите до 14 картинок • Нажмите ⚙️ для настроек
         </p>
       </div>
     </div>

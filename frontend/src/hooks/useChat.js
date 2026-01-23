@@ -37,8 +37,8 @@ export const useChatStore = create((set, get) => ({
   generationPhase: GENERATION_PHASES.IDLE,
   generationProgress: null,
 
-  // Референс (прикреплённая картинка)
-  attachedImage: null,
+  // Референсы (до 14 картинок как в Genspark)
+  attachedImages: [],
 
   // Настройки
   settings: {
@@ -148,22 +148,27 @@ export const useChatStore = create((set, get) => ({
   // Generation — УПРОЩЁННАЯ
   // ==========================================
 
-  sendMessage: async (prompt, imageFile = null) => {
-    const { currentChat, settings, attachedImage } = get();
+  sendMessage: async (prompt, imageFiles = null) => {
+    const { currentChat, settings, attachedImages } = get();
 
-    if (!prompt?.trim() && !imageFile && !attachedImage) {
+    // Объединяем переданные файлы с уже прикреплёнными
+    const allImages = imageFiles
+      ? (Array.isArray(imageFiles) ? imageFiles : [imageFiles])
+      : attachedImages;
+
+    if (!prompt?.trim() && allImages.length === 0) {
       return;
     }
 
     const tempUserMessageId = `user-${Date.now()}`;
     const tempAssistantMessageId = `assistant-${Date.now()}`;
 
-    // Добавляем сообщение пользователя
+    // Добавляем сообщение пользователя с превью всех картинок
     const userMessage = {
       id: tempUserMessageId,
       role: 'user',
       content: prompt,
-      imageUrl: attachedImage ? URL.createObjectURL(attachedImage) : null,
+      imageUrls: allImages.map(img => URL.createObjectURL(img)),
       createdAt: new Date().toISOString()
     };
 
@@ -181,7 +186,7 @@ export const useChatStore = create((set, get) => ({
       isGenerating: true,
       generationPhase: GENERATION_PHASES.GENERATING,
       generationProgress: 'Генерирую...',
-      attachedImage: null
+      attachedImages: []  // Очищаем после отправки
     }));
 
     try {
@@ -198,10 +203,9 @@ export const useChatStore = create((set, get) => ({
         mode: settings.mode
       }));
 
-      // Картинка
-      const imageToSend = imageFile || attachedImage;
-      if (imageToSend) {
-        formData.append('reference', imageToSend);
+      // Картинки (до 14 референсов)
+      for (const img of allImages) {
+        formData.append('references', img);
       }
 
       // Отправляем
@@ -240,15 +244,27 @@ export const useChatStore = create((set, get) => ({
   },
 
   // ==========================================
-  // Reference
+  // References (до 14 картинок как в Genspark)
   // ==========================================
 
-  setAttachedImage: (file) => {
-    set({ attachedImage: file });
+  setAttachedImages: (files) => {
+    set({ attachedImages: Array.isArray(files) ? files.slice(0, 14) : [files].slice(0, 14) });
   },
 
-  clearAttachedImage: () => {
-    set({ attachedImage: null });
+  addAttachedImage: (file) => {
+    set(state => ({
+      attachedImages: [...state.attachedImages, file].slice(0, 14)
+    }));
+  },
+
+  removeAttachedImage: (index) => {
+    set(state => ({
+      attachedImages: state.attachedImages.filter((_, i) => i !== index)
+    }));
+  },
+
+  clearAttachedImages: () => {
+    set({ attachedImages: [] });
   },
 
   // ==========================================
@@ -296,7 +312,15 @@ export const useChatStore = create((set, get) => ({
         updatedMessages[targetIndex] = {
           ...updatedMessages[targetIndex],
           generationProgress: data.message,
-          generationStatus: data.status  // analyzing, generating, generating_image
+          generationStatus: data.status,  // analyzing, generating, generating_image
+          // Streaming text - показываем частичный текст в реальном времени
+          partialText: data.partialText || updatedMessages[targetIndex].partialText,
+          // Если пришёл новый текст, обновляем content
+          content: data.partialText || updatedMessages[targetIndex].content,
+          // Streaming images - показываем по мере генерации
+          imageUrls: data.newImage
+            ? [...(updatedMessages[targetIndex].imageUrls || []), data.newImage]
+            : updatedMessages[targetIndex].imageUrls
         };
 
         return { messages: updatedMessages };

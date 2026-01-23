@@ -42,7 +42,7 @@ export const uploadMiddleware = multer({
   fileFilter,
   limits: {
     fileSize: config.maxFileSize, // 10MB по умолчанию
-    files: 1 // Максимум 1 файл за раз
+    files: 14 // До 14 референсов как в Genspark
   }
 });
 

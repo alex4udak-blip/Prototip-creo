@@ -17,7 +17,7 @@ router.use(authMiddleware);
  * Главный endpoint — отправить сообщение в Gemini
  */
 router.post('/',
-  uploadMiddleware.single('reference'),
+  uploadMiddleware.array('references', 14),  // До 14 референсов
   handleUploadError,
   checkGenerationLimit,
   async (req, res) => {
@@ -73,19 +73,20 @@ router.post('/',
         content: prompt
       };
 
-      // Подготавливаем картинки для Gemini
+      // Подготавливаем картинки для Gemini (до 14 референсов)
       const images = [];
 
-      // Загруженный файл
-      if (req.file) {
-        const base64 = fs.readFileSync(req.file.path).toString('base64');
-        images.push({
-          data: base64,
-          mimeType: req.file.mimetype
-        });
-
-        // Добавляем URL картинки в сообщение
-        userMessageData.reference_url = getFileUrl(req.file.filename, req);
+      // Загруженные файлы (множественные)
+      if (req.files && req.files.length > 0) {
+        for (const file of req.files) {
+          const base64 = fs.readFileSync(file.path).toString('base64');
+          images.push({
+            data: base64,
+            mimeType: file.mimetype
+          });
+        }
+        // Сохраняем URLs всех референсов
+        userMessageData.reference_urls = req.files.map(f => getFileUrl(f.filename, req));
       }
 
       const userMessage = await db.insert('messages', userMessageData);
