@@ -148,9 +148,19 @@ async function pollTaskResult(taskId, onProgress, maxAttempts = 60) {
       const task = await response.json();
 
       if (task.status === 'SUCCEEDED') {
-        log.info('Runway task completed', { taskId });
+        log.info('Runway task completed', {
+          taskId,
+          outputType: typeof task.output,
+          outputLength: Array.isArray(task.output) ? task.output.length : 'not array',
+          rawOutput: JSON.stringify(task.output)?.substring(0, 200)
+        });
         // Возвращаем URL первого выходного изображения
-        return task.output?.[0] || task.outputUrl;
+        const imageUrl = task.output?.[0] || task.output;
+        if (!imageUrl || typeof imageUrl !== 'string') {
+          log.error('Runway: unexpected output format', { task });
+          return null;
+        }
+        return imageUrl;
       }
 
       if (task.status === 'FAILED') {
