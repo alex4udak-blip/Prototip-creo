@@ -126,31 +126,38 @@ const SYSTEM_PROMPT = `Ты — премиальный AI-дизайнер ре�
 
 /**
  * Получить или создать чат-сессию
- * Используем модель gemini-2.0-flash-exp с возможностью генерации изображений
+ * Модель: Nano Banana Pro (gemini-3-pro-image-preview)
  */
-export function getOrCreateChat(chatId) {
+export function getOrCreateChat(chatId, settings = {}) {
   if (!chatSessions.has(chatId)) {
-    // Создаём чат с нужными настройками
-    // Модель: Nano Banana Pro — для генерации картинок высокого качества
+    // Определяем aspectRatio для imageConfig
+    const aspectRatio = settings.aspectRatio || "9:16";
+    const imageSize = settings.resolution || "2K";
+
     const chat = ai.chats.create({
       model: "gemini-3-pro-image-preview",
       config: {
-        responseModalities: ["TEXT", "IMAGE"],  // КРИТИЧЕСКИ ВАЖНО для генерации картинок
-        systemInstruction: SYSTEM_PROMPT
+        responseModalities: ["TEXT", "IMAGE"],
+        systemInstruction: SYSTEM_PROMPT,
+        imageConfig: {
+          aspectRatio: aspectRatio,
+          imageSize: imageSize
+        }
       }
     });
 
     chatSessions.set(chatId, chat);
-    log.info('Created new Gemini chat session with image generation', { chatId });
+    log.info('Created new Gemini chat session', { chatId, aspectRatio, imageSize });
   }
   return chatSessions.get(chatId);
 }
 
 /**
  * Отправить сообщение в чат
+ * Правильный формат: { message: ... }
  */
 export async function sendMessage(chatId, text, images = [], settings = {}) {
-  const chat = getOrCreateChat(chatId);
+  const chat = getOrCreateChat(chatId, settings);
 
   // Формируем текст с настройками
   let fullText = text || '';
@@ -170,22 +177,28 @@ export async function sendMessage(chatId, text, images = [], settings = {}) {
     fullText += `\n[VARIANTS:${settings.variants}]`;
   }
 
-  // Собираем контент для отправки
-  const contents = [];
+  // Собираем message в правильном формате
+  let message;
 
-  // Добавляем текст
-  if (fullText.trim()) {
-    contents.push({ text: fullText });
-  }
+  if (images.length > 0) {
+    // Мультимодальный запрос: текст + картинки
+    message = [];
 
-  // Добавляем картинки
-  for (const img of images) {
-    contents.push({
-      inlineData: {
-        mimeType: img.mimeType || 'image/png',
-        data: img.data
-      }
-    });
+    if (fullText.trim()) {
+      message.push({ text: fullText });
+    }
+
+    for (const img of images) {
+      message.push({
+        inlineData: {
+          mimeType: img.mimeType || 'image/png',
+          data: img.data
+        }
+      });
+    }
+  } else {
+    // Только текст
+    message = fullText;
   }
 
   log.info('Sending message to Gemini', {
@@ -195,8 +208,8 @@ export async function sendMessage(chatId, text, images = [], settings = {}) {
     settings
   });
 
-  // Отправляем
-  const response = await chat.sendMessage(contents);
+  // Отправляем в ПРАВИЛЬНОМ формате: { message: ... }
+  const response = await chat.sendMessage({ message });
 
   // Парсим ответ
   const result = {
