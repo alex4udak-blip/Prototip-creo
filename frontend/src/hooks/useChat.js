@@ -57,13 +57,23 @@ export const useChatStore = create((set, get) => ({
     set({ chatsLoading: true });
     try {
       const chats = await chatsAPI.getAll();
-      // Обновляем currentChat если он есть в списке (для синхронизации title)
       const { currentChat } = get();
       let updatedCurrentChat = currentChat;
+
+      // Обновляем currentChat только если:
+      // 1. Локальный title — дефолтный ("Новый чат" или пустой)
+      // 2. Серверный title — НЕ дефолтный
       if (currentChat?.id) {
         const foundChat = chats.find(c => c.id === currentChat.id);
         if (foundChat) {
-          updatedCurrentChat = { ...currentChat, title: foundChat.title };
+          const localIsDefault = !currentChat.title || currentChat.title === 'Новый чат';
+          const serverIsDefault = !foundChat.title || foundChat.title === 'Новый чат';
+
+          // Берём серверный title только если локальный дефолтный, а серверный — нет
+          if (localIsDefault && !serverIsDefault) {
+            updatedCurrentChat = { ...currentChat, title: foundChat.title };
+          }
+          // Иначе оставляем локальный title (он уже установлен из промпта)
         }
       }
       set({ chats, chatsLoading: false, currentChat: updatedCurrentChat });
