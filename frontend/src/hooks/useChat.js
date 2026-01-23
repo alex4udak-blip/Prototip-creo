@@ -266,6 +266,7 @@ export const useChatStore = create((set, get) => ({
         chat_id: currentChat?.id,
         prompt: actualPrompt,
         reference_url: referenceUrl,
+        vision_analysis: attachedReference?.visionAnalysis,  // Явно передаём visionAnalysis
         size: settings.size,
         model: settings.model,
         variations: settings.variations,

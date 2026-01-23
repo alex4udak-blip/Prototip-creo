@@ -88,7 +88,8 @@ router.post('/', checkGenerationLimit, async (req, res) => {
       answers = null,           // Ответы на уточняющие вопросы
       skip_clarification = false,  // Пропустить этап вопросов
       deep_thinking = false,    // Включить режим глубокого анализа
-      quick_generate = false    // Быстрая генерация без вопросов
+      quick_generate = false,   // Быстрая генерация без вопросов
+      vision_analysis = null    // Явно переданный visionAnalysis с фронтенда
     } = req.body;
 
     // Валидация
@@ -139,7 +140,15 @@ router.post('/', checkGenerationLimit, async (req, res) => {
 
     // FOLLOW-UP CONTEXT: Ищем референс и visionAnalysis из предыдущих сообщений
     let inheritedReferenceUrl = reference_url;
-    let inheritedVisionAnalysis = null;
+    // Приоритет: явно переданный vision_analysis > унаследованный из чата
+    let inheritedVisionAnalysis = vision_analysis || null;
+
+    if (vision_analysis) {
+      log.info('Using explicitly passed visionAnalysis from frontend', {
+        contentType: vision_analysis?.content_type,
+        hasRecreationPrompt: !!vision_analysis?.recreation_prompt
+      });
+    }
 
     if (!reference_url && chatId && chatHistory.length > 0) {
       // Ищем последнее сообщение пользователя с референсом
@@ -584,7 +593,14 @@ async function processGeneration(params) {
       referenceUsage: promptAnalysis.reference_usage,
       passReference: shouldPassReference,
       hasReferenceUrl: !!referenceUrl,
-      effectiveReference: !!effectiveReferenceUrl
+      effectiveReference: !!effectiveReferenceUrl,
+      // Детали visionAnalysis для отладки
+      hasVisionAnalysis: !!visionAnalysis,
+      visionSource: inheritedVisionAnalysis ? 'inherited_from_chat' : (visionAnalysis ? 'direct' : 'none'),
+      contentType: visionAnalysis?.content_type,
+      hasRecreationPrompt: !!visionAnalysis?.recreation_prompt,
+      recreationPromptPreview: visionAnalysis?.recreation_prompt?.substring(0, 100),
+      styleDescription: visionAnalysis?.style
     });
 
     const result = await generateImage(promptAnalysis.enhanced_prompt, {

@@ -50,6 +50,51 @@ async function getVertexAccessToken() {
 }
 
 /**
+ * Формирует styleDescription из visionAnalysis
+ * Используется для REFERENCE_TYPE_STYLE
+ */
+function buildStyleDescription(visionAnalysis) {
+  if (!visionAnalysis) {
+    return 'vibrant advertising banner style, professional quality, bold colors, high contrast';
+  }
+
+  const parts = [];
+
+  // Стиль рендера (3D, cartoon, photorealistic)
+  if (visionAnalysis.style) {
+    parts.push(visionAnalysis.style);
+  }
+
+  // Цветовая палитра
+  if (visionAnalysis.colors?.length > 0) {
+    parts.push(`color palette: ${visionAnalysis.colors.join(', ')}`);
+  }
+
+  // Освещение
+  if (visionAnalysis.lighting) {
+    parts.push(visionAnalysis.lighting);
+  }
+
+  // Фон
+  if (visionAnalysis.background_description) {
+    parts.push(`background style: ${visionAnalysis.background_description}`);
+  }
+
+  // Ключевые объекты
+  if (visionAnalysis.objects?.length > 0) {
+    parts.push(`featuring: ${visionAnalysis.objects.join(', ')}`);
+  }
+
+  // Тип контента (casino, gaming, etc)
+  if (visionAnalysis.content_type) {
+    parts.push(`${visionAnalysis.content_type} aesthetic`);
+  }
+
+  const result = parts.join('. ');
+  return result || 'vibrant advertising banner style, professional quality, bold colors';
+}
+
+/**
  * Определение aspect ratio для Imagen 3
  * Поддерживаемые: 1:1, 16:9, 9:16, 4:3, 3:4
  */
@@ -129,76 +174,57 @@ async function generateSingleImage(prompt, options, index, onProgress) {
     let requestBody;
 
     if (referenceBase64) {
-      // С референсом — Identity Lock!
-      // КРИТИЧНО: subjectDescription должен описывать ЧТО сохранять с референса
+      // НОВОЕ: Используем REFERENCE_TYPE_STYLE для сохранения визуального стиля
+      // Это работает для любых объектов (рыбы, слоты, вертолёты), не только для людей!
 
-      // Формируем subjectDescription из Vision анализа
-      let subjectDescription = 'person from reference image';
-      if (visionAnalysis) {
-        const descParts = [];
-        if (visionAnalysis.character_description) {
-          descParts.push(visionAnalysis.character_description);
-        }
-        if (visionAnalysis.character_clothing) {
-          descParts.push(visionAnalysis.character_clothing);
-        }
-        if (visionAnalysis.character_pose) {
-          descParts.push(visionAnalysis.character_pose);
-        }
-        if (descParts.length > 0) {
-          subjectDescription = descParts.join('. ');
+      // Формируем описание стиля
+      const styleDescription = buildStyleDescription(visionAnalysis);
+
+      // Формируем промпт
+      let finalPrompt = prompt;
+
+      // Добавляем recreation_prompt если есть (детальное описание что воссоздать)
+      if (visionAnalysis?.recreation_prompt) {
+        finalPrompt = `${visionAnalysis.recreation_prompt}. ${finalPrompt}`;
+      }
+
+      // Добавляем описание персонажа/объектов если есть
+      if (visionAnalysis?.character_description) {
+        if (!finalPrompt.toLowerCase().includes(visionAnalysis.character_description.toLowerCase().substring(0, 20))) {
+          finalPrompt = `${visionAnalysis.character_description}. ${finalPrompt}`;
         }
       }
 
-      // Формируем промпт с [1] для ссылки на референс
-      // Модель понимает [1] как "subject from referenceId: 1"
-      let finalPrompt;
+      finalPrompt += '. High quality, professional advertising, sharp details, 4K.';
 
-      // По документации: [1] должен быть в начале и чётко указан
-      // Стиль промпта: "[1] doing something" или "photo of [1] in location"
-      if (visionAnalysis) {
-        const contextParts = [];
-        if (visionAnalysis.style) {
-          contextParts.push(visionAnalysis.style);
-        }
-        if (visionAnalysis.lighting) {
-          contextParts.push(visionAnalysis.lighting);
-        }
-
-        const styleContext = contextParts.length > 0 ? `, ${contextParts.join(', ')}` : '';
-
-        // Простой и чёткий промпт — главное [1] в начале
-        finalPrompt = `[1] ${prompt}${styleContext}. Photorealistic, high quality, detailed.`;
-      } else {
-        finalPrompt = `[1] ${prompt}. Photorealistic, high quality, detailed.`;
-      }
-
-      log.info('Subject customization request', {
-        subjectDescriptionLength: subjectDescription.length,
+      log.info('Style customization request', {
+        styleDescriptionLength: styleDescription.length,
         promptLength: finalPrompt.length,
-        hasVisionAnalysis: !!visionAnalysis
+        hasVisionAnalysis: !!visionAnalysis,
+        contentType: visionAnalysis?.content_type,
+        referenceType: 'REFERENCE_TYPE_STYLE',
+        promptPreview: finalPrompt.substring(0, 200)
       });
 
       requestBody = {
         instances: [{
           prompt: finalPrompt,
           referenceImages: [{
-            referenceType: 'REFERENCE_TYPE_SUBJECT',
+            referenceType: 'REFERENCE_TYPE_STYLE',
             referenceId: 1,
             referenceImage: {
               bytesBase64Encoded: referenceBase64
             },
-            subjectImageConfig: {
-              subjectType: 'SUBJECT_TYPE_PERSON',
-              subjectDescription: subjectDescription  // КРИТИЧНО! Описание что сохранять
+            styleImageConfig: {
+              styleDescription: styleDescription
             }
           }]
         }],
         parameters: {
           aspectRatio,
           sampleCount: 1,
-          personGeneration: 'ALLOW_ALL',  // Разрешить генерацию людей
-          safetyFilterLevel: 'BLOCK_ONLY_HIGH',  // Минимальная фильтрация
+          personGeneration: 'ALLOW_ALL',
+          safetyFilterLevel: 'BLOCK_ONLY_HIGH',
           addWatermark: false
         }
       };
@@ -206,20 +232,24 @@ async function generateSingleImage(prompt, options, index, onProgress) {
       // Без референса — обычная генерация
       let finalPrompt = prompt;
 
-      // Если есть Vision анализ — добавляем детали в промпт
-      if (visionAnalysis) {
+      // Если есть visionAnalysis (от предыдущего референса) — используем recreation_prompt
+      if (visionAnalysis?.recreation_prompt) {
+        finalPrompt = `${visionAnalysis.recreation_prompt}. ${finalPrompt}`;
+      } else if (visionAnalysis) {
+        // Fallback на старую логику
         const parts = [];
         if (visionAnalysis.summary) parts.push(visionAnalysis.summary);
         if (visionAnalysis.character_description) parts.push(`Character: ${visionAnalysis.character_description}`);
         if (visionAnalysis.style) parts.push(`Style: ${visionAnalysis.style}`);
         if (visionAnalysis.colors?.length) parts.push(`Colors: ${visionAnalysis.colors.join(', ')}`);
-        if (visionAnalysis.composition) parts.push(`Composition: ${visionAnalysis.composition}`);
         if (visionAnalysis.lighting) parts.push(`Lighting: ${visionAnalysis.lighting}`);
 
-        finalPrompt = `${parts.join('\n')}
-
-TASK: ${prompt}`;
+        if (parts.length > 0) {
+          finalPrompt = `${parts.join('. ')}. ${finalPrompt}`;
+        }
       }
+
+      finalPrompt += '. High quality, professional, 4K.';
 
       requestBody = {
         instances: [{
@@ -237,8 +267,9 @@ TASK: ${prompt}`;
 
     log.info(`Image ${index + 1}: Calling Vertex AI`, {
       hasReference: !!referenceBase64,
+      referenceType: referenceBase64 ? 'REFERENCE_TYPE_STYLE' : 'none',
       aspectRatio,
-      promptLength: requestBody.instances[0].prompt.length
+      promptPreview: requestBody.instances[0].prompt.substring(0, 150)
     });
 
     const response = await fetch(url, {

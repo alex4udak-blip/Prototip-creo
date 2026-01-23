@@ -377,10 +377,28 @@ If there's a person/character in the image, describe them in EXTREME DETAIL for 
   "lighting": "neon glow/dramatic/soft/etc",
   "format": "9:16/1:1/16:9",
   "summary": "Brief Russian description for user",
-  "recreation_prompt": "English prompt to recreate this image style with a different pose/angle"
+  "recreation_prompt": "DETAILED English prompt - see instructions below"
 }
 
-Be VERY SPECIFIC about the character - this will be used to generate variations with the SAME character in different poses.`
+## CRITICAL - recreation_prompt field:
+Write a DETAILED prompt (50-100 words) to recreate this image's visual style and KEY ELEMENTS.
+This will be used for AI image generation, so be VERY SPECIFIC:
+
+MUST include:
+- Main subjects/characters with EXACT visual description (not "a fish" but "cartoon red fish with big googly eyes and orange fins")
+- ALL key objects that MUST appear (slot machines, coins, helicopters, treasure chests, etc.)
+- Art style (3D cartoon render, photorealistic, anime, etc.)
+- Color palette (list main colors: gold, purple, neon blue)
+- Lighting style (neon glow, sunset rays, dramatic shadows)
+- Mood and atmosphere (exciting, luxurious, playful)
+
+Example GOOD recreation_prompt:
+"3D cartoon style red fish character with big googly eyes and orange fins, red rescue helicopter with spinning rotor, golden casino slot machine with cherry symbols, scattered gold coins, sunset sky with pink and purple clouds, neon glow effects, vibrant saturated colors, mobile game promotional banner style, exciting casino atmosphere"
+
+Example BAD recreation_prompt:
+"casino banner with fish" (TOO VAGUE - will not reproduce the style!)
+
+Be VERY SPECIFIC - generic descriptions will fail to reproduce the visual style!`
           }
         ]
       }]
