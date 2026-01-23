@@ -101,6 +101,20 @@ router.post('/',
         userMessageData.reference_urls = req.files.map(f => getFileUrl(f.filename, req));
       }
 
+      // Проверяем это follow-up сообщение (ответ на вопросы AI) или первое сообщение
+      // Если AI уже задавал вопросы (есть сообщения assistant без картинок) — это follow-up
+      let isFollowUp = false;
+      if (chatId) {
+        const previousMessages = await db.getOne(`
+          SELECT COUNT(*) as count FROM messages
+          WHERE chat_id = $1 AND role = 'assistant'
+        `, [chatId]);
+        isFollowUp = previousMessages?.count > 0;
+      }
+
+      // Добавляем флаг в settings для gemini.service
+      settings.isFollowUp = isFollowUp;
+
       // Проверяем запрос на редактирование изображений
       // Если пользователь просит изменить/улучшить/апскейлить — подтягиваем последние изображения из чата
       const isEditRequest = /измен|улучш|апскейл|upscale|поменя|переделай|текст|цвет|ярче|темнее|добав|убер|увелич|уменьш/i.test(prompt);
