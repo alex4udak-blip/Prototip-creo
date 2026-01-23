@@ -1,11 +1,12 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
 
-const genAI = new GoogleGenerativeAI(config.googleApiKey);
+// Инициализация клиента
+const ai = new GoogleGenAI({ apiKey: config.googleApiKey });
 
 // Хранилище чат-сессий
 const chatSessions = new Map();
@@ -28,23 +29,23 @@ const SYSTEM_PROMPT = `Ты — премиальный AI-дизайнер ре�
 ### Когда нужна информация (режим "Умный"):
 Задай УМНЫЕ вопросы (как опытный медиабайер):
 
-1. **Что рекламируем?**
+1. Что рекламируем?
    - Название приложения/игры + жанр/механика
    - Или "лендо-крео" без бренда?
 
-2. **Оффер и дисклеймеры:**
+2. Оффер и дисклеймеры:
    - Бонус: сумма, условия (депозит/no deposit?)
    - Нужен мелкий текст с условиями?
 
-3. **ГЕО и аудитория:**
+3. ГЕО и аудитория:
    - Страна/регион (ES, LATAM, CIS, TIER1?)
    - Язык текста
 
-4. **Стили и ограничения:**
+4. Стили и ограничения:
    - Можно персонажей/людей или store-friendly?
    - Есть брендбук/ограничения?
 
-5. **Форматы:**
+5. Форматы:
    - Какие размеры нужны?
    - Для каких платформ? (FB, Google, TikTok, PWA?)
 
@@ -118,26 +119,28 @@ const SYSTEM_PROMPT = `Ты — премиальный AI-дизайнер ре�
 
 ## КОЛИЧЕСТВО ВАРИАНТОВ
 Если указано "[VARIANTS:N]" — сгенерируй N вариантов.
-Если не указано — сгенерируй 3 варианта с разными подходами.`;
+Если не указано — сгенерируй 3 варианта с разными подходами.
+
+## ВАЖНО
+Когда пользователь просит сгенерировать картинки — ОБЯЗАТЕЛЬНО генерируй их! Не просто описывай, а создавай реальные изображения.`;
 
 /**
  * Получить или создать чат-сессию
+ * Используем модель gemini-2.0-flash-exp с возможностью генерации изображений
  */
 export function getOrCreateChat(chatId) {
   if (!chatSessions.has(chatId)) {
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash-exp",  // или gemini-1.5-pro если нет доступа
-      systemInstruction: SYSTEM_PROMPT
-    });
-
-    const chat = model.startChat({
-      generationConfig: {
-        maxOutputTokens: 8192,
+    // Создаём чат с нужными настройками
+    const chat = ai.chats.create({
+      model: "gemini-2.0-flash-exp-image-generation",  // Модель с генерацией изображений
+      config: {
+        responseModalities: ["TEXT", "IMAGE"],  // КРИТИЧЕСКИ ВАЖНО для генерации картинок
+        systemInstruction: SYSTEM_PROMPT
       }
     });
 
     chatSessions.set(chatId, chat);
-    log.info('Created new Gemini chat session', { chatId });
+    log.info('Created new Gemini chat session with image generation', { chatId });
   }
   return chatSessions.get(chatId);
 }
@@ -169,6 +172,11 @@ export async function sendMessage(chatId, text, images = [], settings = {}) {
   // Собираем контент для отправки
   const contents = [];
 
+  // Добавляем текст
+  if (fullText.trim()) {
+    contents.push({ text: fullText });
+  }
+
   // Добавляем картинки
   for (const img of images) {
     contents.push({
@@ -177,11 +185,6 @@ export async function sendMessage(chatId, text, images = [], settings = {}) {
         data: img.data
       }
     });
-  }
-
-  // Добавляем текст
-  if (fullText.trim()) {
-    contents.push(fullText);
   }
 
   log.info('Sending message to Gemini', {
@@ -193,19 +196,21 @@ export async function sendMessage(chatId, text, images = [], settings = {}) {
 
   // Отправляем
   const response = await chat.sendMessage(contents);
-  const responseText = response.response.text();
 
   // Парсим ответ
   const result = {
-    text: responseText,
+    text: '',
     images: []
   };
 
-  // Gemini 2.0 может возвращать картинки в candidates
-  // Проверяем наличие частей с изображениями
-  const parts = response.response.candidates?.[0]?.content?.parts || [];
+  // Обрабатываем части ответа
+  const parts = response.candidates?.[0]?.content?.parts || [];
+
   for (const part of parts) {
-    if (part.inlineData) {
+    if (part.text) {
+      result.text += part.text;
+    } else if (part.inlineData) {
+      // Сохраняем сгенерированную картинку
       const imageUrl = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
       result.images.push({
         url: imageUrl,
@@ -259,8 +264,8 @@ export function deleteChat(chatId) {
 export async function checkHealth() {
   return {
     available: !!config.googleApiKey,
-    model: 'gemini-2.0-flash-exp',
-    features: ['multi-turn', 'image-understanding', 'text-generation']
+    model: 'gemini-2.0-flash-exp-image-generation',
+    features: ['multi-turn', 'image-understanding', 'image-generation', 'text-rendering']
   };
 }
 
