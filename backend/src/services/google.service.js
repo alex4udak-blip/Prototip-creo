@@ -15,7 +15,9 @@ import { log } from '../utils/logger.js';
  * - GOOGLE_APPLICATION_CREDENTIALS_JSON — JSON service account
  */
 
-const IMAGEN_MODEL = 'imagen-3.0-capability-001';
+// Разные модели для разных задач!
+const IMAGEN_MODEL_GENERATE = 'imagen-3.0-generate-002';  // Для обычной генерации
+const IMAGEN_MODEL_CUSTOMIZE = 'imagen-3.0-capability-001';  // Для Identity Lock (с референсом)
 const VERTEX_LOCATION = 'us-central1';
 
 /**
@@ -119,7 +121,9 @@ async function generateSingleImage(prompt, options, index, onProgress) {
       onProgress({ index, status: 'generating', message: `Генерирую вариант ${index + 1}...` });
     }
 
-    const url = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${VERTEX_LOCATION}/publishers/google/models/${IMAGEN_MODEL}:predict`;
+    // Выбираем модель в зависимости от наличия референса
+    const model = referenceBase64 ? IMAGEN_MODEL_CUSTOMIZE : IMAGEN_MODEL_GENERATE;
+    const url = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${VERTEX_LOCATION}/publishers/google/models/${model}:predict`;
 
     // Формируем запрос
     let requestBody;
@@ -149,34 +153,24 @@ async function generateSingleImage(prompt, options, index, onProgress) {
       // Формируем промпт с [1] для ссылки на референс
       // Модель понимает [1] как "subject from referenceId: 1"
       let finalPrompt;
+
+      // По документации: [1] должен быть в начале и чётко указан
+      // Стиль промпта: "[1] doing something" или "photo of [1] in location"
       if (visionAnalysis) {
         const contextParts = [];
-        if (visionAnalysis.background_description) {
-          contextParts.push(`Background: ${visionAnalysis.background_description}`);
-        }
         if (visionAnalysis.style) {
-          contextParts.push(`Style: ${visionAnalysis.style}`);
+          contextParts.push(visionAnalysis.style);
         }
         if (visionAnalysis.lighting) {
-          contextParts.push(`Lighting: ${visionAnalysis.lighting}`);
-        }
-        if (visionAnalysis.colors?.length) {
-          contextParts.push(`Colors: ${visionAnalysis.colors.join(', ')}`);
+          contextParts.push(visionAnalysis.lighting);
         }
 
-        finalPrompt = `A high quality image of [1] (the person from the reference).
+        const styleContext = contextParts.length > 0 ? `, ${contextParts.join(', ')}` : '';
 
-${contextParts.join('\n')}
-
-${prompt}
-
-IMPORTANT: [1] must look EXACTLY like the person in the reference image - same face, same clothing, same style.`;
+        // Простой и чёткий промпт — главное [1] в начале
+        finalPrompt = `[1] ${prompt}${styleContext}. Photorealistic, high quality, detailed.`;
       } else {
-        finalPrompt = `A high quality image of [1] (the person from the reference).
-
-${prompt}
-
-IMPORTANT: [1] must look EXACTLY like the person in the reference image.`;
+        finalPrompt = `[1] ${prompt}. Photorealistic, high quality, detailed.`;
       }
 
       log.info('Subject customization request', {
@@ -203,15 +197,8 @@ IMPORTANT: [1] must look EXACTLY like the person in the reference image.`;
         parameters: {
           aspectRatio,
           sampleCount: 1,
-          personGeneration: 'allow_adult',
-          safetyFilterLevel: 'block_few',
-          // Параметры качества
-          negativePrompt: 'blurry, low quality, distorted, ugly, deformed, amateur, watermark, text errors, bad anatomy, bad proportions, disfigured, poorly drawn face, mutation, extra limbs',
-          guidanceScale: 60,  // Выше = строже следует промпту (default ~7-15, max 100)
-          outputOptions: {
-            mimeType: 'image/png',
-            compressionQuality: 100  // Максимальное качество
-          },
+          personGeneration: 'ALLOW_ALL',  // Разрешить генерацию людей
+          safetyFilterLevel: 'BLOCK_ONLY_HIGH',  // Минимальная фильтрация
           addWatermark: false
         }
       };
@@ -241,15 +228,8 @@ TASK: ${prompt}`;
         parameters: {
           aspectRatio,
           sampleCount: 1,
-          personGeneration: 'allow_adult',
-          safetyFilterLevel: 'block_few',
-          // Параметры качества
-          negativePrompt: 'blurry, low quality, distorted, ugly, deformed, amateur, watermark, text errors, bad anatomy, bad proportions',
-          guidanceScale: 60,
-          outputOptions: {
-            mimeType: 'image/png',
-            compressionQuality: 100
-          },
+          personGeneration: 'ALLOW_ALL',
+          safetyFilterLevel: 'BLOCK_ONLY_HIGH',
           addWatermark: false
         }
       };
@@ -350,8 +330,11 @@ Text style: ${textStyle || 'bold, high contrast, professional'}`;
     log.info('Reference prepared', { hasBase64: !!referenceBase64 });
   }
 
+  // Выбираем модель
+  const selectedModel = referenceBase64 ? IMAGEN_MODEL_CUSTOMIZE : IMAGEN_MODEL_GENERATE;
+
   log.info('Imagen 3 generation starting', {
-    model: IMAGEN_MODEL,
+    model: selectedModel,
     aspectRatio,
     numImages: requestedImages,
     hasReference: !!referenceBase64,

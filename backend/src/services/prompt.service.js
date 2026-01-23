@@ -773,6 +773,16 @@ export const GENERATION_SYSTEM_PROMPT = `You are a Creative Director AI that cre
 - Background changes
 - Style adjustments
 
+## CRITICAL: USER SPECIFICATIONS
+If the input contains "User specifications:" section, you MUST incorporate ALL of these details into enhanced_prompt:
+- Brand names, casino names, company names → include in the prompt
+- Style preferences → apply to visual style
+- Colors → include in color scheme
+- Target audience → adjust tone and style
+- Any specific requirements → incorporate directly
+
+Example: If user specifies "casino_name: Vulkan", the enhanced_prompt MUST include "Vulkan casino" or "Vulkan brand".
+
 ## PROMPT ENGINEERING - 6 FACTORS:
 
 1. **SUBJECT**: Who/what is in the image
@@ -780,7 +790,7 @@ export const GENERATION_SYSTEM_PROMPT = `You are a Creative Director AI that cre
 3. **ACTION**: What's happening
 4. **ENVIRONMENT**: Background, atmosphere, lighting
 5. **STYLE**: Visual aesthetic, quality level
-6. **TEXT**: If needed - exact text and styling
+6. **TEXT**: If needed - exact text and styling (use brand names from User specifications!)
 
 ## DOMAIN-SPECIFIC ADDITIONS:
 
@@ -874,7 +884,7 @@ export async function processUserAnswers(originalPrompt, answers, options = {}) 
 
   const answerDescriptions = [];
   for (const [questionId, answer] of Object.entries(answers)) {
-    if (answer && answer !== 'skip' && questionId !== 'variations_count') {
+    if (answer && answer !== 'skip' && questionId !== 'variations_count' && questionId !== 'reference_usage') {
       // Форматируем ответ в зависимости от типа
       if (Array.isArray(answer)) {
         answerDescriptions.push(`${questionId}: ${answer.join(', ')}`);
@@ -885,7 +895,8 @@ export async function processUserAnswers(originalPrompt, answers, options = {}) 
   }
 
   if (answerDescriptions.length > 0) {
-    enrichedPrompt += `\n\nUser specifications:\n${answerDescriptions.join('\n')}`;
+    // CRITICAL: Явно указываем что эти данные ОБЯЗАТЕЛЬНО включить в промпт
+    enrichedPrompt += `\n\n=== User specifications (MUST be included in enhanced_prompt) ===\n${answerDescriptions.join('\n')}\n=== END specifications ===`;
   }
 
   // Выбираем режим анализа
