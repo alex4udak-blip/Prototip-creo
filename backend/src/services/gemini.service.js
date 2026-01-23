@@ -241,8 +241,12 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
   }
   // Follow-up: пользователь ответил на вопросы AI — ГЕНЕРИРОВАТЬ КАРТИНКИ!
   else if (settings.isFollowUp) {
-    fullText = '[GENERATE_NOW] Пользователь ответил на твои вопросы. НЕМЕДЛЕННО генерируй изображения! Не задавай больше вопросов — ДЕЛАЙ!\n\n' + fullText;
-    log.info('Adding GENERATE_NOW directive for follow-up', { textLength: fullText.length });
+    const variants = settings.variants || 3;
+    fullText = `[GENERATE_NOW] КРИТИЧЕСКИ ВАЖНО: Пользователь ответил на вопросы.
+СЕЙЧАС ТЫ ДОЛЖЕН СГЕНЕРИРОВАТЬ ${variants} РЕАЛЬНЫХ ИЗОБРАЖЕНИЙ!
+НЕ описывай — СОЗДАВАЙ картинки! Используй свою способность генерировать изображения.
+Напиши КОРОТКОЕ описание (1-2 предложения) и СГЕНЕРИРУЙ ${variants} картинок.\n\n` + fullText;
+    log.info('Adding GENERATE_NOW directive for follow-up', { textLength: fullText.length, variants });
   }
   // Smart режим — ОБЯЗАТЕЛЬНО задать вопросы перед генерацией
   else if (settings.mode === 'smart' && !settings.isEditRequest) {
@@ -403,21 +407,78 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
     throw new Error('Запрос заблокирован модерацией. Попробуйте изменить формулировку.');
   }
 
-  // Проверяем finishReason — если IMAGE_OTHER/IMAGE_SAFETY, картинки заблокированы
+  // Если это follow-up и картинок нет — АВТОМАТИЧЕСКИ пробуем сгенерировать
+  // Gemini часто пишет только описание, нужно явно попросить картинки
+  if (settings.isFollowUp && result.images.length === 0 && result.text && !settings._retryAttempt) {
+    log.warn('Follow-up without images, attempting automatic image generation', {
+      chatId,
+      finishReason: result.finishReason,
+      textPreview: result.text.substring(0, 100)
+    });
+
+    // Отправляем явную команду на генерацию
+    const variants = settings.variants || 3;
+    const retryMessage = `Теперь СГЕНЕРИРУЙ ${variants} изображений по описанию выше.
+НЕ описывай — СОЗДАЙ реальные картинки прямо сейчас! Используй свою способность генерировать изображения.`;
+
+    if (onProgress) {
+      onProgress({
+        status: 'generating_image',
+        text: result.text,
+        imagesCount: 0,
+        message: 'Генерирую изображения...'
+      });
+    }
+
+    try {
+      const retryStream = await chat.sendMessageStream({ message: retryMessage });
+
+      for await (const chunk of retryStream) {
+        const candidate = chunk.candidates?.[0];
+        const parts = candidate?.content?.parts || [];
+
+        // Обновляем finishReason
+        if (candidate?.finishReason) {
+          result.finishReason = candidate.finishReason;
+        }
+
+        for (const part of parts) {
+          if (part.text) {
+            // Добавляем текст к результату
+            result.text += '\n' + part.text;
+          } else if (part.inlineData) {
+            const imageUrl = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
+            result.images.push({
+              url: imageUrl,
+              mimeType: part.inlineData.mimeType
+            });
+            log.info('Image generated in retry', { chatId, imageIndex: result.images.length });
+            if (onProgress) {
+              onProgress({
+                status: 'generating_image',
+                text: result.text,
+                imagesCount: result.images.length,
+                newImage: imageUrl
+              });
+            }
+          }
+        }
+      }
+
+      log.info('Auto-retry completed', { chatId, imagesCount: result.images.length, finishReason: result.finishReason });
+    } catch (retryError) {
+      log.error('Auto-retry failed', { chatId, error: retryError.message });
+    }
+  }
+
+  // IMAGE_SAFETY — контент заблокирован
   if (result.finishReason === 'IMAGE_SAFETY') {
     throw new Error('Изображения заблокированы политикой безопасности. Попробуйте изменить запрос.');
   }
 
-  // IMAGE_OTHER — попытка генерации не удалась, но текст есть
-  // Пробуем повторить генерацию с более явной инструкцией
-  if (result.finishReason === 'IMAGE_OTHER' && result.images.length === 0 && result.text) {
-    log.warn('IMAGE_OTHER received, images expected but not generated', {
-      chatId,
-      textPreview: result.text.substring(0, 100)
-    });
-    // Возвращаем результат как есть — пользователь увидит текст и сможет попробовать снова
-    // Но добавляем предупреждение в текст
-    result.text += '\n\n⚠️ Изображения не удалось сгенерировать. Попробуйте ещё раз или измените запрос.';
+  // Если картинок всё ещё нет после retry — добавляем предупреждение
+  if (settings.isFollowUp && result.images.length === 0) {
+    result.text += '\n\n⚠️ Изображения не удалось сгенерировать. Попробуйте написать "сгенерируй" или измените запрос.';
   }
 
   return result;
