@@ -82,45 +82,118 @@ function ToolUseIndicator({ tool, label, status, referenceUrls }) {
 }
 
 /**
- * Quick Edit Buttons - instant actions that send prompts immediately
+ * Fetch image URL and convert to File object
  */
-function QuickEditButtons() {
+async function fetchImageAsFile(url) {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const filename = url.split('/').pop() || 'reference.png';
+    return new File([blob], filename, { type: blob.type || 'image/png' });
+  } catch (error) {
+    console.error('Failed to fetch image:', error);
+    return null;
+  }
+}
+
+/**
+ * More Variants Button - generates 3 more variants using the image as reference
+ */
+function MoreVariantsButton({ imageUrls }) {
   const { sendMessage, isGenerating } = useChatStore();
+  const [loading, setLoading] = useState(false);
+
+  const handleClick = async () => {
+    if (isGenerating || loading) return;
+
+    setLoading(true);
+    try {
+      const imageUrl = imageUrls?.[0];
+      let imageFile = null;
+
+      if (imageUrl) {
+        imageFile = await fetchImageAsFile(imageUrl);
+      }
+
+      await sendMessage(
+        'Используя это изображение как референс, сгенерируй 3 новых варианта баннера в таком же стиле. Сохрани композицию и общий вид, но сделай вариации.',
+        imageFile ? [imageFile] : null
+      );
+    } catch (error) {
+      console.error('More variants error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={isGenerating || loading}
+      className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-hover hover:bg-bg-tertiary rounded-lg text-sm text-text-secondary hover:text-text-primary transition disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {loading ? (
+        <Loader2 className="w-4 h-4 animate-spin" />
+      ) : (
+        <RefreshCw className="w-4 h-4" />
+      )}
+      <span>Ещё варианты</span>
+    </button>
+  );
+}
+
+/**
+ * Quick Edit Buttons - instant actions that send prompts with the image as reference
+ */
+function QuickEditButtons({ imageUrls }) {
+  const { sendMessage, isGenerating } = useChatStore();
+  const [loading, setLoading] = useState(false);
 
   const quickActions = [
     {
       icon: Edit3,
       title: 'Изменить текст',
-      prompt: 'Сгенерируй такой же баннер, но измени текст — сделай его более продающим и цепляющим. Сохрани стиль и композицию.'
+      prompt: 'Используя это изображение как референс, сгенерируй такой же баннер но с другим, более продающим и цепляющим текстом. Сохрани стиль и композицию.'
     },
     {
       icon: Palette,
       title: 'Изменить цвета',
-      prompt: 'Сгенерируй этот баннер в другой цветовой гамме — сделай цвета более яркими и контрастными, чтобы привлекали внимание.'
+      prompt: 'Используя это изображение как референс, сгенерируй такой же баннер но в другой цветовой гамме — более яркой и контрастной.'
     },
     {
       icon: Wand2,
       title: 'Улучшить качество',
-      prompt: 'Сгенерируй улучшенную версию этого баннера — добавь больше деталей, сделай элементы чётче и профессиональнее.'
+      prompt: 'Используя это изображение как референс, сгенерируй улучшенную версию — добавь больше деталей, сделай элементы чётче и профессиональнее.'
     },
     {
       icon: Crop,
       title: 'Другой размер',
-      prompt: 'Сгенерируй этот баннер в формате 1:1 (квадрат) для Instagram. Адаптируй композицию под новый формат.'
+      prompt: 'Используя это изображение как референс, сгенерируй такой же баннер но в формате 1:1 (квадрат). Адаптируй композицию.'
     },
     {
       icon: RotateCcw,
       title: 'Переделать',
-      prompt: 'Сгенерируй совершенно другой вариант баннера на эту же тему. Используй другую композицию, стиль и подход, но сохрани ключевое сообщение.'
+      prompt: 'Используя это изображение как референс стиля, сгенерируй совершенно другой вариант баннера. Другая композиция и подход, но похожий стиль.'
     }
   ];
 
   const handleQuickAction = async (prompt) => {
-    if (isGenerating) return;
+    if (isGenerating || loading) return;
+
+    setLoading(true);
     try {
-      await sendMessage(prompt);
+      const imageUrl = imageUrls?.[0];
+      let imageFile = null;
+
+      if (imageUrl) {
+        imageFile = await fetchImageAsFile(imageUrl);
+      }
+
+      await sendMessage(prompt, imageFile ? [imageFile] : null);
     } catch (error) {
       console.error('Quick action error:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -130,7 +203,7 @@ function QuickEditButtons() {
         <button
           key={title}
           onClick={() => handleQuickAction(prompt)}
-          disabled={isGenerating}
+          disabled={isGenerating || loading}
           className="p-2 hover:bg-bg-hover rounded-lg transition group disabled:opacity-50 disabled:cursor-not-allowed"
           title={title}
         >
@@ -610,22 +683,10 @@ export function Message({ message }) {
                       <Download className="w-4 h-4" />
                       <span>Скачать все</span>
                     </button>
-                    <button
-                      onClick={() => {
-                        const input = document.querySelector('textarea');
-                        if (input) {
-                          input.value = 'Ещё 3 варианта в том же стиле';
-                          input.focus();
-                        }
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-hover hover:bg-bg-tertiary rounded-lg text-sm text-text-secondary hover:text-text-primary transition"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      <span>Ещё варианты</span>
-                    </button>
+                    <MoreVariantsButton imageUrls={message.imageUrls} />
 
-                    {/* Quick edit actions - instant send */}
-                    <QuickEditButtons />
+                    {/* Quick edit actions - instant send with image as reference */}
+                    <QuickEditButtons imageUrls={message.imageUrls} />
                   </div>
                 </div>
               )}
