@@ -230,22 +230,34 @@ export const useChatStore = create((set, get) => ({
       // КРИТИЧНО: Если это новый чат или chatId изменился — переподписываемся на WebSocket
       if (response.chatId) {
         const isNewChat = !currentChat || currentChat.id !== response.chatId;
-        const isTitleDefault = currentChat?.title === 'Новый чат' || !currentChat?.title;
+        const newTitle = prompt?.substring(0, 50) || 'Новый чат';
 
-        if (isNewChat || isTitleDefault) {
-          // Устанавливаем title из prompt
-          const newTitle = prompt?.substring(0, 50) || 'Новый чат';
-          set({ currentChat: { id: response.chatId, title: newTitle } });
+        if (isNewChat) {
+          // Создаём объект нового чата
+          const newChat = {
+            id: response.chatId,
+            title: newTitle,
+            createdAt: new Date().toISOString()
+          };
 
-          // Обновляем title в списке чатов
+          // Устанавливаем как текущий и добавляем в начало списка
           set(state => ({
-            chats: state.chats.map(chat =>
-              chat.id === response.chatId ? { ...chat, title: newTitle } : chat
-            )
+            currentChat: newChat,
+            chats: [newChat, ...state.chats.filter(c => c.id !== response.chatId)]
           }));
 
-          // Загружаем актуальный список чатов
-          await get().loadChats();
+          console.log('[useChat] Created new chat with title:', newTitle);
+        } else {
+          // Существующий чат — просто обновляем title если он дефолтный
+          const isTitleDefault = currentChat?.title === 'Новый чат' || !currentChat?.title;
+          if (isTitleDefault) {
+            set(state => ({
+              currentChat: { ...state.currentChat, title: newTitle },
+              chats: state.chats.map(chat =>
+                chat.id === response.chatId ? { ...chat, title: newTitle } : chat
+              )
+            }));
+          }
         }
 
         // Всегда подписываемся на chatId после генерации

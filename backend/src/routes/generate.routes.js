@@ -143,6 +143,25 @@ router.post('/',
 
       const userMessage = await db.insert('messages', userMessageData);
 
+      // Определяем, это follow-up сообщение (ответ на вопросы AI)?
+      // Если в чате уже был assistant message с вопросами — это follow-up, нужно генерировать
+      let isFollowUp = false;
+      if (chatId && chat_id) {  // Только для существующих чатов
+        const lastAssistantMsg = await db.getOne(`
+          SELECT content, image_urls FROM messages
+          WHERE chat_id = $1 AND role = 'assistant'
+          ORDER BY created_at DESC LIMIT 1
+        `, [chatId]);
+
+        // Если последний ответ AI содержал вопросы (но не картинки) — это follow-up
+        if (lastAssistantMsg?.content &&
+            !lastAssistantMsg.image_urls?.length &&
+            lastAssistantMsg.content.includes('?')) {
+          isFollowUp = true;
+          log.info('Detected follow-up message after AI questions', { chatId });
+        }
+      }
+
       // Отправляем начальный ответ клиенту
       res.json({
         success: true,
@@ -167,7 +186,7 @@ router.post('/',
         chatId,
         prompt,
         images,
-        settings,
+        settings: { ...settings, isFollowUp },  // Передаём флаг follow-up
         userId,
         startTime,
         referenceUrls: userMessageData.reference_urls || []
