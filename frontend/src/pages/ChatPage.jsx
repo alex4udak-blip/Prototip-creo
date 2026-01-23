@@ -6,15 +6,13 @@ import { Sidebar } from '../components/Layout/Sidebar';
 import { Header } from '../components/Layout/Header';
 import { ChatWindow } from '../components/Chat/ChatWindow';
 import { InputArea } from '../components/Chat/InputArea';
-import { SettingsModal } from '../components/Settings/SettingsModal';
 
 export function ChatPage() {
   const navigate = useNavigate();
   const { isAuthenticated, checkAuth } = useAuthStore();
-  const { loadChats, initWebSocket, disconnectWebSocket, loadPresets } = useChatStore();
+  const { loadChats, initWebSocket, disconnectWebSocket } = useChatStore();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   // Проверка авторизации при загрузке
@@ -26,11 +24,8 @@ export function ChatPage() {
         return;
       }
 
-      // Загружаем данные
-      await Promise.all([
-        loadChats(),
-        loadPresets()
-      ]);
+      // Загружаем чаты
+      await loadChats();
 
       // Подключаем WebSocket
       initWebSocket();
@@ -84,19 +79,12 @@ export function ChatPage() {
       <main className="flex-1 flex flex-col min-w-0">
         <Header
           onMenuClick={() => setSidebarOpen(true)}
-          onSettingsClick={() => setSettingsOpen(true)}
         />
 
         <ChatWindow className="flex-1 overflow-hidden" />
 
         <InputArea />
       </main>
-
-      {/* Settings modal */}
-      <SettingsModal
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-      />
     </div>
   );
 }

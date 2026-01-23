@@ -137,6 +137,27 @@ export const generateAPI = {
     });
   },
 
+  // Генерация с FormData (для файлов)
+  async sendWithFormData(formData) {
+    const token = getToken();
+
+    const response = await fetch(`${API_BASE}/generate`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Ошибка генерации');
+    }
+
+    return data;
+  },
+
   // Загрузка референса
   async uploadReference(file) {
     const token = getToken();
@@ -158,11 +179,6 @@ export const generateAPI = {
     }
 
     return data;
-  },
-
-  // Получить доступные модели
-  async getModels() {
-    return fetchAPI('/generate/models');
   },
 
   // Получить пресеты размеров

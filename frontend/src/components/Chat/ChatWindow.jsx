@@ -9,7 +9,7 @@ export function ChatWindow({ className = '' }) {
     messages,
     chatLoading,
     isGenerating,
-    generate
+    sendMessage
   } = useChatStore();
   const messagesEndRef = useRef(null);
 
@@ -21,7 +21,7 @@ export function ChatWindow({ className = '' }) {
   // Handle example click
   const handleExampleClick = async (example) => {
     try {
-      await generate(example);
+      await sendMessage(example);
     } catch (error) {
       console.error('Generate error:', error);
     }

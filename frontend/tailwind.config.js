@@ -7,20 +7,21 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Тёмная тема как у Claude
-        'bg-primary': '#1a1a2e',
-        'bg-secondary': '#16213e',
-        'bg-chat': '#0f0f23',
-        'bg-input': '#1e1e3f',
-        'bg-hover': '#252550',
-        'accent': '#e94560',
-        'accent-hover': '#ff6b6b',
-        'accent-dim': '#e94560/20',
-        'text-primary': '#eaeaea',
-        'text-secondary': '#a0a0a0',
-        'text-muted': '#6b6b8a',
-        'border': '#2a2a4a',
-        'border-light': '#3a3a5a',
+        // Premium dark theme
+        'bg-primary': '#0a0a0f',      // Почти чёрный
+        'bg-secondary': '#12121a',    // Карточки
+        'bg-chat': '#0d0d14',         // Область чата
+        'bg-input': '#16161f',        // Поля ввода
+        'bg-hover': '#1a1a25',        // Hover
+        'bg-tertiary': '#1e1e28',     // Третий уровень
+        'accent': '#8b5cf6',          // Фиолетовый
+        'accent-hover': '#a78bfa',    // Hover
+        'accent-pink': '#ec4899',     // Розовый акцент
+        'text-primary': '#f8fafc',
+        'text-secondary': '#94a3b8',
+        'text-muted': '#64748b',
+        'border': 'rgba(255, 255, 255, 0.06)',
+        'border-light': 'rgba(255, 255, 255, 0.1)',
         'success': '#4ade80',
         'warning': '#fbbf24',
         'error': '#f87171',

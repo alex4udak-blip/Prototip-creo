@@ -1,38 +1,17 @@
 import { useState } from 'react';
-import { Download, Copy, Check, ExternalLink, AlertCircle, Sparkles, User, Maximize2, Brain, Wand2, ImageIcon, CheckCircle2, ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { ClarificationQuestions } from './ClarificationQuestions';
-import { GENERATION_PHASES, PHASE_LABELS } from '../../hooks/useChat';
+import { Download, Copy, Check, ExternalLink, AlertCircle, Sparkles, User, Maximize2, ImageIcon, ChevronLeft, ChevronRight, X, RefreshCw, Edit3, Wrench } from 'lucide-react';
+import { GENERATION_PHASES, PHASE_LABELS, useChatStore } from '../../hooks/useChat';
 
 /**
  * Generation Status Indicator Component
- * Beautiful animated status like Claude/Genspark
+ * Simplified: only GENERATING and ERROR phases
  */
 function GenerationStatus({ phase, progress }) {
   const phaseConfig = {
-    [GENERATION_PHASES.STARTING]: {
-      icon: Sparkles,
-      color: 'text-accent',
-      bgColor: 'bg-accent/10'
-    },
-    [GENERATION_PHASES.ANALYZING]: {
-      icon: Brain,
-      color: 'text-blue-400',
-      bgColor: 'bg-blue-500/10'
-    },
-    [GENERATION_PHASES.ENHANCING]: {
-      icon: Wand2,
-      color: 'text-purple-400',
-      bgColor: 'bg-purple-500/10'
-    },
     [GENERATION_PHASES.GENERATING]: {
       icon: ImageIcon,
       color: 'text-green-400',
       bgColor: 'bg-green-500/10'
-    },
-    [GENERATION_PHASES.FINALIZING]: {
-      icon: CheckCircle2,
-      color: 'text-emerald-400',
-      bgColor: 'bg-emerald-500/10'
     },
     [GENERATION_PHASES.ERROR]: {
       icon: AlertCircle,
@@ -42,79 +21,41 @@ function GenerationStatus({ phase, progress }) {
   };
 
   const config = phaseConfig[phase] || phaseConfig[GENERATION_PHASES.GENERATING];
-  const Icon = config.icon;
-  const label = PHASE_LABELS[phase] || 'Обработка...';
+  const label = PHASE_LABELS[phase] || 'Генерирую...';
 
   return (
-    <div className={`flex items-center gap-3 p-4 rounded-xl ${config.bgColor} animate-fade-in`}>
-      {/* Animated icon */}
-      <div className={`relative ${config.color}`}>
-        <Icon className="w-5 h-5 animate-pulse" />
-        {/* Rotating ring */}
-        <div className="absolute inset-0 -m-1">
-          <svg className="w-7 h-7 animate-spin-slow" viewBox="0 0 24 24">
-            <circle
-              cx="12"
-              cy="12"
-              r="10"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeDasharray="15 85"
-              strokeLinecap="round"
-              className="opacity-30"
-            />
-          </svg>
-        </div>
-      </div>
-
-      {/* Text */}
-      <div className="flex-1">
-        <p className={`text-sm font-medium ${config.color}`}>
-          {label}
-        </p>
-        {progress && (
-          <p className="text-xs text-text-muted mt-0.5 animate-fade-in">
-            {progress}
-          </p>
-        )}
+    <div className={`flex items-center gap-2 p-3 rounded-xl ${config.bgColor} animate-fade-in`}>
+      {/* Tool indicator like Genspark */}
+      <div className="flex items-center gap-2 text-sm">
+        <span className="flex items-center gap-1 text-blue-400">
+          <Wrench className="w-4 h-4" />
+          <span>Использование инструмента</span>
+        </span>
+        <span className="text-text-muted">|</span>
+        <span className="flex items-center gap-1 text-yellow-400">
+          <ImageIcon className="w-4 h-4" />
+          <span>Генерация изображения</span>
+        </span>
       </div>
 
       {/* Animated dots */}
-      <div className="flex gap-1">
-        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-40 animate-bounce-dot-1" style={{ color: config.color.replace('text-', '') }}></span>
-        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-40 animate-bounce-dot-2" style={{ color: config.color.replace('text-', '') }}></span>
-        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-40 animate-bounce-dot-3" style={{ color: config.color.replace('text-', '') }}></span>
+      <div className="flex gap-1 ml-auto">
+        <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 opacity-40 animate-bounce-dot-1"></span>
+        <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 opacity-40 animate-bounce-dot-2"></span>
+        <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 opacity-40 animate-bounce-dot-3"></span>
       </div>
     </div>
   );
 }
 
 /**
- * Phase Progress Bar
+ * Nano Banana Pro Badge
  */
-function PhaseProgress({ phase }) {
-  const phases = [
-    GENERATION_PHASES.ANALYZING,
-    GENERATION_PHASES.ENHANCING,
-    GENERATION_PHASES.GENERATING,
-    GENERATION_PHASES.FINALIZING
-  ];
-
-  const currentIndex = phases.indexOf(phase);
-
+function NanoBananaBadge() {
   return (
-    <div className="flex items-center gap-1 mt-3">
-      {phases.map((p, index) => (
-        <div
-          key={p}
-          className={`h-1 flex-1 rounded-full transition-all duration-500 ${
-            index <= currentIndex
-              ? 'bg-accent'
-              : 'bg-bg-hover'
-          }`}
-        />
-      ))}
+    <div className="absolute top-2 right-2 z-10 flex items-center gap-1 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-full text-xs border border-white/10">
+      <span>🍌</span>
+      <span className="text-yellow-400 font-medium">Nano Banana Pro</span>
     </div>
   );
 }
@@ -291,6 +232,9 @@ export function Message({ message }) {
                           className="w-full h-full object-cover aspect-square transition-transform duration-300"
                         />
 
+                        {/* Nano Banana Pro badge */}
+                        <NanoBananaBadge />
+
                         {/* Variation number badge */}
                         <div className="absolute top-2 left-2 z-10">
                           <span className="
@@ -370,6 +314,45 @@ export function Message({ message }) {
                       </div>
                     ))}
                   </div>
+
+                  {/* Action buttons after images */}
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    <button
+                      onClick={() => {
+                        message.imageUrls.forEach((url, i) => downloadImage(url, i));
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-hover hover:bg-bg-tertiary rounded-lg text-sm text-text-secondary hover:text-text-primary transition"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Скачать все</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        const input = document.querySelector('textarea');
+                        if (input) {
+                          input.value = 'Ещё варианты';
+                          input.focus();
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-hover hover:bg-bg-tertiary rounded-lg text-sm text-text-secondary hover:text-text-primary transition"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Ещё варианты</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        const input = document.querySelector('textarea');
+                        if (input) {
+                          input.value = 'Редактировать: ';
+                          input.focus();
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-hover hover:bg-bg-tertiary rounded-lg text-sm text-text-secondary hover:text-text-primary transition"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                      <span>Редактировать</span>
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -381,25 +364,10 @@ export function Message({ message }) {
                 </div>
               )}
 
-              {/* Clarification questions */}
-              {message.clarification && (
-                <div className="mt-3">
-                  <ClarificationQuestions clarification={message.clarification} messageId={message.id} />
-                </div>
-              )}
-
-              {/* Analyzing status - показываем пока идёт анализ/clarification */}
-              {message.isAnalyzing && !message.isGenerating && (
-                <div className="mt-3">
-                  <GenerationStatus phase={GENERATION_PHASES.ANALYZING} progress="Анализирую запрос..." />
-                </div>
-              )}
-
-              {/* Generation status - красивый UI в чате */}
+              {/* Generation status - simplified */}
               {message.isGenerating && (
                 <div className="mt-3">
                   <GenerationStatus phase={message.generationPhase} progress={message.generationProgress} />
-                  <PhaseProgress phase={message.generationPhase} />
                 </div>
               )}
             </div>

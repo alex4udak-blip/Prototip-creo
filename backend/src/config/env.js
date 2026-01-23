@@ -18,6 +18,7 @@ export const config = {
   // API Keys
   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
   runwareApiKey: process.env.RUNWARE_API_KEY,
+  googleApiKey: process.env.GOOGLE_API_KEY,
 
   // Google Cloud / Vertex AI (Imagen 3 с Identity Lock)
   googleCloudProject: process.env.GOOGLE_CLOUD_PROJECT,
@@ -48,6 +49,9 @@ export const config = {
     }
     if (!this.googleCloudProject || !this.googleCredentialsJson) {
       console.warn('⚠️  Vertex AI not configured - GOOGLE_CLOUD_PROJECT and GOOGLE_APPLICATION_CREDENTIALS_JSON required for Imagen 3');
+    }
+    if (!this.googleApiKey) {
+      console.warn('⚠️  GOOGLE_API_KEY not set - Google AI (Gemini) features disabled');
     }
   }
 };
