@@ -15,8 +15,15 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-prod',
   jwtExpiresIn: '7d',
 
-  // Google AI API (Gemini 2.0 Flash с генерацией изображений)
+  // Google AI API (Gemini)
   googleApiKey: process.env.GOOGLE_API_KEY,
+
+  // Gemini Model Settings
+  gemini: {
+    model: process.env.GEMINI_MODEL || 'gemini-3-pro-image-preview',
+    thinkingBudget: parseInt(process.env.GEMINI_THINKING_BUDGET || '2048'),
+    safetyThreshold: process.env.GEMINI_SAFETY_THRESHOLD || 'BLOCK_ONLY_HIGH'
+  },
 
   // Storage (Railway Volume)
   storagePath: process.env.STORAGE_PATH || './uploads',

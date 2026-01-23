@@ -106,14 +106,14 @@ router.get('/me', authMiddleware, async (req, res) => {
 /**
  * GET /api/auth/invites
  * Получить все invite-ссылки (для админа)
- * Секретный endpoint — доступ по ?secret=bannergen2026
+ * Секретный endpoint — доступ по ?secret=mstcreo2026
  */
 router.get('/invites', async (req, res) => {
   try {
     const { secret } = req.query;
 
     // Простая защита
-    if (secret !== 'bannergen2026') {
+    if (secret !== 'mstcreo2026') {
       return res.status(403).json({ error: 'Access denied' });
     }
 

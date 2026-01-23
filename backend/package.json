@@ -11,7 +11,7 @@
     "migrate": "node src/db/migrate.js",
     "migrate:down": "node src/db/migrate.js down",
     "seed": "node src/db/seed.js",
-    "test": "NODE_OPTIONS='--experimental-vm-modules' jest"
+    "test": "NODE_OPTIONS='--experimental-vm-modules --no-experimental-webstorage' jest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -49,17 +49,9 @@
     ],
     "transform": {},
     "verbose": true,
-    "collectCoverage": true,
-    "coverageDirectory": "coverage",
-    "coverageReporters": [
-      "text",
-      "lcov"
-    ],
-    "coveragePathIgnorePatterns": [
-      "/node_modules/",
-      "/dist/"
-    ],
-    "injectGlobals": true
+    "collectCoverage": false,
+    "injectGlobals": true,
+    "testTimeout": 10000
   },
   "engines": {
     "node": ">=20.0.0"

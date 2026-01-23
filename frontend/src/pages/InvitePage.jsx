@@ -52,7 +52,7 @@ export function InvitePage() {
           <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-accent to-accent-hover flex items-center justify-center">
             <Sparkles className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-gradient">BannerGen</h1>
+          <h1 className="text-2xl font-bold text-gradient">MST CREO AI</h1>
           <p className="text-text-muted text-sm mt-1">AI Генератор Баннеров</p>
         </div>
 
@@ -88,7 +88,7 @@ export function InvitePage() {
 
         {/* Footer */}
         <p className="text-center text-text-muted text-xs mt-8">
-          © 2026 BannerGen • Все права защищены
+          © 2026 MST CREO AI • Все права защищены
         </p>
       </div>
     </div>

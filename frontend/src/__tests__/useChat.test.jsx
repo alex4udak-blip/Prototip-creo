@@ -1,5 +1,6 @@
 /**
  * Tests for useChat store (Zustand)
+ * Updated for simplified version without settings
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -15,10 +16,7 @@ vi.mock('../services/api', () => ({
     rename: vi.fn().mockResolvedValue({ title: 'Renamed' })
   },
   generateAPI: {
-    generate: vi.fn().mockResolvedValue({ messageId: 1 }),
-    uploadReference: vi.fn().mockResolvedValue({ url: '/uploads/test.png', filename: 'test.png' }),
-    getPresets: vi.fn().mockResolvedValue({}),
-    getModels: vi.fn().mockResolvedValue([])
+    sendWithFormData: vi.fn().mockResolvedValue({ chatId: 1, userMessageId: 1 })
   },
   wsManager: {
     connect: vi.fn(),
@@ -30,7 +28,7 @@ vi.mock('../services/api', () => ({
 }));
 
 // Import store after mocks
-import useChatStore from '../hooks/useChat';
+import useChatStore, { GENERATION_PHASES } from '../hooks/useChat';
 
 describe('useChatStore', () => {
   beforeEach(() => {
@@ -42,16 +40,9 @@ describe('useChatStore', () => {
       messages: [],
       chatLoading: false,
       isGenerating: false,
-      generationStatus: null,
+      generationPhase: GENERATION_PHASES.IDLE,
       generationProgress: null,
-      attachedReference: null,
-      settings: {
-        model: 'auto',
-        size: '1200x628',
-        variations: 1
-      },
-      sizePresets: {},
-      availableModels: []
+      attachedImages: []
     });
   });
 
@@ -63,150 +54,134 @@ describe('useChatStore', () => {
       expect(result.current.currentChat).toBeNull();
       expect(result.current.messages).toEqual([]);
       expect(result.current.isGenerating).toBe(false);
-      expect(result.current.attachedReference).toBeNull();
-      expect(result.current.settings.model).toBe('auto');
-      expect(result.current.settings.size).toBe('1200x628');
+      expect(result.current.attachedImages).toEqual([]);
+      expect(result.current.generationPhase).toBe(GENERATION_PHASES.IDLE);
     });
   });
 
-  describe('Settings', () => {
-    it('should update settings', () => {
+  describe('Attached Images (References)', () => {
+    it('should add attached image', () => {
       const { result } = renderHook(() => useChatStore());
 
+      const mockFile = new File([''], 'test.png', { type: 'image/png' });
+
       act(() => {
-        result.current.updateSettings({ model: 'runware-flux-dev' });
+        result.current.addAttachedImage(mockFile);
       });
 
-      expect(result.current.settings.model).toBe('runware-flux-dev');
+      expect(result.current.attachedImages).toHaveLength(1);
+      expect(result.current.attachedImages[0]).toBe(mockFile);
     });
 
-    it('should update size', () => {
+    it('should limit to 14 images', () => {
       const { result } = renderHook(() => useChatStore());
 
+      // Add 15 images
       act(() => {
-        result.current.updateSettings({ size: '1080x1080' });
+        for (let i = 0; i < 15; i++) {
+          const mockFile = new File([''], `test${i}.png`, { type: 'image/png' });
+          result.current.addAttachedImage(mockFile);
+        }
       });
 
-      expect(result.current.settings.size).toBe('1080x1080');
+      expect(result.current.attachedImages).toHaveLength(14);
     });
 
-    it('should update multiple settings at once', () => {
+    it('should remove attached image by index', () => {
+      const { result } = renderHook(() => useChatStore());
+
+      const file1 = new File([''], 'test1.png', { type: 'image/png' });
+      const file2 = new File([''], 'test2.png', { type: 'image/png' });
+
+      act(() => {
+        result.current.addAttachedImage(file1);
+        result.current.addAttachedImage(file2);
+      });
+
+      expect(result.current.attachedImages).toHaveLength(2);
+
+      act(() => {
+        result.current.removeAttachedImage(0);
+      });
+
+      expect(result.current.attachedImages).toHaveLength(1);
+      expect(result.current.attachedImages[0]).toBe(file2);
+    });
+
+    it('should clear all attached images', () => {
       const { result } = renderHook(() => useChatStore());
 
       act(() => {
-        result.current.updateSettings({
-          model: 'google-nano',
-          size: '1200x628',
-          variations: 2
-        });
+        result.current.addAttachedImage(new File([''], 'test1.png', { type: 'image/png' }));
+        result.current.addAttachedImage(new File([''], 'test2.png', { type: 'image/png' }));
       });
 
-      expect(result.current.settings.model).toBe('google-nano');
-      expect(result.current.settings.variations).toBe(2);
+      expect(result.current.attachedImages).toHaveLength(2);
+
+      act(() => {
+        result.current.clearAttachedImages();
+      });
+
+      expect(result.current.attachedImages).toHaveLength(0);
+    });
+
+    it('should set multiple attached images at once', () => {
+      const { result } = renderHook(() => useChatStore());
+
+      const files = [
+        new File([''], 'test1.png', { type: 'image/png' }),
+        new File([''], 'test2.png', { type: 'image/png' }),
+        new File([''], 'test3.png', { type: 'image/png' })
+      ];
+
+      act(() => {
+        result.current.setAttachedImages(files);
+      });
+
+      expect(result.current.attachedImages).toHaveLength(3);
     });
   });
 
-  describe('References', () => {
-    it('should set attached reference', () => {
+  describe('Messages', () => {
+    it('should add message', () => {
       const { result } = renderHook(() => useChatStore());
 
-      const reference = {
-        url: '/uploads/test.png',
-        filename: 'test.png'
+      const message = {
+        id: 'test-1',
+        role: 'user',
+        content: 'Hello',
+        createdAt: new Date().toISOString()
       };
 
       act(() => {
-        result.current.setAttachedReference(reference);
+        result.current.addMessage(message);
       });
 
-      expect(result.current.attachedReference).toEqual(reference);
+      expect(result.current.messages).toHaveLength(1);
+      expect(result.current.messages[0].content).toBe('Hello');
     });
 
-    it('should clear attached reference', () => {
+    it('should update message', () => {
       const { result } = renderHook(() => useChatStore());
 
-      act(() => {
-        result.current.setAttachedReference({ url: '/test.png' });
-      });
-
-      expect(result.current.attachedReference).not.toBeNull();
-
-      act(() => {
-        result.current.clearAttachedReference();
-      });
-
-      expect(result.current.attachedReference).toBeNull();
-    });
-  });
-
-  describe('Generation Progress', () => {
-    it('should update generation progress', () => {
-      const { result } = renderHook(() => useChatStore());
-
-      act(() => {
-        result.current.updateGenerationProgress({
-          status: 'processing',
-          message: 'Generating image...'
-        });
-      });
-
-      expect(result.current.generationStatus).toBe('processing');
-      expect(result.current.generationProgress).toBe('Generating image...');
-    });
-
-    it('should complete generation', () => {
-      const { result } = renderHook(() => useChatStore());
-
-      // First set up a message
       useChatStore.setState({
-        isGenerating: true,
         messages: [{
-          id: 1,
+          id: 'test-1',
           role: 'assistant',
-          content: 'Generating...',
+          content: 'Initial',
           isGenerating: true
         }]
       });
 
       act(() => {
-        result.current.completeGeneration({
-          messageId: 1,
-          images: ['/uploads/result.png'],
-          model: 'flux-dev',
-          timeMs: 5000
+        result.current.updateMessage('test-1', {
+          content: 'Updated',
+          isGenerating: false
         });
       });
 
-      expect(result.current.isGenerating).toBe(false);
-      expect(result.current.generationStatus).toBe('complete');
-      expect(result.current.messages[0].imageUrls).toEqual(['/uploads/result.png']);
+      expect(result.current.messages[0].content).toBe('Updated');
       expect(result.current.messages[0].isGenerating).toBe(false);
-    });
-
-    it('should handle generation failure', () => {
-      const { result } = renderHook(() => useChatStore());
-
-      // Set up a message
-      useChatStore.setState({
-        isGenerating: true,
-        messages: [{
-          id: 1,
-          role: 'assistant',
-          content: 'Generating...',
-          isGenerating: true
-        }]
-      });
-
-      act(() => {
-        result.current.failGeneration({
-          messageId: 1,
-          error: 'API Error'
-        });
-      });
-
-      expect(result.current.isGenerating).toBe(false);
-      expect(result.current.generationStatus).toBe('error');
-      expect(result.current.messages[0].errorMessage).toBe('API Error');
     });
   });
 
@@ -214,7 +189,6 @@ describe('useChatStore', () => {
     it('should select chat and clear messages', async () => {
       const { result } = renderHook(() => useChatStore());
 
-      // Set some initial state
       useChatStore.setState({
         currentChat: { id: 1 },
         messages: [{ id: 1, content: 'test' }]
@@ -244,7 +218,6 @@ describe('useChatStore', () => {
     it('should remove chat from list on delete', async () => {
       const { result } = renderHook(() => useChatStore());
 
-      // Add a chat first
       useChatStore.setState({
         chats: [{ id: 1, title: 'Test Chat' }]
       });
@@ -254,6 +227,15 @@ describe('useChatStore', () => {
       });
 
       expect(result.current.chats).toHaveLength(0);
+    });
+  });
+
+  describe('Generation Phases', () => {
+    it('should have correct phase constants', () => {
+      expect(GENERATION_PHASES.IDLE).toBe('idle');
+      expect(GENERATION_PHASES.GENERATING).toBe('generating');
+      expect(GENERATION_PHASES.COMPLETE).toBe('complete');
+      expect(GENERATION_PHASES.ERROR).toBe('error');
     });
   });
 });

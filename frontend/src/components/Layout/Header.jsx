@@ -1,23 +1,24 @@
-import { Menu, Settings, Zap } from 'lucide-react';
+import { Menu, Zap } from 'lucide-react';
 import { useChatStore } from '../../hooks/useChat';
 
-export function Header({ onMenuClick, onSettingsClick }) {
+export function Header({ onMenuClick }) {
   const { currentChat, isGenerating, generationProgress } = useChatStore();
 
   return (
-    <header className="h-14 flex items-center justify-between px-4 border-b border-border bg-bg-primary/50 backdrop-blur-sm">
+    <header className="h-14 flex items-center justify-between px-4 border-b border-border glass">
       {/* Left: Menu button (mobile) + Chat title */}
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
           className="md:hidden p-2 hover:bg-bg-secondary rounded-lg transition-colors"
+          aria-label="Открыть меню"
         >
           <Menu className="w-5 h-5" />
         </button>
 
         <div className="flex items-center gap-2">
           <h1 className="font-medium text-text-primary truncate max-w-[200px] md:max-w-[400px]">
-            {currentChat?.title || 'BannerGen'}
+            {currentChat?.title || 'MST CREO AI'}
           </h1>
 
           {/* Generation indicator */}
@@ -32,15 +33,9 @@ export function Header({ onMenuClick, onSettingsClick }) {
         </div>
       </div>
 
-      {/* Right: Settings */}
+      {/* Right: Empty - settings removed */}
       <div className="flex items-center gap-2">
-        <button
-          onClick={onSettingsClick}
-          className="p-2 hover:bg-bg-secondary rounded-lg transition-colors"
-          title="Настройки генерации"
-        >
-          <Settings className="w-5 h-5 text-text-secondary hover:text-text-primary transition-colors" />
-        </button>
+        {/* Placeholder for future actions */}
       </div>
     </header>
   );

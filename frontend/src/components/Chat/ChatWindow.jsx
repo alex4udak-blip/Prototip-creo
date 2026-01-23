@@ -39,7 +39,7 @@ export function ChatWindow({ className = '' }) {
           </div>
 
           <h2 className="text-xl font-bold text-text-primary mb-1">
-            BannerGen
+            MST CREO AI
           </h2>
           <p className="text-sm text-text-secondary mb-4">
             AI-генератор баннеров для арбитража

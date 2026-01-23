@@ -24,7 +24,7 @@ export function LandingPage() {
         </div>
 
         <h1 className="text-4xl md:text-5xl font-bold mb-4">
-          <span className="text-gradient">BannerGen</span>
+          <span className="text-gradient">MST CREO AI</span>
         </h1>
 
         <p className="text-xl text-text-secondary mb-8 max-w-2xl mx-auto">
@@ -38,7 +38,7 @@ export function LandingPage() {
             <Wand2 className="w-8 h-8 text-accent mb-3" />
             <h3 className="font-semibold text-lg mb-2">Умные промпты</h3>
             <p className="text-text-muted text-sm">
-              Пишите на русском — Claude AI улучшит ваш запрос и выберет лучшую модель
+              Пишите на русском — AI сам улучшит ваш запрос для генерации
             </p>
           </div>
 
@@ -46,15 +46,15 @@ export function LandingPage() {
             <Image className="w-8 h-8 text-accent mb-3" />
             <h3 className="font-semibold text-lg mb-2">Референсы</h3>
             <p className="text-text-muted text-sm">
-              Перетащите картинку для стилизации. FLUX Kontext сохранит стиль оригинала
+              Перетащите картинку для стилизации — AI сохранит стиль оригинала
             </p>
           </div>
 
           <div className="card">
             <Zap className="w-8 h-8 text-accent mb-3" />
-            <h3 className="font-semibold text-lg mb-2">Три AI модели</h3>
+            <h3 className="font-semibold text-lg mb-2">Nano Banana Pro</h3>
             <p className="text-text-muted text-sm">
-              FLUX Dev для качества, Schnell для скорости, Nano Banana для текста
+              Gemini модель с генерацией текста на баннерах за секунды
             </p>
           </div>
         </div>
@@ -66,7 +66,7 @@ export function LandingPage() {
             <span className="font-semibold">Закрытый доступ</span>
           </div>
           <p className="text-text-muted text-sm">
-            BannerGen работает по приглашениям.
+            MST CREO AI работает по приглашениям.
             Если у вас есть invite-ссылка — используйте её для входа.
           </p>
         </div>
@@ -87,7 +87,7 @@ export function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-border py-8 text-center text-text-muted text-sm">
-        <p>© 2026 BannerGen • Powered by Claude, FLUX, Nano Banana</p>
+        <p>© 2026 MST CREO AI • Powered by Gemini Nano Banana Pro</p>
       </footer>
     </div>
   );

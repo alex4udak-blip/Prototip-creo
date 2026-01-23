@@ -39,3 +39,7 @@ global.WebSocket = vi.fn().mockImplementation(() => ({
   close: vi.fn(),
   readyState: 1,
 }));
+
+// Mock URL.createObjectURL and URL.revokeObjectURL (not available in JSDOM)
+global.URL.createObjectURL = vi.fn(() => 'blob:mock-url-' + Math.random().toString(36).substr(2, 9));
+global.URL.revokeObjectURL = vi.fn();

@@ -1,12 +1,12 @@
 /**
- * API Client для BannerGen
+ * API Client для MST CREO AI
  */
 
 const API_BASE = '/api';
 
 // Получаем токен из localStorage
 function getToken() {
-  return localStorage.getItem('bannergen_token');
+  return localStorage.getItem('mstcreo_token');
 }
 
 // Базовый fetch с авторизацией
@@ -29,8 +29,8 @@ async function fetchAPI(endpoint, options = {}) {
 
   // Если 401 — очищаем токен
   if (response.status === 401) {
-    localStorage.removeItem('bannergen_token');
-    localStorage.removeItem('bannergen_user');
+    localStorage.removeItem('mstcreo_token');
+    localStorage.removeItem('mstcreo_user');
     window.location.href = '/';
     throw new Error('Unauthorized');
   }
@@ -52,8 +52,8 @@ export const authAPI = {
   // Вход по invite-ссылке
   async loginWithInvite(token) {
     const data = await fetchAPI(`/auth/invite/${token}`);
-    localStorage.setItem('bannergen_token', data.token);
-    localStorage.setItem('bannergen_user', JSON.stringify(data.user));
+    localStorage.setItem('mstcreo_token', data.token);
+    localStorage.setItem('mstcreo_user', JSON.stringify(data.user));
     return data;
   },
 
@@ -65,14 +65,14 @@ export const authAPI = {
   // Обновить токен
   async refreshToken() {
     const data = await fetchAPI('/auth/refresh', { method: 'POST' });
-    localStorage.setItem('bannergen_token', data.token);
+    localStorage.setItem('mstcreo_token', data.token);
     return data;
   },
 
   // Выход
   logout() {
-    localStorage.removeItem('bannergen_token');
-    localStorage.removeItem('bannergen_user');
+    localStorage.removeItem('mstcreo_token');
+    localStorage.removeItem('mstcreo_user');
   },
 
   // Проверить авторизован ли
@@ -82,7 +82,7 @@ export const authAPI = {
 
   // Получить сохранённого пользователя
   getUser() {
-    const user = localStorage.getItem('bannergen_user');
+    const user = localStorage.getItem('mstcreo_user');
     return user ? JSON.parse(user) : null;
   }
 };

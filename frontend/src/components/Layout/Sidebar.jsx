@@ -52,12 +52,12 @@ export function Sidebar({ className = '' }) {
   };
 
   return (
-    <aside className={`flex flex-col bg-bg-secondary border-r border-border ${className}`}>
+    <aside className={`flex flex-col glass border-r border-border ${className}`}>
       {/* Header */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center gap-2 mb-4">
           <Sparkles className="w-6 h-6 text-accent" />
-          <span className="font-bold text-lg text-gradient">BannerGen</span>
+          <span className="font-bold text-lg text-gradient">MST CREO AI</span>
         </div>
 
         <button

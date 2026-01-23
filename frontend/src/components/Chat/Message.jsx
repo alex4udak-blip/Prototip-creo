@@ -32,7 +32,7 @@ function ToolUseIndicator({ tool, label, status, referenceUrls }) {
 
   return (
     <div className="mb-2 animate-fade-in">
-      <div className="flex items-center gap-2 px-3 py-2 bg-bg-secondary rounded-lg border border-border">
+      <div className="flex items-center gap-2 px-3 py-2 glass-light rounded-lg">
         <span className="text-xs text-text-muted">Использование инструмента</span>
         <span className="text-text-muted">|</span>
         <span>{getIcon(tool)}</span>
@@ -340,35 +340,16 @@ export function Message({ message }) {
             {/* Role label with Deep Research button for assistant */}
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs text-text-muted">
-                {isUser ? 'Вы' : 'BannerGen'}
+                {isUser ? 'Вы' : 'MST CREO AI'}
               </span>
 
-              {/* Deep Research button (like Genspark) - only for completed assistant messages */}
-              {!isUser && !message.isGenerating && message.content && (
-                <button
-                  onClick={() => {
-                    const input = document.querySelector('textarea');
-                    if (input) {
-                      input.value = `Проведи глубокое исследование по теме: ${message.content.substring(0, 100)}...`;
-                      input.focus();
-                      // Включаем Deep Research mode
-                      useChatStore.getState().updateSettings({ deepResearch: true });
-                    }
-                  }}
-                  className="flex items-center gap-1 px-2 py-0.5 text-xs text-purple-400 hover:text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 rounded-full transition"
-                  title="Глубокое исследование"
-                >
-                  <Search className="w-3 h-3" />
-                  <span>Глубокое исследование</span>
-                </button>
-              )}
             </div>
 
-            {/* Message bubble */}
+            {/* Message bubble - Glass morphism */}
             <div className={`rounded-2xl p-4 ${
               isUser
-                ? 'bg-accent/20 border border-accent/30'
-                : 'bg-bg-secondary border border-border'
+                ? 'glass-accent'
+                : 'glass'
             }`}>
               {/* Tool use indicators ПЕРВЫМИ (like Genspark) */}
               {message.isGenerating && message.activeTools?.length > 0 && (

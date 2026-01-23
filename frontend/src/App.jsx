@@ -3,6 +3,7 @@ import { LandingPage } from './pages/LandingPage';
 import { InvitePage } from './pages/InvitePage';
 import { ChatPage } from './pages/ChatPage';
 import { useAuthStore } from './hooks/useAuth';
+import { ToastContainer } from './components/UI/Toast';
 
 // Protected Route компонент
 function ProtectedRoute({ children }) {
@@ -18,6 +19,7 @@ function ProtectedRoute({ children }) {
 function App() {
   return (
     <BrowserRouter>
+      <ToastContainer />
       <Routes>
         {/* Landing page */}
         <Route path="/" element={<LandingPage />} />

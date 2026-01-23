@@ -20,7 +20,7 @@ export const PHASE_LABELS = {
 
 /**
  * Chat Store — УПРОЩЁННЫЙ
- * Только базовая логика: чаты, сообщения, генерация через Gemini
+ * Без лишних settings — модель сама умная
  */
 export const useChatStore = create((set, get) => ({
   // Список чатов
@@ -37,17 +37,8 @@ export const useChatStore = create((set, get) => ({
   generationPhase: GENERATION_PHASES.IDLE,
   generationProgress: null,
 
-  // Референсы (до 14 картинок как в Genspark)
+  // Референсы (до 14 картинок)
   attachedImages: [],
-
-  // Настройки
-  settings: {
-    aspectRatio: 'auto',  // '1:1', '16:9', '9:16', '4:3', 'auto'
-    variants: 3,          // 1-4
-    resolution: '2K',     // '1K', '2K', '4K'
-    mode: 'smart',        // 'smart' | 'fast'
-    deepResearch: false   // Глубокое исследование (как в Genspark)
-  },
 
   // ==========================================
   // Chats
@@ -60,20 +51,15 @@ export const useChatStore = create((set, get) => ({
       const { currentChat } = get();
       let updatedCurrentChat = currentChat;
 
-      // Обновляем currentChat только если:
-      // 1. Локальный title — дефолтный ("Новый чат" или пустой)
-      // 2. Серверный title — НЕ дефолтный
       if (currentChat?.id) {
         const foundChat = chats.find(c => c.id === currentChat.id);
         if (foundChat) {
           const localIsDefault = !currentChat.title || currentChat.title === 'Новый чат';
           const serverIsDefault = !foundChat.title || foundChat.title === 'Новый чат';
 
-          // Берём серверный title только если локальный дефолтный, а серверный — нет
           if (localIsDefault && !serverIsDefault) {
             updatedCurrentChat = { ...currentChat, title: foundChat.title };
           }
-          // Иначе оставляем локальный title (он уже установлен из промпта)
         }
       }
       set({ chats, chatsLoading: false, currentChat: updatedCurrentChat });
@@ -169,9 +155,8 @@ export const useChatStore = create((set, get) => ({
   // ==========================================
 
   sendMessage: async (prompt, imageFiles = null) => {
-    const { currentChat, settings, attachedImages } = get();
+    const { currentChat, attachedImages } = get();
 
-    // Объединяем переданные файлы с уже прикреплёнными
     const allImages = imageFiles
       ? (Array.isArray(imageFiles) ? imageFiles : [imageFiles])
       : attachedImages;
@@ -183,7 +168,6 @@ export const useChatStore = create((set, get) => ({
     const tempUserMessageId = `user-${Date.now()}`;
     const tempAssistantMessageId = `assistant-${Date.now()}`;
 
-    // Добавляем сообщение пользователя с превью всех картинок
     const userMessage = {
       id: tempUserMessageId,
       role: 'user',
@@ -192,7 +176,6 @@ export const useChatStore = create((set, get) => ({
       createdAt: new Date().toISOString()
     };
 
-    // Добавляем placeholder для ответа
     const assistantPlaceholder = {
       id: tempAssistantMessageId,
       role: 'assistant',
@@ -206,59 +189,42 @@ export const useChatStore = create((set, get) => ({
       isGenerating: true,
       generationPhase: GENERATION_PHASES.GENERATING,
       generationProgress: 'Генерирую...',
-      attachedImages: []  // Очищаем после отправки
+      attachedImages: []
     }));
 
     try {
-      // Подготавливаем FormData
       const formData = new FormData();
       formData.append('prompt', prompt || '');
       if (currentChat?.id) {
         formData.append('chat_id', currentChat.id);
       }
-      formData.append('settings', JSON.stringify({
-        aspectRatio: settings.aspectRatio,
-        variants: settings.variants,
-        resolution: settings.resolution,
-        mode: settings.mode,
-        deepResearch: settings.deepResearch  // Глубокое исследование
-      }));
 
-      // Картинки (до 14 референсов)
       for (const img of allImages) {
         formData.append('references', img);
       }
 
-      // Отправляем
       const response = await generateAPI.sendWithFormData(formData);
 
-      // Обновляем ID сообщения пользователя
       if (response.userMessageId) {
         get().updateMessage(tempUserMessageId, { id: response.userMessageId });
       }
 
-      // КРИТИЧНО: Если это новый чат или chatId изменился — переподписываемся на WebSocket
       if (response.chatId) {
         const isNewChat = !currentChat || currentChat.id !== response.chatId;
         const newTitle = prompt?.substring(0, 50) || 'Новый чат';
 
         if (isNewChat) {
-          // Создаём объект нового чата
           const newChat = {
             id: response.chatId,
             title: newTitle,
             createdAt: new Date().toISOString()
           };
 
-          // Устанавливаем как текущий и добавляем в начало списка
           set(state => ({
             currentChat: newChat,
             chats: [newChat, ...state.chats.filter(c => c.id !== response.chatId)]
           }));
-
-          console.log('[useChat] Created new chat with title:', newTitle);
         } else {
-          // Существующий чат — просто обновляем title если он дефолтный
           const isTitleDefault = currentChat?.title === 'Новый чат' || !currentChat?.title;
           if (isTitleDefault) {
             set(state => ({
@@ -270,9 +236,7 @@ export const useChatStore = create((set, get) => ({
           }
         }
 
-        // Всегда подписываемся на chatId после генерации
         wsManager.subscribe(response.chatId);
-        console.log('[useChat] Subscribed to chat:', response.chatId);
       }
 
       return response;
@@ -285,7 +249,6 @@ export const useChatStore = create((set, get) => ({
         generationProgress: error.message
       });
 
-      // Обновляем placeholder с ошибкой
       get().updateMessage(tempAssistantMessageId, {
         isGenerating: false,
         errorMessage: error.message
@@ -296,7 +259,7 @@ export const useChatStore = create((set, get) => ({
   },
 
   // ==========================================
-  // References (до 14 картинок как в Genspark)
+  // References
   // ==========================================
 
   setAttachedImages: (files) => {
@@ -320,16 +283,6 @@ export const useChatStore = create((set, get) => ({
   },
 
   // ==========================================
-  // Settings
-  // ==========================================
-
-  updateSettings: (updates) => {
-    set(state => ({
-      settings: { ...state.settings, ...updates }
-    }));
-  },
-
-  // ==========================================
   // WebSocket handlers
   // ==========================================
 
@@ -344,7 +297,6 @@ export const useChatStore = create((set, get) => ({
         generationProgress: data.message
       });
 
-      // Обновляем placeholder с текущим progress
       set(state => {
         const messages = state.messages;
         let targetIndex = -1;
@@ -364,17 +316,12 @@ export const useChatStore = create((set, get) => ({
         updatedMessages[targetIndex] = {
           ...updatedMessages[targetIndex],
           generationProgress: data.message,
-          generationStatus: data.status,  // analyzing, generating, generating_image
-          // Streaming text - показываем частичный текст в реальном времени
+          generationStatus: data.status,
           partialText: data.partialText || updatedMessages[targetIndex].partialText,
-          // Если пришёл новый текст, обновляем content
           content: data.partialText || updatedMessages[targetIndex].content,
-          // Streaming images - показываем по мере генерации
-          // newImage может быть строкой URL или объектом {url, mimeType}
           imageUrls: data.newImage
             ? [...(updatedMessages[targetIndex].imageUrls || []), typeof data.newImage === 'object' ? data.newImage.url : data.newImage]
             : updatedMessages[targetIndex].imageUrls,
-          // Progress percentage
           progress: data.progress || updatedMessages[targetIndex].progress
         };
 
@@ -382,7 +329,6 @@ export const useChatStore = create((set, get) => ({
       });
     });
 
-    // Tool use indicators (like Genspark)
     wsManager.on('tool_use', (data) => {
       set(state => {
         const messages = [...state.messages];
@@ -429,7 +375,6 @@ export const useChatStore = create((set, get) => ({
 
         if (targetIndex === -1) return state;
 
-        // Mark all tools as complete
         const currentTools = (messages[targetIndex].activeTools || []).map(tool => ({
           ...tool,
           status: 'complete'
@@ -451,18 +396,14 @@ export const useChatStore = create((set, get) => ({
         generationProgress: null
       });
 
-      // Обновляем сообщение с результатом
-      // Ищем: 1) по messageId 2) по временному ID 3) последний generating assistant
       set(state => {
         const messages = state.messages;
         let targetIndex = -1;
 
-        // Сначала ищем по messageId от сервера
         if (data.messageId) {
           targetIndex = messages.findIndex(msg => msg.id === data.messageId);
         }
 
-        // Если не нашли, ищем последний assistant placeholder (isGenerating: true)
         if (targetIndex === -1) {
           for (let i = messages.length - 1; i >= 0; i--) {
             if (messages[i].role === 'assistant' && messages[i].isGenerating) {
@@ -473,10 +414,9 @@ export const useChatStore = create((set, get) => ({
         }
 
         if (targetIndex === -1) {
-          return state; // Не нашли что обновлять
+          return state;
         }
 
-        // Извлекаем URLs из объектов {url, mimeType} или используем как есть если уже строки
         let imageUrls = data.images || data.imageUrls || [];
         if (imageUrls.length > 0 && typeof imageUrls[0] === 'object' && imageUrls[0].url) {
           imageUrls = imageUrls.map(img => img.url);
@@ -495,8 +435,6 @@ export const useChatStore = create((set, get) => ({
         return { messages: updatedMessages };
       });
 
-      // Загружаем чаты только если content пустой (возможно title изменился на сервере)
-      // Не перезагружаем если есть контент — это может сбросить локальный title
       if (!data.content && !data.images?.length) {
         get().loadChats();
       }
@@ -509,7 +447,6 @@ export const useChatStore = create((set, get) => ({
         generationProgress: null
       });
 
-      // Ищем placeholder так же как в generation_complete
       set(state => {
         const messages = state.messages;
         let targetIndex = -1;

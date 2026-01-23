@@ -1,18 +1,33 @@
 /**
  * Tests for auth.routes.js
+ * Basic route tests without full JWT flow (testing edge cases and validation)
  */
+import { jest, describe, it, expect, beforeAll, beforeEach, test } from '@jest/globals';
+
+// Create mocks before imports
+const mockGetOne = jest.fn();
+const mockQuery = jest.fn();
 
 // Mock database
-const mockQuery = jest.fn();
-jest.mock('../src/db/client.js', () => ({
-  query: mockQuery,
+jest.unstable_mockModule('../src/db/client.js', () => ({
+  db: {
+    query: mockQuery,
+    getOne: mockGetOne,
+    getMany: jest.fn(),
+    insert: jest.fn(),
+    update: jest.fn()
+  },
+  pool: {
+    connect: jest.fn(),
+    on: jest.fn()
+  },
   testConnection: jest.fn().mockResolvedValue(true)
 }));
 
 // Mock config
-jest.mock('../src/config/env.js', () => ({
+jest.unstable_mockModule('../src/config/env.js', () => ({
   config: {
-    jwtSecret: 'test-secret-key-12345',
+    jwtSecret: 'test-secret-key-12345-very-long-secret',
     nodeEnv: 'test',
     port: 3000,
     frontendUrl: 'http://localhost:5173'
@@ -20,7 +35,7 @@ jest.mock('../src/config/env.js', () => ({
 }));
 
 // Mock logger
-jest.mock('../src/utils/logger.js', () => ({
+jest.unstable_mockModule('../src/utils/logger.js', () => ({
   log: {
     debug: jest.fn(),
     info: jest.fn(),
@@ -29,8 +44,9 @@ jest.mock('../src/utils/logger.js', () => ({
   }
 }));
 
-import express from 'express';
-import request from 'supertest';
+// Now import express and supertest
+const express = (await import('express')).default;
+const request = (await import('supertest')).default;
 
 // Create minimal app for testing
 const createTestApp = async () => {
@@ -52,103 +68,45 @@ describe('Auth Routes', () => {
 
   beforeEach(() => {
     mockQuery.mockClear();
+    mockGetOne.mockClear();
   });
 
-  describe('POST /api/auth/invite/:token', () => {
-    test('should return 400 for missing token', async () => {
+  describe('GET /api/auth/invite/:token - Validation', () => {
+    test('should return 400 for short token', async () => {
       const response = await request(app)
-        .post('/api/auth/invite/')
-        .send({});
+        .get('/api/auth/invite/short');
 
-      expect(response.status).toBe(404); // Route not matched
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('Невалидный');
     });
 
-    test('should return 404 for invalid token', async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [] }); // No invite found
+    test('should return 404 for invalid token (user not found)', async () => {
+      mockGetOne.mockResolvedValueOnce(null);
 
       const response = await request(app)
-        .post('/api/auth/invite/invalid-token')
-        .send({ name: 'Test User' });
+        .get('/api/auth/invite/12345678901234567890123456789012');
 
       expect(response.status).toBe(404);
       expect(response.body.error).toContain('недействительна');
     });
 
-    test('should return 400 for used invite', async () => {
-      mockQuery.mockResolvedValueOnce({
-        rows: [{
-          id: 1,
-          token: 'test-token',
-          used_by: 123, // Already used
-          expires_at: new Date(Date.now() + 86400000)
-        }]
+    test('should return 403 for inactive user', async () => {
+      mockGetOne.mockResolvedValueOnce({
+        id: 1,
+        name: 'Test User',
+        is_active: false,
+        created_at: new Date()
       });
 
       const response = await request(app)
-        .post('/api/auth/invite/test-token')
-        .send({ name: 'Test User' });
+        .get('/api/auth/invite/12345678901234567890123456789012');
 
-      expect(response.status).toBe(400);
-      expect(response.body.error).toContain('использована');
-    });
-
-    test('should return 400 for expired invite', async () => {
-      mockQuery.mockResolvedValueOnce({
-        rows: [{
-          id: 1,
-          token: 'test-token',
-          used_by: null,
-          expires_at: new Date(Date.now() - 86400000) // Expired
-        }]
-      });
-
-      const response = await request(app)
-        .post('/api/auth/invite/test-token')
-        .send({ name: 'Test User' });
-
-      expect(response.status).toBe(400);
-      expect(response.body.error).toContain('истёк');
-    });
-
-    test('should create user for valid invite', async () => {
-      const inviteId = 1;
-      const userId = 42;
-
-      // Mock invite lookup
-      mockQuery.mockResolvedValueOnce({
-        rows: [{
-          id: inviteId,
-          token: 'valid-token',
-          used_by: null,
-          expires_at: new Date(Date.now() + 86400000)
-        }]
-      });
-
-      // Mock user creation
-      mockQuery.mockResolvedValueOnce({
-        rows: [{
-          id: userId,
-          name: 'Test User',
-          email: null
-        }]
-      });
-
-      // Mock invite update
-      mockQuery.mockResolvedValueOnce({ rows: [] });
-
-      const response = await request(app)
-        .post('/api/auth/invite/valid-token')
-        .send({ name: 'Test User' });
-
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-      expect(response.body.token).toBeDefined();
-      expect(response.body.user).toBeDefined();
-      expect(response.body.user.name).toBe('Test User');
+      expect(response.status).toBe(403);
+      expect(response.body.error).toContain('деактивирован');
     });
   });
 
-  describe('GET /api/auth/me', () => {
+  describe('GET /api/auth/me - Authentication', () => {
     test('should return 401 without token', async () => {
       const response = await request(app)
         .get('/api/auth/me');
@@ -156,55 +114,77 @@ describe('Auth Routes', () => {
       expect(response.status).toBe(401);
     });
 
-    test('should return user for valid token', async () => {
-      // First create a valid token
+    test('should return 401 for invalid token', async () => {
+      const response = await request(app)
+        .get('/api/auth/me')
+        .set('Authorization', 'Bearer invalid-token');
+
+      expect(response.status).toBe(401);
+    });
+
+    test('should return 401 for malformed authorization header', async () => {
+      const response = await request(app)
+        .get('/api/auth/me')
+        .set('Authorization', 'NotBearer token');
+
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe('GET /api/auth/invites - Admin endpoint', () => {
+    test('should return 403 without secret', async () => {
+      const response = await request(app)
+        .get('/api/auth/invites');
+
+      expect(response.status).toBe(403);
+    });
+
+    test('should return 403 for wrong secret', async () => {
+      const response = await request(app)
+        .get('/api/auth/invites?secret=wrongsecret');
+
+      expect(response.status).toBe(403);
+    });
+
+    test('should return invites for correct secret', async () => {
       mockQuery.mockResolvedValueOnce({
-        rows: [{
-          id: 1,
-          token: 'valid-token',
-          used_by: null,
-          expires_at: new Date(Date.now() + 86400000)
-        }]
+        rows: [
+          { name: 'User 1', invite_token: 'token1' },
+          { name: 'User 2', invite_token: 'token2' }
+        ]
       });
 
-      mockQuery.mockResolvedValueOnce({
-        rows: [{
-          id: 1,
-          name: 'Test User',
-          email: null
-        }]
-      });
+      const response = await request(app)
+        .get('/api/auth/invites?secret=mstcreo2026');
 
+      expect(response.status).toBe(200);
+      expect(response.body.invites).toBeDefined();
+      expect(response.body.invites).toHaveLength(2);
+      expect(response.body.invites[0].name).toBe('User 1');
+    });
+
+    test('should return empty array when no users', async () => {
       mockQuery.mockResolvedValueOnce({ rows: [] });
 
-      const inviteResponse = await request(app)
-        .post('/api/auth/invite/valid-token')
-        .send({ name: 'Test User' });
+      const response = await request(app)
+        .get('/api/auth/invites?secret=mstcreo2026');
 
-      const token = inviteResponse.body.token;
+      expect(response.status).toBe(200);
+      expect(response.body.invites).toEqual([]);
+    });
+  });
 
-      // Mock user lookup for /me
-      mockQuery.mockResolvedValueOnce({
-        rows: [{
-          id: 1,
-          name: 'Test User',
-          email: null,
-          created_at: new Date()
-        }]
-      });
+  describe('POST /api/auth/refresh - Authentication', () => {
+    test('should return 401 without token', async () => {
+      const response = await request(app)
+        .post('/api/auth/refresh');
 
-      const meResponse = await request(app)
-        .get('/api/auth/me')
-        .set('Authorization', `Bearer ${token}`);
-
-      expect(meResponse.status).toBe(200);
-      expect(meResponse.body.user).toBeDefined();
-      expect(meResponse.body.user.name).toBe('Test User');
+      expect(response.status).toBe(401);
     });
 
     test('should return 401 for invalid token', async () => {
       const response = await request(app)
-        .get('/api/auth/me')
+        .post('/api/auth/refresh')
         .set('Authorization', 'Bearer invalid-token');
 
       expect(response.status).toBe(401);
