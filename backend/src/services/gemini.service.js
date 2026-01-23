@@ -434,9 +434,18 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
 
   // Догенерация недостающих изображений
   // Если получили меньше картинок чем просили — просим ещё
-  const targetVariants = settings.variants || 3;
+  const targetVariants = parseInt(settings.variants) || 3;
   const maxRetries = 3; // Максимум попыток догенерации
   let retryCount = 0;
+
+  log.info('Checking if need more images', {
+    chatId,
+    currentImages: result.images.length,
+    targetVariants,
+    settingsVariants: settings.variants,
+    typeofVariants: typeof settings.variants,
+    needMore: result.images.length < targetVariants
+  });
 
   while (result.images.length < targetVariants && retryCount < maxRetries) {
     const remaining = targetVariants - result.images.length;
