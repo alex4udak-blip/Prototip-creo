@@ -575,16 +575,28 @@ async function processGeneration(params) {
     // Используем variations_count из ответов пользователя если есть
     const numImages = promptAnalysis.variations_count || variations || 1;
 
+    // Определяем передавать ли референс в модель
+    // style_only = только описание в промпте, референс НЕ передаём
+    const shouldPassReference = promptAnalysis.pass_reference_to_model !== false;
+    const effectiveReferenceUrl = shouldPassReference ? referenceUrl : null;
+
+    log.info('Generation config', {
+      referenceUsage: promptAnalysis.reference_usage,
+      passReference: shouldPassReference,
+      hasReferenceUrl: !!referenceUrl,
+      effectiveReference: !!effectiveReferenceUrl
+    });
+
     const result = await generateImage(promptAnalysis.enhanced_prompt, {
       model: selectedModel,
       negativePrompt: promptAnalysis.negative_prompt,
       width,
       height,
       numImages: Math.min(numImages, 5),  // До 5 как Genspark
-      referenceUrl,
+      referenceUrl: effectiveReferenceUrl,  // Может быть null если style_only
       textContent: promptAnalysis.text_content,
       textStyle: promptAnalysis.text_style,
-      visionAnalysis  // Передаём Vision анализ референса!
+      visionAnalysis  // Vision анализ всегда передаём для промпта
     });
 
     const totalTime = Date.now() - startTime;

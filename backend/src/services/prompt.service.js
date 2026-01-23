@@ -820,16 +820,26 @@ export async function processUserAnswers(originalPrompt, answers, options = {}) 
     }
   }
 
-  // PATCH 5: Detect reference usage mode from answers
+  // Detect reference usage mode from answers
+  // Identity Lock / Копировать точно = передаём референс в Vertex AI
+  // Вдохновение стилем = только описание в промпте, без референса
+  // Адаптировать = редактирование
   let referenceUsage = null;
   if (answers.reference_usage) {
     const usage = answers.reference_usage.toLowerCase();
-    if (usage.includes('identity') || usage.includes('lock') || usage.includes('референс')) {
+    // Identity Lock или Копировать точно — передаём референс в модель
+    if (usage.includes('identity') || usage.includes('lock') ||
+        usage.includes('копировать') || usage.includes('точно') ||
+        usage.includes('референс') || usage.includes('как референс')) {
       referenceUsage = 'identity_lock';
-    } else if (usage.includes('редактир') || usage.includes('edit')) {
+    }
+    // Адаптировать / Редактировать
+    else if (usage.includes('адаптир') || usage.includes('редактир') || usage.includes('edit')) {
       referenceUsage = 'edit';
-    } else if (usage.includes('стиль') || usage.includes('style') || usage.includes('вдохновен')) {
-      referenceUsage = 'style';
+    }
+    // Вдохновение стилем — НЕ передаём референс, только описание
+    else if (usage.includes('стиль') || usage.includes('style') || usage.includes('вдохновен')) {
+      referenceUsage = 'style_only';
     }
   }
 
@@ -889,16 +899,30 @@ export async function processUserAnswers(originalPrompt, answers, options = {}) 
   // Добавляем количество вариаций в результат
   result.variations_count = variationsCount;
 
-  // PATCH 5: Force google-nano-pro model for Identity Lock mode
+  // Обрабатываем режим использования референса
   if (referenceUsage === 'identity_lock') {
+    // Identity Lock / Копировать точно — передаём референс в Vertex AI
     result.suggested_model = 'google-nano-pro';
     result.reference_usage = 'identity_lock';
     result.needs_character_consistency = true;
+    result.pass_reference_to_model = true;  // Флаг для передачи референса в модель
     log.info('Identity Lock mode activated', {
       model: 'google-nano-pro',
       hasVisionAnalysis: !!visionAnalysis,
       hasCharacter: visionAnalysis?.has_character
     });
+  } else if (referenceUsage === 'style_only') {
+    // Вдохновение стилем — НЕ передаём референс, только описание в промпте
+    result.reference_usage = 'style_only';
+    result.pass_reference_to_model = false;  // НЕ передаём референс
+    log.info('Style inspiration mode - reference NOT passed to model', {
+      hasVisionAnalysis: !!visionAnalysis
+    });
+  } else if (referenceUsage === 'edit') {
+    // Адаптировать/Редактировать
+    result.reference_usage = 'edit';
+    result.pass_reference_to_model = true;
+    log.info('Edit mode activated');
   } else if (referenceUsage) {
     result.reference_usage = referenceUsage;
   }
