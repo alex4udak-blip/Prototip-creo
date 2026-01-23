@@ -4,6 +4,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
+import { generateWithRunway } from './runway.service.js';
 
 // Инициализация клиента
 const ai = new GoogleGenAI({ apiKey: config.googleApiKey });
@@ -161,7 +162,8 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
   const result = {
     text: '',
     images: [],
-    finishReason: null
+    finishReason: null,
+    usage: null // Token usage info
   };
 
   // Обрабатываем stream
@@ -174,6 +176,16 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
 
       if (candidate?.finishReason) {
         result.finishReason = candidate.finishReason;
+      }
+
+      // Сохраняем usage metadata из последнего чанка
+      if (chunk.usageMetadata) {
+        result.usage = {
+          promptTokens: chunk.usageMetadata.promptTokenCount || 0,
+          outputTokens: chunk.usageMetadata.candidatesTokenCount || 0,
+          totalTokens: chunk.usageMetadata.totalTokenCount || 0,
+          thinkingTokens: chunk.usageMetadata.thoughtsTokenCount || 0
+        };
       }
 
       log.debug('Gemini chunk', {
@@ -219,23 +231,80 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
     throw error;
   }
 
+  // Логируем токены для биллинга
+  if (result.usage) {
+    log.info('Gemini token usage', {
+      chatId,
+      promptTokens: result.usage.promptTokens,
+      outputTokens: result.usage.outputTokens,
+      thinkingTokens: result.usage.thinkingTokens,
+      totalTokens: result.usage.totalTokens,
+      imagesGenerated: result.images.length
+    });
+  }
+
   log.info('Gemini response complete', {
     chatId,
     hasText: !!result.text,
     textLength: result.text?.length || 0,
     imagesCount: result.images.length,
     expectedImages,
-    finishReason: result.finishReason
+    finishReason: result.finishReason,
+    tokens: result.usage?.totalTokens || 'unknown'
   });
 
-  // Если пустой ответ — модерация заблокировала
-  if (!result.text && result.images.length === 0) {
-    throw new Error('Запрос заблокирован модерацией. Попробуйте изменить формулировку.');
-  }
+  // Если пустой ответ или IMAGE_SAFETY — модерация заблокировала
+  // Пробуем Runway fallback если доступен
+  const isModerationBlock = (!result.text && result.images.length === 0) ||
+                            result.finishReason === 'IMAGE_SAFETY';
 
-  // IMAGE_SAFETY — контент заблокирован
-  if (result.finishReason === 'IMAGE_SAFETY') {
-    throw new Error('Изображения заблокированы политикой безопасности. Попробуйте изменить запрос.');
+  if (isModerationBlock) {
+    log.warn('Gemini moderation blocked content', {
+      chatId,
+      finishReason: result.finishReason,
+      hasText: !!result.text,
+      imagesCount: result.images.length
+    });
+
+    // Пробуем Runway fallback
+    if (config.runway.enabled) {
+      log.info('Attempting Runway fallback', { chatId });
+
+      if (onProgress) {
+        onProgress({
+          status: 'fallback_runway',
+          message: 'Gemini заблокировал запрос, переключаюсь на Runway...'
+        });
+      }
+
+      try {
+        const runwayResult = await generateWithRunway(
+          fullText, // Исходный промпт
+          { count: expectedImages },
+          onProgress
+        );
+
+        return {
+          text: runwayResult.text,
+          images: runwayResult.images,
+          finishReason: 'RUNWAY_FALLBACK',
+          source: 'runway'
+        };
+      } catch (runwayError) {
+        log.error('Runway fallback failed', {
+          chatId,
+          error: runwayError.message
+        });
+        // Если Runway тоже не смог — бросаем оригинальную ошибку
+      }
+    }
+
+    // Если Runway не доступен или тоже не смог
+    const errorMessage = result.finishReason === 'IMAGE_SAFETY'
+      ? 'Изображения заблокированы политикой безопасности.'
+      : 'Запрос заблокирован модерацией.';
+
+    throw new Error(`${errorMessage} Попробуйте изменить формулировку.`);
   }
 
   // Auto-retry: если получили меньше изображений чем ожидали — запросим ещё
