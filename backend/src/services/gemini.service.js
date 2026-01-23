@@ -385,7 +385,9 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
   log.info('Sending streaming message to Gemini', {
     chatId,
     textLength: fullText.length,
-    imagesCount: images.length
+    imagesCount: images.length,
+    mode: settings.mode,
+    fullTextPreview: fullText.substring(0, 200) // Показываем начало текста с тегами
   });
 
   let stream;

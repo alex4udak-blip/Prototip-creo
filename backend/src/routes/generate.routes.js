@@ -38,6 +38,16 @@ router.post('/',
       }
       settings = settings || {};
 
+      // DEBUG: Логируем что пришло в settings
+      log.info('Received settings from frontend', {
+        mode: settings.mode,
+        deepResearch: settings.deepResearch,
+        aspectRatio: settings.aspectRatio,
+        variants: settings.variants,
+        resolution: settings.resolution,
+        rawSettings: JSON.stringify(settings)
+      });
+
       const userId = req.user.id;
 
       // Валидация
