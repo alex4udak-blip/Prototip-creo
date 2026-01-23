@@ -485,7 +485,11 @@ export const useChatStore = create((set, get) => ({
         return { messages: updatedMessages };
       });
 
-      get().loadChats();
+      // Загружаем чаты только если content пустой (возможно title изменился на сервере)
+      // Не перезагружаем если есть контент — это может сбросить локальный title
+      if (!data.content && !data.images?.length) {
+        get().loadChats();
+      }
     });
 
     wsManager.on('generation_error', (data) => {
