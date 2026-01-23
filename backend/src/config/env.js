@@ -20,6 +20,10 @@ export const config = {
   runwareApiKey: process.env.RUNWARE_API_KEY,
   googleApiKey: process.env.GOOGLE_API_KEY,
 
+  // Google Cloud / Vertex AI (для imagen-3.0-capability-001 с референсами)
+  googleCloudProject: process.env.GOOGLE_CLOUD_PROJECT,
+  googleCredentialsJson: process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON,
+
   // Storage (Railway Volume)
   storagePath: process.env.STORAGE_PATH || './uploads',
   maxFileSize: parseInt(process.env.MAX_FILE_SIZE_MB || '10') * 1024 * 1024,

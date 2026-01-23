@@ -132,10 +132,52 @@ router.post('/', checkGenerationLimit, async (req, res) => {
     // Получаем историю чата для контекста
     let chatHistory = [];
     const existingMessages = await db.getMany(
-      'SELECT role, content FROM messages WHERE chat_id = $1 ORDER BY created_at DESC LIMIT 10',
+      'SELECT role, content, reference_url, metadata, image_urls FROM messages WHERE chat_id = $1 ORDER BY created_at DESC LIMIT 10',
       [chatId]
     );
     chatHistory = existingMessages.reverse();
+
+    // FOLLOW-UP CONTEXT: Ищем референс и visionAnalysis из предыдущих сообщений
+    let inheritedReferenceUrl = reference_url;
+    let inheritedVisionAnalysis = null;
+
+    if (!reference_url && chatId && chatHistory.length > 0) {
+      // Ищем последнее сообщение пользователя с референсом
+      for (const msg of [...chatHistory].reverse()) {
+        if (msg.reference_url) {
+          inheritedReferenceUrl = msg.reference_url;
+          log.info('Inherited reference from previous message', { referenceUrl: inheritedReferenceUrl });
+          break;
+        }
+      }
+
+      // Ищем последний visionAnalysis из clarification сообщений
+      for (const msg of [...chatHistory].reverse()) {
+        if (msg.metadata) {
+          try {
+            const meta = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata;
+            if (meta.vision_analysis) {
+              inheritedVisionAnalysis = meta.vision_analysis;
+              log.info('Inherited visionAnalysis from previous clarification', {
+                contentType: inheritedVisionAnalysis?.content_type
+              });
+              break;
+            }
+          } catch (e) { /* ignore parse errors */ }
+        }
+      }
+
+      // Также ищем последнее сгенерированное изображение для использования как референс
+      if (!inheritedReferenceUrl) {
+        for (const msg of [...chatHistory].reverse()) {
+          if (msg.image_urls && msg.image_urls.length > 0) {
+            inheritedReferenceUrl = msg.image_urls[0];
+            log.info('Using previous generated image as reference', { referenceUrl: inheritedReferenceUrl });
+            break;
+          }
+        }
+      }
+    }
 
     // РЕЖИМ: Быстрая генерация (без вопросов)
     if (quick_generate) {
@@ -143,7 +185,8 @@ router.post('/', checkGenerationLimit, async (req, res) => {
         chatId,
         chat,
         prompt,
-        referenceUrl: reference_url,
+        referenceUrl: inheritedReferenceUrl,  // Используем унаследованный референс!
+        visionAnalysis: inheritedVisionAnalysis,
         size,
         userModel,
         variations,
@@ -157,14 +200,16 @@ router.post('/', checkGenerationLimit, async (req, res) => {
     // ЭТАП 1: Проверяем нужны ли уточняющие вопросы (если нет ответов и не пропускаем)
     if (!answers && !skip_clarification) {
       log.info('Checking clarification', {
-        hasReference: !!reference_url,
-        referenceUrl: reference_url?.substring(0, 50),
-        promptLength: prompt.length
+        hasReference: !!inheritedReferenceUrl,
+        referenceUrl: inheritedReferenceUrl?.substring(0, 50),
+        promptLength: prompt.length,
+        isInherited: inheritedReferenceUrl !== reference_url
       });
 
       const clarificationResult = await checkNeedsClarification(prompt, {
-        hasReference: !!reference_url,
-        referenceUrl: reference_url,  // Для Vision анализа
+        hasReference: !!inheritedReferenceUrl,
+        referenceUrl: inheritedReferenceUrl,  // Используем унаследованный референс!
+        visionAnalysis: inheritedVisionAnalysis,  // И унаследованный Vision анализ
         chatHistory
       });
 
@@ -236,12 +281,12 @@ router.post('/', checkGenerationLimit, async (req, res) => {
       });
       userMessageId = userMessage.id;
     } else {
-      // Новый запрос — сохраняем полное сообщение пользователя
+      // Новый запрос — сохраняем полное сообщение пользователя (с унаследованным референсом если есть)
       const userMessage = await db.insert('messages', {
         chat_id: chatId,
         role: 'user',
         content: prompt,
-        reference_url: reference_url || null
+        reference_url: inheritedReferenceUrl || null  // Сохраняем унаследованный референс
       });
       userMessageId = userMessage.id;
     }
@@ -270,7 +315,8 @@ router.post('/', checkGenerationLimit, async (req, res) => {
       messageId,
       prompt,
       answers,
-      referenceUrl: reference_url,
+      referenceUrl: inheritedReferenceUrl,  // Используем унаследованный референс!
+      inheritedVisionAnalysis,  // И унаследованный Vision анализ
       size,
       userModel,
       variations,
@@ -332,6 +378,7 @@ async function handleQuickGenerate(req, res, params) {
     chat,
     prompt,
     referenceUrl,
+    visionAnalysis = null,  // Vision анализ унаследованный
     size,
     userModel,
     variations,
@@ -374,6 +421,7 @@ async function handleQuickGenerate(req, res, params) {
       prompt,
       answers: null,
       referenceUrl,
+      inheritedVisionAnalysis: visionAnalysis,  // Передаём унаследованный Vision анализ
       size,
       userModel,
       variations,
@@ -406,6 +454,7 @@ async function processGeneration(params) {
     prompt,
     answers,
     referenceUrl,
+    inheritedVisionAnalysis = null,  // Vision анализ унаследованный из предыдущего сообщения
     size,
     userModel,
     variations,
@@ -425,9 +474,10 @@ async function processGeneration(params) {
       message: deepThinking ? 'Глубокий анализ запроса...' : 'Анализирую запрос...'
     });
 
-    // PATCH 4: Get Vision analysis from previous clarification message
-    let visionAnalysis = null;
-    if (chatId) {
+    // Используем унаследованный visionAnalysis или ищем в БД
+    let visionAnalysis = inheritedVisionAnalysis;
+
+    if (!visionAnalysis && chatId) {
       try {
         const clarificationMsg = await db.getOne(
           `SELECT metadata FROM messages
@@ -441,15 +491,17 @@ async function processGeneration(params) {
             ? JSON.parse(clarificationMsg.metadata)
             : clarificationMsg.metadata;
           visionAnalysis = meta.vision_analysis;
-          log.info('Retrieved Vision analysis from clarification', {
-            hasVision: !!visionAnalysis,
-            contentType: visionAnalysis?.content_type
-          });
         }
       } catch (e) {
-        log.warn('Failed to get Vision analysis', { error: e.message });
+        log.warn('Failed to get Vision analysis from DB', { error: e.message });
       }
     }
+
+    log.info('Vision analysis status', {
+      hasVision: !!visionAnalysis,
+      source: inheritedVisionAnalysis ? 'inherited' : 'database',
+      contentType: visionAnalysis?.content_type
+    });
 
     // 2. Улучшаем промпт через Claude
     let promptAnalysis;
