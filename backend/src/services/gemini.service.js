@@ -380,34 +380,35 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
   // Обрабатываем stream
   try {
     for await (const chunk of stream) {
-    const parts = chunk.candidates?.[0]?.content?.parts || [];
+      const parts = chunk.candidates?.[0]?.content?.parts || [];
 
-    for (const part of parts) {
-      if (part.text) {
-        result.text += part.text;
-        // Отправляем прогресс текста
-        if (onProgress) {
-          onProgress({
-            status: 'generating_text',
-            text: result.text,
-            imagesCount: result.images.length
+      for (const part of parts) {
+        if (part.text) {
+          result.text += part.text;
+          // Отправляем прогресс текста
+          if (onProgress) {
+            onProgress({
+              status: 'generating_text',
+              text: result.text,
+              imagesCount: result.images.length
+            });
+          }
+        } else if (part.inlineData) {
+          // Сохраняем картинку
+          const imageUrl = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
+          result.images.push({
+            url: imageUrl,
+            mimeType: part.inlineData.mimeType
           });
-        }
-      } else if (part.inlineData) {
-        // Сохраняем картинку
-        const imageUrl = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
-        result.images.push({
-          url: imageUrl,
-          mimeType: part.inlineData.mimeType
-        });
-        // Отправляем прогресс картинок
-        if (onProgress) {
-          onProgress({
-            status: 'generating_image',
-            text: result.text,
-            imagesCount: result.images.length,
-            newImage: imageUrl
-          });
+          // Отправляем прогресс картинок
+          if (onProgress) {
+            onProgress({
+              status: 'generating_image',
+              text: result.text,
+              imagesCount: result.images.length,
+              newImage: imageUrl
+            });
+          }
         }
       }
     }
