@@ -1,47 +1,52 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
 
-// Инициализация Google AI
-const genAI = config.googleApiKey
-  ? new GoogleGenerativeAI(config.googleApiKey)
-  : null;
+/**
+ * Google Imagen 3 — Настоящий Nano Banana Pro!
+ *
+ * Модель: imagen-3.0-generate-002
+ * API: REST через generativelanguage.googleapis.com
+ *
+ * Преимущества:
+ * - Высокое качество (не как flash-exp хуйня)
+ * - Поддержка aspect_ratio (1:1, 16:9, 9:16, 4:3, 3:4)
+ * - Несколько изображений за раз
+ * - $0.03 за картинку
+ *
+ * Документация: https://ai.google.dev/gemini-api/docs/imagen
+ */
+
+const IMAGEN_MODEL = 'imagen-3.0-generate-002';
+const IMAGEN_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGEN_MODEL}:predict`;
 
 /**
- * Google Nano Banana Models (Gemini Image Generation)
- *
- * АКТУАЛЬНЫЕ МОДЕЛИ (январь 2026):
- * - gemini-2.5-flash-image — Nano Banana (быстрый, эффективный)
- * - gemini-3-pro-image-preview — Nano Banana Pro (профессиональный с Thinking)
- *
- * Особенности:
- * - Отлично рендерит текст на изображениях!
- * - Поддерживает референсы для Identity Lock (до 14 изображений)
- * - Понимает контекст и инструкции на русском
- * - Gemini 3 Pro поддерживает до 4K (4096×4096)
- *
- * Документация: https://ai.google.dev/gemini-api/docs/image-generation
+ * Определение aspect ratio для Imagen 3
+ * Поддерживаемые: 1:1, 16:9, 9:16, 4:3, 3:4
  */
-/**
- * ВРЕМЕННО УПРОЩЕНО: Обе модели используют один Gemini
- * gemini-2.0-flash-exp-image-generation — экспериментальная модель для генерации
- */
-const GOOGLE_MODELS = {
-  'google-nano': 'gemini-2.0-flash-exp-image-generation',
-  'google-nano-pro': 'gemini-2.0-flash-exp-image-generation',
-};
+function getAspectRatio(width, height) {
+  const ratio = width / height;
+
+  // 16:9 (широкий баннер)
+  if (ratio >= 1.7) return '16:9';
+  // 4:3 (классический)
+  if (ratio >= 1.2) return '4:3';
+  // 9:16 (stories, вертикальный)
+  if (ratio <= 0.6) return '9:16';
+  // 3:4 (портрет)
+  if (ratio <= 0.85) return '3:4';
+  // 1:1 (квадрат)
+  return '1:1';
+}
 
 /**
- * Подготовка референса для Google API
- * Конвертирует URL или локальный путь в формат для Gemini
+ * Подготовка референса для Identity Lock (base64)
  */
-async function prepareReferenceForGoogle(referenceUrl) {
+async function prepareReferenceBase64(referenceUrl) {
   if (!referenceUrl) return null;
 
-  // Если это локальный путь или localhost URL
   let filePath = referenceUrl;
 
   // Извлекаем имя файла из URL типа /uploads/filename.png
@@ -50,9 +55,8 @@ async function prepareReferenceForGoogle(referenceUrl) {
     filePath = path.join(config.storagePath, filename);
   }
 
-  // Проверяем существование файла
   if (!fs.existsSync(filePath)) {
-    log.warn('Reference file not found for Google API', { referenceUrl, filePath });
+    log.warn('Reference file not found', { referenceUrl, filePath });
     return null;
   }
 
@@ -60,227 +64,200 @@ async function prepareReferenceForGoogle(referenceUrl) {
     const buffer = fs.readFileSync(filePath);
     const ext = path.extname(filePath).toLowerCase();
     const mimeType = ext === '.png' ? 'image/png' :
-                     ext === '.webp' ? 'image/webp' :
-                     ext === '.gif' ? 'image/gif' : 'image/jpeg';
+                     ext === '.webp' ? 'image/webp' : 'image/jpeg';
 
-    log.debug('Prepared reference for Google', {
+    log.debug('Prepared reference for Imagen', {
       filePath,
       mimeType,
       sizeKB: Math.round(buffer.length / 1024)
     });
 
     return {
-      inlineData: {
-        data: buffer.toString('base64'),
-        mimeType
-      }
+      base64: buffer.toString('base64'),
+      mimeType
     };
   } catch (error) {
-    log.error('Failed to prepare reference for Google', { error: error.message });
+    log.error('Failed to prepare reference', { error: error.message });
     return null;
   }
 }
 
 /**
- * Генерация изображения через Google Gemini (Nano Banana)
- * Отлично рендерит текст на изображениях!
+ * Сохранение base64 изображения в файл
+ */
+async function saveBase64Image(base64Data, mimeType = 'image/png') {
+  const ext = mimeType === 'image/jpeg' ? '.jpg' : '.png';
+  const filename = `${uuidv4()}${ext}`;
+  const filepath = path.join(config.storagePath, filename);
+
+  if (!fs.existsSync(config.storagePath)) {
+    fs.mkdirSync(config.storagePath, { recursive: true });
+  }
+
+  const buffer = Buffer.from(base64Data, 'base64');
+  fs.writeFileSync(filepath, buffer);
+
+  log.debug('Saved generated image', { filename, sizeKB: Math.round(buffer.length / 1024) });
+
+  return `/uploads/${filename}`;
+}
+
+/**
+ * Генерация изображения через Imagen 3 (Nano Banana Pro)
  *
- * Поддерживает:
- * - Генерацию с текстом
- * - Identity Lock с референсом
- * - Инфографики и диаграммы
+ * ЭТО НАСТОЯЩЕЕ КАЧЕСТВО — не flash-exp хуйня!
  */
 export async function generateWithGoogle(prompt, options = {}) {
-  if (!genAI) {
+  if (!config.googleApiKey) {
     throw new Error('GOOGLE_API_KEY не настроен');
   }
 
   const {
-    model = 'google-nano',
-    width = 1200,
-    height = 628,
+    width = 1024,
+    height = 1024,
     textContent = null,
     textStyle = null,
     referenceUrl = null,
-    numImages = 1  // Количество изображений
+    numImages = 1
   } = options;
+
+  const aspectRatio = getAspectRatio(width, height);
+  const requestedImages = Math.min(numImages || 1, 4); // Imagen 3 max 4 за раз
 
   // Формируем промпт
   let finalPrompt = prompt;
 
-  // Добавляем инструкции по размеру
-  const aspectRatio = width / height;
-  let sizeHint = '';
-  if (aspectRatio > 1.5) {
-    sizeHint = 'wide horizontal banner format';
-  } else if (aspectRatio < 0.7) {
-    sizeHint = 'tall vertical format';
-  } else if (Math.abs(aspectRatio - 1) < 0.1) {
-    sizeHint = 'square format';
-  }
-
-  if (sizeHint) {
-    finalPrompt = `${finalPrompt}. Create in ${sizeHint} (${width}x${height} pixels).`;
-  }
-
-  // Добавляем инструкции для текста
+  // Добавляем текст если есть
   if (textContent) {
     finalPrompt = `${finalPrompt}
 
-CRITICAL TEXT REQUIREMENT: The image MUST prominently display this exact text: "${textContent}"
-Text rendering rules:
-- Text must be 100% legible and correctly spelled
-- Style: ${textStyle || 'bold, high contrast, easy to read'}
-- Text should be a focal point of the composition
-- Ensure proper spacing and alignment`;
+IMPORTANT: Include this exact text prominently in the image: "${textContent}"
+Text style: ${textStyle || 'bold, high contrast, professional typography'}
+Make the text clearly readable and a key visual element.`;
   }
 
-  log.debug('Google Nano Banana request', {
-    model,
-    hasText: !!textContent,
+  // Если есть референс — добавляем Identity Lock инструкции
+  if (referenceUrl) {
+    const refData = await prepareReferenceBase64(referenceUrl);
+    if (refData) {
+      // Imagen 3 не поддерживает image input напрямую в predict
+      // Но мы добавляем детальное описание для Identity Lock
+      finalPrompt = `=== IDENTITY LOCK MODE ===
+
+Create a NEW VARIATION based on the reference image style.
+
+PRESERVE EXACTLY:
+- Character appearance, facial features, proportions
+- Art style, 3D rendering quality
+- Color palette and lighting
+- Brand elements (treasure chests, coins, UI elements)
+- Visual atmosphere (neon, casino, premium feel)
+
+TASK:
+${finalPrompt}
+
+Generate a professional advertising banner that looks like it belongs to the same campaign.
+Maintain 100% character consistency with the original reference.`;
+
+      log.info('Added Identity Lock instructions', { referenceUrl });
+    }
+  }
+
+  log.info('Imagen 3 generation starting', {
+    aspectRatio,
+    numImages: requestedImages,
     hasReference: !!referenceUrl,
-    numImages,
+    hasText: !!textContent,
     promptLength: finalPrompt.length
   });
 
   const startTime = Date.now();
 
   try {
-    // Используем Gemini для генерации изображений
-    const modelName = GOOGLE_MODELS[model] || GOOGLE_MODELS['google-nano'];
-    const aiModel = genAI.getGenerativeModel({
-      model: modelName,
-      generationConfig: {
-        responseModalities: ['image', 'text'],
-      }
+    // REST API запрос к Imagen 3
+    const response = await fetch(`${IMAGEN_API_URL}?key=${config.googleApiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        instances: [{ prompt: finalPrompt }],
+        parameters: {
+          aspectRatio: aspectRatio,
+          sampleCount: requestedImages,
+          personGeneration: 'allow_adult',
+          safetyFilterLevel: 'block_few'  // Менее строгий фильтр
+        }
+      })
     });
 
-    // Подготавливаем контент для запроса
-    const contentParts = [];
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      log.error('Imagen 3 API error', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData
+      });
 
-    // Если есть референс — добавляем его первым для Identity Lock
-    if (referenceUrl) {
-      const referencePart = await prepareReferenceForGoogle(referenceUrl);
-      if (referencePart) {
-        contentParts.push(referencePart);
-
-        // IDENTITY LOCK промпт — техники от Google для Gemini 2.5 Flash Image
-        // Ключевые фразы: "this exact character", identity header, hard constraints
-        finalPrompt = `=== IDENTITY LOCK MODE ===
-
-Generate a NEW VARIATION of this exact image while preserving character identity.
-
-## IDENTITY HEADER (DO NOT CHANGE):
-- This exact character must appear in the new image
-- Maintain identical facial geometry, eye spacing, nose width
-- Same hair color, length, and style
-- Same skin tone and complexion
-- Same clothing style and colors
-- Same body proportions and build
-
-## HARD CONSTRAINTS:
-- Do NOT change facial proportions
-- Do NOT morph or age the character
-- Do NOT change eye color or shape
-- Do NOT change hairstyle or hair color
-- Preserve all unique visual markers
-
-## STYLE PRESERVATION:
-- Same 3D render quality and technique
-- Same lighting style and color grading
-- Same visual atmosphere (neon, casino, premium)
-- Same background aesthetic
-- Same brand elements (treasure chests, coins, UI)
-
-## WHAT TO CREATE:
-${finalPrompt}
-
-## VARIATION INSTRUCTIONS:
-Create a fresh variation with THIS EXACT CHARACTER in a slightly different pose or angle.
-The new image must look like it belongs to the same advertising campaign.
-Character identity must be 100% consistent with the reference.
-
-Generate now:`;
-        log.info('Added reference for Identity Lock with Google techniques', { referenceUrl });
+      if (response.status === 400) {
+        throw new Error('Imagen 3 отклонил запрос. Попробуйте изменить описание.');
       }
+      if (response.status === 403) {
+        throw new Error('Нет доступа к Imagen 3 API. Проверьте API ключ и включен ли Imagen в консоли.');
+      }
+      if (response.status === 429) {
+        throw new Error('Превышен лимит запросов. Попробуйте позже.');
+      }
+
+      throw new Error(`Imagen 3 API error: ${response.status}`);
     }
 
-    // Добавляем текстовый промпт
-    contentParts.push({ text: finalPrompt });
+    const result = await response.json();
 
-    // Генерируем нужное количество изображений ПАРАЛЛЕЛЬНО для скорости
-    const requestedImages = Math.min(numImages || 1, 5);  // Max 5 (как Genspark)
+    // Извлекаем изображения из ответа
+    const predictions = result.predictions || [];
+    const images = [];
 
-    // Запускаем все генерации параллельно
-    const generateOne = async (index) => {
-      try {
-        const result = await aiModel.generateContent(contentParts);
-        const response = result.response;
-
-        // Извлекаем изображение из ответа
-        for (const candidate of response.candidates || []) {
-          for (const part of candidate.content?.parts || []) {
-            if (part.inlineData) {
-              const imageUrl = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
-              return imageUrl;
-            }
-          }
-        }
-        return null;
-      } catch (genError) {
-        log.warn(`Google image ${index + 1}/${requestedImages} failed`, { error: genError.message });
-        return null;
+    for (const prediction of predictions) {
+      if (prediction.bytesBase64Encoded) {
+        const mimeType = prediction.mimeType || 'image/png';
+        const imageUrl = await saveBase64Image(prediction.bytesBase64Encoded, mimeType);
+        images.push(imageUrl);
       }
-    };
-
-    // Запускаем все параллельно
-    const promises = Array.from({ length: requestedImages }, (_, i) => generateOne(i));
-    const results = await Promise.all(promises);
-    const allImages = results.filter(url => url !== null);
+    }
 
     const timeMs = Date.now() - startTime;
 
-    if (allImages.length === 0) {
-      log.warn('Google API не вернул ни одного изображения');
-      throw new Error('Google API не вернул изображение. Попробуйте изменить запрос.');
+    if (images.length === 0) {
+      log.warn('Imagen 3 returned no images', { result });
+      throw new Error('Imagen 3 не вернул изображения. Попробуйте изменить запрос.');
     }
 
-    log.info('Google Nano Banana generation complete', {
-      model,
+    log.info('Imagen 3 generation complete', {
       timeMs,
       requestedImages,
-      actualImages: allImages.length,
-      usedReference: !!referenceUrl
+      actualImages: images.length,
+      aspectRatio
     });
 
     return {
-      images: allImages,
+      images,
       timeMs,
-      model: model
+      model: 'imagen-3.0-generate-002'
     };
 
   } catch (error) {
-    log.error('Google generation failed', {
+    log.error('Imagen 3 generation failed', {
       error: error.message,
-      model,
       hasReference: !!referenceUrl
     });
 
-    // Улучшаем сообщение об ошибке
-    if (error.message.includes('SAFETY')) {
-      throw new Error('Google отклонил запрос по соображениям безопасности. Попробуйте изменить описание.');
+    // Улучшаем сообщения об ошибках
+    if (error.message.includes('SAFETY') || error.message.includes('blocked')) {
+      throw new Error('Imagen 3 отклонил запрос по соображениям безопасности. Измените описание.');
     }
-    if (error.message.includes('quota') || error.message.includes('rate') || error.message.includes('RESOURCE_EXHAUSTED')) {
-      throw new Error('Превышен лимит запросов к Google API. Попробуйте позже.');
-    }
-    if (error.message.includes('INVALID_IMAGE') || error.message.includes('Invalid image')) {
-      throw new Error('Google не смог обработать референс. Попробуйте другое изображение.');
-    }
-    if (error.message.includes('PERMISSION_DENIED')) {
-      throw new Error('Ошибка авторизации Google API. Проверьте API ключ.');
-    }
-    if (error.message.includes('INVALID_PROMPT') || error.message.includes('blocked')) {
-      throw new Error('Google заблокировал этот промпт. Попробуйте изменить описание.');
+    if (error.message.includes('quota') || error.message.includes('RESOURCE_EXHAUSTED')) {
+      throw new Error('Превышен лимит запросов к Imagen 3. Попробуйте позже.');
     }
 
     throw error;
@@ -288,59 +265,40 @@ Generate now:`;
 }
 
 /**
- * Проверка доступности Google AI API
+ * Проверка доступности Imagen 3 API
  */
 export function isGoogleApiAvailable() {
-  return !!genAI;
+  return !!config.googleApiKey;
 }
 
 /**
- * Сохранение base64 изображения в файл
- */
-async function saveBase64Image(base64Data, mimeType) {
-  const ext = mimeType === 'image/png' ? '.png' : '.jpg';
-  const filename = `${uuidv4()}${ext}`;
-  const filepath = path.join(config.storagePath, filename);
-
-  // Создаём директорию если нужно
-  if (!fs.existsSync(config.storagePath)) {
-    fs.mkdirSync(config.storagePath, { recursive: true });
-  }
-
-  // Сохраняем файл
-  const buffer = Buffer.from(base64Data, 'base64');
-  fs.writeFileSync(filepath, buffer);
-
-  // Возвращаем относительный путь (будет преобразован в URL на уровне API)
-  return `/uploads/${filename}`;
-}
-
-/**
- * Определение aspect ratio для Imagen
- */
-function getAspectRatio(width, height) {
-  const ratio = width / height;
-
-  if (ratio > 1.7) return '16:9';
-  if (ratio > 1.2) return '4:3';
-  if (ratio < 0.6) return '9:16';
-  if (ratio < 0.9) return '3:4';
-  return '1:1';
-}
-
-/**
- * Проверка доступности Google API
+ * Health check для Imagen 3
  */
 export async function checkGoogleHealth() {
-  if (!genAI) {
+  if (!config.googleApiKey) {
     return { available: false, reason: 'API key not configured' };
   }
 
   try {
-    // Простой тест
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
-    const result = await model.generateContent('Say hi');
-    return { available: true };
+    // Простой тест — генерируем минимальное изображение
+    const response = await fetch(`${IMAGEN_API_URL}?key=${config.googleApiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        instances: [{ prompt: 'A simple blue square' }],
+        parameters: {
+          aspectRatio: '1:1',
+          sampleCount: 1
+        }
+      })
+    });
+
+    if (response.ok) {
+      return { available: true, model: IMAGEN_MODEL };
+    } else {
+      const error = await response.json().catch(() => ({}));
+      return { available: false, reason: error.error?.message || response.statusText };
+    }
   } catch (error) {
     return { available: false, reason: error.message };
   }
