@@ -299,6 +299,15 @@ export function Message({ message }) {
                 ? 'bg-accent/20 border border-accent/30'
                 : 'bg-bg-secondary border border-border'
             }`}>
+              {/* Tool use indicators ПЕРВЫМИ (like Genspark) */}
+              {message.isGenerating && message.activeTools?.length > 0 && (
+                <div className="mb-3">
+                  {message.activeTools.map((tool, i) => (
+                    <ToolUseIndicator key={i} {...tool} />
+                  ))}
+                </div>
+              )}
+
               {/* Text content - показываем и во время генерации (streaming) */}
               {message.content && (
                 <p className="text-text-primary whitespace-pre-wrap">
@@ -580,15 +589,6 @@ export function Message({ message }) {
                 <div className="mt-3 flex items-start gap-2 text-error bg-error/10 rounded-lg p-3">
                   <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                   <span className="text-sm">{message.errorMessage}</span>
-                </div>
-              )}
-
-              {/* Tool use indicators (like Genspark) */}
-              {message.isGenerating && message.activeTools?.length > 0 && (
-                <div className="mb-3">
-                  {message.activeTools.map((tool, i) => (
-                    <ToolUseIndicator key={i} {...tool} />
-                  ))}
                 </div>
               )}
 

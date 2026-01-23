@@ -45,7 +45,8 @@ export const useChatStore = create((set, get) => ({
     aspectRatio: 'auto',  // '1:1', '16:9', '9:16', '4:3', 'auto'
     variants: 3,          // 1-4
     resolution: '2K',     // '1K', '2K', '4K'
-    mode: 'smart'         // 'smart' | 'fast'
+    mode: 'smart',        // 'smart' | 'fast'
+    deepResearch: false   // Глубокое исследование (как в Genspark)
   },
 
   // ==========================================
@@ -200,7 +201,8 @@ export const useChatStore = create((set, get) => ({
         aspectRatio: settings.aspectRatio,
         variants: settings.variants,
         resolution: settings.resolution,
-        mode: settings.mode
+        mode: settings.mode,
+        deepResearch: settings.deepResearch  // Глубокое исследование
       }));
 
       // Картинки (до 14 референсов)

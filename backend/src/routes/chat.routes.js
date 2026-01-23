@@ -90,9 +90,9 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Чат не найден' });
     }
 
-    // Получаем сообщения
+    // Получаем сообщения (reference_urls - множественные референсы)
     const messages = await db.getMany(`
-      SELECT id, role, content, image_urls, reference_url,
+      SELECT id, role, content, image_urls, reference_urls,
              model_used, generation_time_ms, enhanced_prompt, error_message,
              created_at
       FROM messages
@@ -109,8 +109,8 @@ router.get('/:id', async (req, res) => {
         id: msg.id,
         role: msg.role,
         content: msg.content,
-        imageUrls: msg.image_urls || [],
-        referenceUrl: msg.reference_url,
+        imageUrls: msg.role === 'user' ? (msg.reference_urls || []) : (msg.image_urls || []),
+        referenceUrls: msg.reference_urls || [],  // Множественные референсы
         modelUsed: msg.model_used,
         generationTimeMs: msg.generation_time_ms,
         enhancedPrompt: msg.enhanced_prompt,

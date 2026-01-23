@@ -211,6 +211,11 @@ export async function sendMessage(chatId, text, images = [], settings = {}) {
     fullText = '[FAST] ' + fullText;
   }
 
+  // Глубокое исследование
+  if (settings.deepResearch) {
+    fullText = '[DEEP_RESEARCH] ' + fullText;
+  }
+
   // Размер
   if (settings.aspectRatio && settings.aspectRatio !== 'auto') {
     fullText += `\n[Размер: ${settings.aspectRatio}]`;
@@ -298,6 +303,11 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
 
   if (settings.mode === 'fast') {
     fullText = '[FAST] ' + fullText;
+  }
+
+  // Глубокое исследование
+  if (settings.deepResearch) {
+    fullText = '[DEEP_RESEARCH] ' + fullText;
   }
 
   if (settings.aspectRatio && settings.aspectRatio !== 'auto') {
