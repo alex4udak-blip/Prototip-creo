@@ -179,7 +179,11 @@ router.post('/',
 
               for (const refUrl of lastUserMsgWithRef.reference_urls.slice(0, 4)) {
                 try {
-                  const filename = refUrl.replace('/uploads/', '');
+                  // Извлекаем filename правильно - обрабатываем и полные URL, и относительные пути
+                  // URL может быть: "https://domain.com/uploads/uuid.png" или "/uploads/uuid.png"
+                  const filename = refUrl.includes('/uploads/')
+                    ? refUrl.split('/uploads/').pop()
+                    : refUrl;
                   const filepath = path.join(config.storagePath, filename);
 
                   log.info('Trying to load reference file', {
