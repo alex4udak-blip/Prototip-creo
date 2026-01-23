@@ -382,7 +382,10 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
     textLength: fullText.length,
     imagesCount: images.length,
     mode: settings.mode,
-    fullTextPreview: fullText.substring(0, 200) // Показываем начало текста с тегами
+    fullTextPreview: fullText.substring(0, 200),
+    messageType: Array.isArray(message) ? 'multipart' : 'text',
+    messagePartsCount: Array.isArray(message) ? message.length : 1,
+    imageDataSizes: images.map(img => img.data?.length || 0)
   });
 
   let stream;
@@ -405,8 +408,21 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
 
   // Обрабатываем stream
   try {
+    let chunkCount = 0;
     for await (const chunk of stream) {
-      const parts = chunk.candidates?.[0]?.content?.parts || [];
+      chunkCount++;
+      const candidate = chunk.candidates?.[0];
+      const parts = candidate?.content?.parts || [];
+
+      // DEBUG: Логируем каждый chunk
+      log.info('Gemini chunk received', {
+        chatId,
+        chunkNumber: chunkCount,
+        partsCount: parts.length,
+        partTypes: parts.map(p => p.text ? 'text' : p.inlineData ? 'image' : 'unknown'),
+        finishReason: candidate?.finishReason,
+        hasInlineData: parts.some(p => p.inlineData)
+      });
 
       for (const part of parts) {
         if (part.text) {
@@ -451,7 +467,10 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
   log.info('Gemini streaming response complete', {
     chatId,
     hasText: !!result.text,
-    imagesCount: result.images.length
+    textLength: result.text?.length || 0,
+    textPreview: result.text?.substring(0, 150),
+    imagesCount: result.images.length,
+    imageUrls: result.images.map(i => i.url)
   });
 
   return result;
