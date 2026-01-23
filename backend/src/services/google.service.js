@@ -7,49 +7,46 @@ import { log } from '../utils/logger.js';
 /**
  * Google Imagen 3 — Настоящий Nano Banana Pro!
  *
- * Модель: imagen-3.0-generate-002
+ * Модели:
+ * - imagen-3.0-generate-002 — генерация
+ * - imagen-3.0-capability-001 — с референсами (Subject/Style Customization)
+ *
  * API: REST через generativelanguage.googleapis.com
  *
- * Преимущества:
- * - Высокое качество (не как flash-exp хуйня)
- * - Поддержка aspect_ratio (1:1, 16:9, 9:16, 4:3, 3:4)
- * - Несколько изображений за раз
- * - $0.03 за картинку
+ * Фичи:
+ * - Высокое качество
+ * - aspect_ratio: 1:1, 16:9, 9:16, 4:3, 3:4
+ * - referenceImages для Identity Lock
+ * - sampleCount до 4 картинок
  *
  * Документация: https://ai.google.dev/gemini-api/docs/imagen
  */
 
-const IMAGEN_MODEL = 'imagen-3.0-generate-002';
-const IMAGEN_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGEN_MODEL}:predict`;
+const IMAGEN_GENERATE_MODEL = 'imagen-3.0-generate-002';
+const IMAGEN_CAPABILITY_MODEL = 'imagen-3.0-capability-001';
+const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 /**
  * Определение aspect ratio для Imagen 3
- * Поддерживаемые: 1:1, 16:9, 9:16, 4:3, 3:4
  */
 function getAspectRatio(width, height) {
   const ratio = width / height;
 
-  // 16:9 (широкий баннер)
   if (ratio >= 1.7) return '16:9';
-  // 4:3 (классический)
   if (ratio >= 1.2) return '4:3';
-  // 9:16 (stories, вертикальный)
   if (ratio <= 0.6) return '9:16';
-  // 3:4 (портрет)
   if (ratio <= 0.85) return '3:4';
-  // 1:1 (квадрат)
   return '1:1';
 }
 
 /**
- * Подготовка референса для Identity Lock (base64)
+ * Подготовка референса (base64)
  */
 async function prepareReferenceBase64(referenceUrl) {
   if (!referenceUrl) return null;
 
   let filePath = referenceUrl;
 
-  // Извлекаем имя файла из URL типа /uploads/filename.png
   if (referenceUrl.includes('/uploads/')) {
     const filename = referenceUrl.split('/uploads/').pop().split('?')[0];
     filePath = path.join(config.storagePath, filename);
@@ -103,9 +100,107 @@ async function saveBase64Image(base64Data, mimeType = 'image/png') {
 }
 
 /**
- * Генерация изображения через Imagen 3 (Nano Banana Pro)
+ * Генерация ОДНОГО изображения через Imagen 3
+ * Возвращает URL или null если ошибка
+ */
+async function generateSingleImage(prompt, options, index, onProgress) {
+  const {
+    aspectRatio,
+    referenceData,
+    useCapabilityModel
+  } = options;
+
+  const model = useCapabilityModel ? IMAGEN_CAPABILITY_MODEL : IMAGEN_GENERATE_MODEL;
+  const url = `${API_BASE}/${model}:predict?key=${config.googleApiKey}`;
+
+  // Формируем тело запроса
+  let requestBody;
+
+  if (useCapabilityModel && referenceData) {
+    // С референсом — используем capability model
+    requestBody = {
+      instances: [{
+        prompt: prompt,
+        referenceImages: [{
+          referenceType: 'REFERENCE_TYPE_SUBJECT',
+          referenceId: 1,
+          referenceImage: {
+            bytesBase64Encoded: referenceData.base64
+          },
+          subjectImageConfig: {
+            subjectType: 'SUBJECT_TYPE_PERSON'
+          }
+        }]
+      }],
+      parameters: {
+        aspectRatio: aspectRatio,
+        sampleCount: 1,
+        personGeneration: 'allow_adult',
+        safetyFilterLevel: 'block_few'
+      }
+    };
+  } else {
+    // Без референса — обычная генерация
+    requestBody = {
+      instances: [{ prompt: prompt }],
+      parameters: {
+        aspectRatio: aspectRatio,
+        sampleCount: 1,
+        personGeneration: 'allow_adult',
+        safetyFilterLevel: 'block_few'
+      }
+    };
+  }
+
+  try {
+    if (onProgress) {
+      onProgress({ index, status: 'generating', message: `Генерирую вариант ${index + 1}...` });
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      log.warn(`Imagen generation ${index + 1} failed`, {
+        status: response.status,
+        error: errorData?.error?.message || response.statusText
+      });
+      return null;
+    }
+
+    const result = await response.json();
+    const predictions = result.predictions || [];
+
+    if (predictions.length > 0 && predictions[0].bytesBase64Encoded) {
+      const imageUrl = await saveBase64Image(
+        predictions[0].bytesBase64Encoded,
+        predictions[0].mimeType || 'image/png'
+      );
+
+      if (onProgress) {
+        onProgress({ index, status: 'complete', imageUrl });
+      }
+
+      return imageUrl;
+    }
+
+    return null;
+
+  } catch (error) {
+    log.warn(`Imagen generation ${index + 1} error`, { error: error.message });
+    return null;
+  }
+}
+
+/**
+ * Генерация изображений через Imagen 3 (Nano Banana Pro)
  *
- * ЭТО НАСТОЯЩЕЕ КАЧЕСТВО — не flash-exp хуйня!
+ * ПАРАЛЛЕЛЬНАЯ генерация — как у Genspark!
+ * Каждое изображение генерится отдельным запросом параллельно.
  */
 export async function generateWithGoogle(prompt, options = {}) {
   if (!config.googleApiKey) {
@@ -118,16 +213,17 @@ export async function generateWithGoogle(prompt, options = {}) {
     textContent = null,
     textStyle = null,
     referenceUrl = null,
-    numImages = 1
+    numImages = 1,
+    onProgress = null  // Callback для прогресса
   } = options;
 
   const aspectRatio = getAspectRatio(width, height);
-  const requestedImages = Math.min(numImages || 1, 4); // Imagen 3 max 4 за раз
+  const requestedImages = Math.min(numImages || 1, 4);
 
   // Формируем промпт
   let finalPrompt = prompt;
 
-  // Добавляем текст если есть
+  // Добавляем текст
   if (textContent) {
     finalPrompt = `${finalPrompt}
 
@@ -136,132 +232,79 @@ Text style: ${textStyle || 'bold, high contrast, professional typography'}
 Make the text clearly readable and a key visual element.`;
   }
 
-  // Если есть референс — добавляем Identity Lock инструкции
+  // Подготавливаем референс если есть
+  let referenceData = null;
+  let useCapabilityModel = false;
+
   if (referenceUrl) {
-    const refData = await prepareReferenceBase64(referenceUrl);
-    if (refData) {
-      // Imagen 3 не поддерживает image input напрямую в predict
-      // Но мы добавляем детальное описание для Identity Lock
-      finalPrompt = `=== IDENTITY LOCK MODE ===
+    referenceData = await prepareReferenceBase64(referenceUrl);
+    if (referenceData) {
+      useCapabilityModel = true;
 
-Create a NEW VARIATION based on the reference image style.
+      // Добавляем Identity Lock инструкции
+      finalPrompt = `Create a variation using [1] as the reference subject.
 
-PRESERVE EXACTLY:
-- Character appearance, facial features, proportions
-- Art style, 3D rendering quality
-- Color palette and lighting
-- Brand elements (treasure chests, coins, UI elements)
-- Visual atmosphere (neon, casino, premium feel)
+IDENTITY LOCK - PRESERVE EXACTLY:
+- This exact person's face, features, proportions
+- Same character identity 100%
+- Same art style and rendering quality
+- Same clothing style and colors
+- Same visual atmosphere
 
-TASK:
-${finalPrompt}
+TASK: ${finalPrompt}
 
-Generate a professional advertising banner that looks like it belongs to the same campaign.
-Maintain 100% character consistency with the original reference.`;
+The new image must look like it belongs to the same campaign.
+Reference subject [1] must be clearly recognizable.`;
 
-      log.info('Added Identity Lock instructions', { referenceUrl });
+      log.info('Using Imagen Capability model with reference', { referenceUrl });
     }
   }
 
-  log.info('Imagen 3 generation starting', {
+  log.info('Imagen 3 parallel generation starting', {
     aspectRatio,
     numImages: requestedImages,
-    hasReference: !!referenceUrl,
-    hasText: !!textContent,
-    promptLength: finalPrompt.length
+    hasReference: !!referenceData,
+    useCapabilityModel,
+    hasText: !!textContent
   });
 
   const startTime = Date.now();
 
-  try {
-    // REST API запрос к Imagen 3
-    const response = await fetch(`${IMAGEN_API_URL}?key=${config.googleApiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        instances: [{ prompt: finalPrompt }],
-        parameters: {
-          aspectRatio: aspectRatio,
-          sampleCount: requestedImages,
-          personGeneration: 'allow_adult',
-          safetyFilterLevel: 'block_few'  // Менее строгий фильтр
-        }
-      })
-    });
+  // ПАРАЛЛЕЛЬНАЯ генерация — все запросы одновременно!
+  const generateOptions = {
+    aspectRatio,
+    referenceData,
+    useCapabilityModel
+  };
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      log.error('Imagen 3 API error', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorData
-      });
+  const promises = Array.from({ length: requestedImages }, (_, i) =>
+    generateSingleImage(finalPrompt, generateOptions, i, onProgress)
+  );
 
-      if (response.status === 400) {
-        throw new Error('Imagen 3 отклонил запрос. Попробуйте изменить описание.');
-      }
-      if (response.status === 403) {
-        throw new Error('Нет доступа к Imagen 3 API. Проверьте API ключ и включен ли Imagen в консоли.');
-      }
-      if (response.status === 429) {
-        throw new Error('Превышен лимит запросов. Попробуйте позже.');
-      }
+  // Ждём все результаты параллельно
+  const results = await Promise.all(promises);
+  const images = results.filter(url => url !== null);
 
-      throw new Error(`Imagen 3 API error: ${response.status}`);
-    }
+  const timeMs = Date.now() - startTime;
 
-    const result = await response.json();
-
-    // Извлекаем изображения из ответа
-    const predictions = result.predictions || [];
-    const images = [];
-
-    for (const prediction of predictions) {
-      if (prediction.bytesBase64Encoded) {
-        const mimeType = prediction.mimeType || 'image/png';
-        const imageUrl = await saveBase64Image(prediction.bytesBase64Encoded, mimeType);
-        images.push(imageUrl);
-      }
-    }
-
-    const timeMs = Date.now() - startTime;
-
-    if (images.length === 0) {
-      log.warn('Imagen 3 returned no images', { result });
-      throw new Error('Imagen 3 не вернул изображения. Попробуйте изменить запрос.');
-    }
-
-    log.info('Imagen 3 generation complete', {
-      timeMs,
-      requestedImages,
-      actualImages: images.length,
-      aspectRatio
-    });
-
-    return {
-      images,
-      timeMs,
-      model: 'imagen-3.0-generate-002'
-    };
-
-  } catch (error) {
-    log.error('Imagen 3 generation failed', {
-      error: error.message,
-      hasReference: !!referenceUrl
-    });
-
-    // Улучшаем сообщения об ошибках
-    if (error.message.includes('SAFETY') || error.message.includes('blocked')) {
-      throw new Error('Imagen 3 отклонил запрос по соображениям безопасности. Измените описание.');
-    }
-    if (error.message.includes('quota') || error.message.includes('RESOURCE_EXHAUSTED')) {
-      throw new Error('Превышен лимит запросов к Imagen 3. Попробуйте позже.');
-    }
-
-    throw error;
+  if (images.length === 0) {
+    log.error('Imagen 3 returned no images', { requestedImages });
+    throw new Error('Imagen 3 не вернул изображения. Попробуйте изменить запрос.');
   }
+
+  log.info('Imagen 3 generation complete', {
+    timeMs,
+    requestedImages,
+    actualImages: images.length,
+    aspectRatio,
+    usedCapabilityModel: useCapabilityModel
+  });
+
+  return {
+    images,
+    timeMs,
+    model: useCapabilityModel ? IMAGEN_CAPABILITY_MODEL : IMAGEN_GENERATE_MODEL
+  };
 }
 
 /**
@@ -280,8 +323,8 @@ export async function checkGoogleHealth() {
   }
 
   try {
-    // Простой тест — генерируем минимальное изображение
-    const response = await fetch(`${IMAGEN_API_URL}?key=${config.googleApiKey}`, {
+    const url = `${API_BASE}/${IMAGEN_GENERATE_MODEL}:predict?key=${config.googleApiKey}`;
+    const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -294,7 +337,7 @@ export async function checkGoogleHealth() {
     });
 
     if (response.ok) {
-      return { available: true, model: IMAGEN_MODEL };
+      return { available: true, model: IMAGEN_GENERATE_MODEL };
     } else {
       const error = await response.json().catch(() => ({}));
       return { available: false, reason: error.error?.message || response.statusText };
