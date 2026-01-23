@@ -242,10 +242,11 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
   // Follow-up: пользователь ответил на вопросы AI — ГЕНЕРИРОВАТЬ КАРТИНКИ!
   else if (settings.isFollowUp) {
     const variants = settings.variants || 3;
-    fullText = `[GENERATE_NOW] КРИТИЧЕСКИ ВАЖНО: Пользователь ответил на вопросы.
-СЕЙЧАС ТЫ ДОЛЖЕН СГЕНЕРИРОВАТЬ ${variants} РЕАЛЬНЫХ ИЗОБРАЖЕНИЙ!
-НЕ описывай — СОЗДАВАЙ картинки! Используй свою способность генерировать изображения.
-Напиши КОРОТКОЕ описание (1-2 предложения) и СГЕНЕРИРУЙ ${variants} картинок.\n\n` + fullText;
+    // Помещаем ответ пользователя В НАЧАЛО, а директиву генерации В КОНЕЦ
+    // Так Gemini сначала видит контекст, а потом команду "генерируй"
+    fullText = fullText + `\n\n---
+[GENERATE_NOW] Вся информация получена. СГЕНЕРИРУЙ ${variants} изображений ПРЯМО СЕЙЧАС.
+Сначала выведи изображения, потом краткое описание (1-2 предложения).`;
     log.info('Adding GENERATE_NOW directive for follow-up', { textLength: fullText.length, variants });
   }
   // Smart режим — ОБЯЗАТЕЛЬНО задать вопросы перед генерацией
