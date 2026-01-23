@@ -531,7 +531,8 @@ async function processGeneration(params) {
       numImages: Math.min(numImages, 5),  // До 5 как Genspark
       referenceUrl,
       textContent: promptAnalysis.text_content,
-      textStyle: promptAnalysis.text_style
+      textStyle: promptAnalysis.text_style,
+      visionAnalysis  // Передаём Vision анализ референса!
     });
 
     const totalTime = Date.now() - startTime;

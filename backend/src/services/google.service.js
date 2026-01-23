@@ -214,7 +214,8 @@ export async function generateWithGoogle(prompt, options = {}) {
     textStyle = null,
     referenceUrl = null,
     numImages = 1,
-    onProgress = null  // Callback для прогресса
+    onProgress = null,  // Callback для прогресса
+    visionAnalysis = null  // Детальный анализ референса от Claude Vision
   } = options;
 
   const aspectRatio = getAspectRatio(width, height);
@@ -241,22 +242,69 @@ Make the text clearly readable and a key visual element.`;
     if (referenceData) {
       useCapabilityModel = true;
 
-      // Добавляем Identity Lock инструкции
+      // Формируем детальное описание референса из Vision анализа
+      let referenceDescription = '';
+
+      if (visionAnalysis) {
+        // Используем детальный анализ от Claude Vision!
+        const parts = [];
+
+        if (visionAnalysis.summary) {
+          parts.push(`REFERENCE IMAGE ANALYSIS:\n${visionAnalysis.summary}`);
+        }
+
+        if (visionAnalysis.character_description) {
+          parts.push(`CHARACTER: ${visionAnalysis.character_description}`);
+        }
+
+        if (visionAnalysis.style) {
+          parts.push(`STYLE: ${visionAnalysis.style}`);
+        }
+
+        if (visionAnalysis.colors && visionAnalysis.colors.length > 0) {
+          parts.push(`COLOR PALETTE: ${visionAnalysis.colors.join(', ')}`);
+        }
+
+        if (visionAnalysis.text_on_image) {
+          parts.push(`TEXT ON IMAGE: "${visionAnalysis.text_on_image}"`);
+        }
+
+        if (visionAnalysis.background) {
+          parts.push(`BACKGROUND: ${visionAnalysis.background}`);
+        }
+
+        if (visionAnalysis.objects && visionAnalysis.objects.length > 0) {
+          parts.push(`KEY ELEMENTS: ${visionAnalysis.objects.join(', ')}`);
+        }
+
+        referenceDescription = parts.join('\n');
+        log.info('Using detailed Vision analysis for Identity Lock', {
+          hasCharacter: !!visionAnalysis.character_description,
+          hasStyle: !!visionAnalysis.style,
+          summaryLength: visionAnalysis.summary?.length
+        });
+      }
+
+      // Добавляем Identity Lock инструкции с детальным описанием
       finalPrompt = `Create a variation using [1] as the reference subject.
 
-IDENTITY LOCK - PRESERVE EXACTLY:
+${referenceDescription ? referenceDescription + '\n\n' : ''}IDENTITY LOCK - PRESERVE EXACTLY FROM REFERENCE [1]:
 - This exact person's face, features, proportions
 - Same character identity 100%
 - Same art style and rendering quality
 - Same clothing style and colors
-- Same visual atmosphere
+- Same visual atmosphere and lighting
+- Same brand elements and UI style
 
 TASK: ${finalPrompt}
 
-The new image must look like it belongs to the same campaign.
-Reference subject [1] must be clearly recognizable.`;
+The new image must look like it belongs to the same advertising campaign.
+Reference subject [1] must be clearly recognizable and consistent.`;
 
-      log.info('Using Imagen Capability model with reference', { referenceUrl });
+      log.info('Using Imagen Capability model with reference', {
+        referenceUrl,
+        hasVisionAnalysis: !!visionAnalysis
+      });
     }
   }
 

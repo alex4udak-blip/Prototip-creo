@@ -295,7 +295,8 @@ export async function generateImage(prompt, options = {}) {
     numImages = 1,
     referenceUrl = null,
     textContent = null,
-    textStyle = null
+    textStyle = null,
+    visionAnalysis = null  // Vision анализ референса от Claude
   } = options;
 
   log.info('Starting image generation with Nano Banana Pro', {
@@ -303,7 +304,8 @@ export async function generateImage(prompt, options = {}) {
     height,
     numImages,
     hasReference: !!referenceUrl,
-    hasText: !!textContent
+    hasText: !!textContent,
+    hasVisionAnalysis: !!visionAnalysis
   });
 
   const startTime = Date.now();
@@ -316,7 +318,8 @@ export async function generateImage(prompt, options = {}) {
     textContent,
     textStyle,
     referenceUrl,
-    numImages
+    numImages,
+    visionAnalysis  // Передаём Vision анализ в Google!
   });
 
   return {
