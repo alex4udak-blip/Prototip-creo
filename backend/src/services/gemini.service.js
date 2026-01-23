@@ -131,8 +131,9 @@ const SYSTEM_PROMPT = `Ты — премиальный AI-дизайнер ре�
 export function getOrCreateChat(chatId) {
   if (!chatSessions.has(chatId)) {
     // Создаём чат с нужными настройками
+    // Модель: gemini-2.0-flash-exp с responseModalities для генерации картинок
     const chat = ai.chats.create({
-      model: "gemini-2.0-flash-exp-image-generation",  // Модель с генерацией изображений
+      model: "gemini-2.0-flash-exp",
       config: {
         responseModalities: ["TEXT", "IMAGE"],  // КРИТИЧЕСКИ ВАЖНО для генерации картинок
         systemInstruction: SYSTEM_PROMPT
@@ -264,7 +265,7 @@ export function deleteChat(chatId) {
 export async function checkHealth() {
   return {
     available: !!config.googleApiKey,
-    model: 'gemini-2.0-flash-exp-image-generation',
+    model: 'gemini-2.0-flash-exp',
     features: ['multi-turn', 'image-understanding', 'image-generation', 'text-rendering']
   };
 }

@@ -15,14 +15,8 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-prod',
   jwtExpiresIn: '7d',
 
-  // API Keys
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-  runwareApiKey: process.env.RUNWARE_API_KEY,
+  // Google AI API (Gemini 2.0 Flash с генерацией изображений)
   googleApiKey: process.env.GOOGLE_API_KEY,
-
-  // Google Cloud / Vertex AI (Imagen 3 с Identity Lock)
-  googleCloudProject: process.env.GOOGLE_CLOUD_PROJECT,
-  googleCredentialsJson: process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON,
 
   // Storage (Railway Volume)
   storagePath: process.env.STORAGE_PATH || './uploads',
@@ -40,18 +34,9 @@ export const config = {
       throw new Error(`Missing required env variables: ${missing.join(', ')}`);
     }
 
-    // Предупреждения для API ключей
-    if (!this.anthropicApiKey) {
-      console.warn('⚠️  ANTHROPIC_API_KEY not set - prompt enhancement disabled');
-    }
-    if (!this.runwareApiKey) {
-      console.warn('⚠️  RUNWARE_API_KEY not set - Runware generation disabled');
-    }
-    if (!this.googleCloudProject || !this.googleCredentialsJson) {
-      console.warn('⚠️  Vertex AI not configured - GOOGLE_CLOUD_PROJECT and GOOGLE_APPLICATION_CREDENTIALS_JSON required for Imagen 3');
-    }
+    // Проверка Google API Key
     if (!this.googleApiKey) {
-      console.warn('⚠️  GOOGLE_API_KEY not set - Google AI (Gemini) features disabled');
+      console.warn('⚠️  GOOGLE_API_KEY not set - Gemini AI features disabled');
     }
   }
 };
