@@ -565,10 +565,16 @@ Remember:
         }
       }
 
-      // Добавляем вопрос про количество вариаций (как Genspark!)
+      // Вопрос про вариации добавляется ниже, вне этого блока
+    }
+
+    // PATCH 2: Добавляем вопрос про вариации ВСЕГДА когда есть clarification
+    // Это должно быть ВНЕ блока выше, чтобы работало и когда Claude сам задал вопросы
+    if (result.needs_clarification && result.questions && result.questions.length > 0) {
       const hasVariationsQuestion = result.questions.some(q =>
         q.id?.includes('variation') || q.question?.toLowerCase().includes('вариац')
       );
+
       if (!hasVariationsQuestion) {
         result.questions.push({
           id: 'variations_count',
@@ -800,9 +806,10 @@ Respond ONLY with valid JSON.`;
 /**
  * Обработка ответов пользователя на вопросы - УЛУЧШЕННАЯ
  * Теперь извлекает количество вариаций из ответов
+ * PATCH 5: Добавлена поддержка Vision analysis и Identity Lock
  */
 export async function processUserAnswers(originalPrompt, answers, options = {}) {
-  const { hasReference = false, deepThinking = false } = options;
+  const { hasReference = false, deepThinking = false, visionAnalysis = null, referenceUrl = null } = options;
 
   // Извлекаем количество вариаций из ответов
   let variationsCount = 1;
@@ -813,8 +820,47 @@ export async function processUserAnswers(originalPrompt, answers, options = {}) 
     }
   }
 
+  // PATCH 5: Detect reference usage mode from answers
+  let referenceUsage = null;
+  if (answers.reference_usage) {
+    const usage = answers.reference_usage.toLowerCase();
+    if (usage.includes('identity') || usage.includes('lock') || usage.includes('референс')) {
+      referenceUsage = 'identity_lock';
+    } else if (usage.includes('редактир') || usage.includes('edit')) {
+      referenceUsage = 'edit';
+    } else if (usage.includes('стиль') || usage.includes('style') || usage.includes('вдохновен')) {
+      referenceUsage = 'style';
+    }
+  }
+
   // Формируем обогащённый промпт из ответов (без variations_count - это не для промпта)
   let enrichedPrompt = originalPrompt;
+
+  // PATCH 5: Add Vision context to enriched prompt if available
+  if (visionAnalysis) {
+    enrichedPrompt += '\n\n## REFERENCE IMAGE ANALYSIS:';
+    if (visionAnalysis.has_character && visionAnalysis.character_description) {
+      enrichedPrompt += `\nCharacter: ${visionAnalysis.character_description}`;
+      if (visionAnalysis.character_pose) {
+        enrichedPrompt += `\nPose: ${visionAnalysis.character_pose}`;
+      }
+      if (visionAnalysis.character_clothing) {
+        enrichedPrompt += `\nClothing: ${visionAnalysis.character_clothing}`;
+      }
+    }
+    if (visionAnalysis.background_description) {
+      enrichedPrompt += `\nBackground: ${visionAnalysis.background_description}`;
+    }
+    if (visionAnalysis.style) {
+      enrichedPrompt += `\nStyle: ${visionAnalysis.style}`;
+    }
+    if (visionAnalysis.colors?.length > 0) {
+      enrichedPrompt += `\nColors: ${visionAnalysis.colors.join(', ')}`;
+    }
+    if (visionAnalysis.recreation_prompt) {
+      enrichedPrompt += `\nRecreation hint: ${visionAnalysis.recreation_prompt}`;
+    }
+  }
 
   const answerDescriptions = [];
   for (const [questionId, answer] of Object.entries(answers)) {
@@ -842,6 +888,25 @@ export async function processUserAnswers(originalPrompt, answers, options = {}) 
 
   // Добавляем количество вариаций в результат
   result.variations_count = variationsCount;
+
+  // PATCH 5: Force google-nano-pro model for Identity Lock mode
+  if (referenceUsage === 'identity_lock') {
+    result.suggested_model = 'google-nano-pro';
+    result.reference_usage = 'identity_lock';
+    result.needs_character_consistency = true;
+    log.info('Identity Lock mode activated', {
+      model: 'google-nano-pro',
+      hasVisionAnalysis: !!visionAnalysis,
+      hasCharacter: visionAnalysis?.has_character
+    });
+  } else if (referenceUsage) {
+    result.reference_usage = referenceUsage;
+  }
+
+  // Pass through Vision analysis for potential use downstream
+  if (visionAnalysis) {
+    result.vision_analysis = visionAnalysis;
+  }
 
   return result;
 }

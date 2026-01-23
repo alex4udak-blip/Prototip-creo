@@ -194,7 +194,8 @@ router.post('/', checkGenerationLimit, async (req, res) => {
             questions: clarificationResult.questions,
             originalPrompt: prompt,
             detectedContext: clarificationResult.detected_context,
-            thinking: clarificationResult.thinking
+            thinking: clarificationResult.thinking,
+            vision_analysis: clarificationResult.vision_analysis
           })
         });
 
@@ -424,6 +425,32 @@ async function processGeneration(params) {
       message: deepThinking ? 'Глубокий анализ запроса...' : 'Анализирую запрос...'
     });
 
+    // PATCH 4: Get Vision analysis from previous clarification message
+    let visionAnalysis = null;
+    if (chatId) {
+      try {
+        const clarificationMsg = await db.getOne(
+          `SELECT metadata FROM messages
+           WHERE chat_id = $1 AND role = 'assistant'
+           AND metadata IS NOT NULL
+           ORDER BY created_at DESC LIMIT 1`,
+          [chatId]
+        );
+        if (clarificationMsg?.metadata) {
+          const meta = typeof clarificationMsg.metadata === 'string'
+            ? JSON.parse(clarificationMsg.metadata)
+            : clarificationMsg.metadata;
+          visionAnalysis = meta.vision_analysis;
+          log.info('Retrieved Vision analysis from clarification', {
+            hasVision: !!visionAnalysis,
+            contentType: visionAnalysis?.content_type
+          });
+        }
+      } catch (e) {
+        log.warn('Failed to get Vision analysis', { error: e.message });
+      }
+    }
+
     // 2. Улучшаем промпт через Claude
     let promptAnalysis;
 
@@ -459,6 +486,8 @@ async function processGeneration(params) {
       // Обработка ответов на вопросы
       promptAnalysis = await processUserAnswers(prompt, answers, {
         hasReference: !!referenceUrl,
+        referenceUrl,
+        visionAnalysis,
         chatHistory,
         size
       });

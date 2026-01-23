@@ -63,7 +63,7 @@ export const useChatStore = create((set, get) => ({
   settings: {
     model: 'auto',
     size: '1200x628',
-    variations: 1,
+    variations: 3,  // PATCH 3: По умолчанию 3 варианта как Genspark
     mode: 'smart' // 'smart' | 'fast' | 'deep'
   },
 

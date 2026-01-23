@@ -28,9 +28,8 @@ const genAI = config.googleApiKey
 const GOOGLE_MODELS = {
   // Nano Banana - быстрый Gemini 2.5 Flash Image (актуальная модель)
   'google-nano': 'gemini-2.5-flash-image',
-  // Nano Banana Pro - тоже Gemini 2.5 Flash Image (gemini-3-pro-image-preview может быть недоступен)
-  // По документации gemini-2.5-flash-image - основная модель для image generation
-  'google-nano-pro': 'gemini-2.5-flash-image',
+  // Nano Banana Pro - Gemini 2.0 Flash Exp Image Generation (experimental model)
+  'google-nano-pro': 'gemini-2.0-flash-exp-image-generation',
 };
 
 /**

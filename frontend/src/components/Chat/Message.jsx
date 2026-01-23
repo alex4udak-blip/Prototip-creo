@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, Copy, Check, ExternalLink, AlertCircle, Sparkles, User, Maximize2, Brain, Wand2, ImageIcon, CheckCircle2 } from 'lucide-react';
+import { Download, Copy, Check, ExternalLink, AlertCircle, Sparkles, User, Maximize2, Brain, Wand2, ImageIcon, CheckCircle2, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { ClarificationQuestions } from './ClarificationQuestions';
 import { GENERATION_PHASES, PHASE_LABELS } from '../../hooks/useChat';
 
@@ -122,7 +122,53 @@ function PhaseProgress({ phase }) {
 export function Message({ message }) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
-  const [previewImage, setPreviewImage] = useState(null);
+  const [previewIndex, setPreviewIndex] = useState(null);
+  const [referencePreview, setReferencePreview] = useState(false);
+
+  // Get the current preview image URL
+  const previewImage = referencePreview
+    ? message.referenceUrl
+    : (previewIndex !== null && message.imageUrls?.[previewIndex]
+      ? message.imageUrls[previewIndex]
+      : null);
+
+  // Check if we have multiple images for navigation
+  const hasMultipleImages = message.imageUrls?.length > 1 && !referencePreview;
+  const canGoBack = hasMultipleImages && previewIndex > 0;
+  const canGoForward = hasMultipleImages && previewIndex < message.imageUrls.length - 1;
+
+  // Navigation functions for preview modal
+  const goToPrevious = (e) => {
+    e.stopPropagation();
+    if (canGoBack) {
+      setPreviewIndex(previewIndex - 1);
+    }
+  };
+
+  const goToNext = (e) => {
+    e.stopPropagation();
+    if (canGoForward) {
+      setPreviewIndex(previewIndex + 1);
+    }
+  };
+
+  // Open preview at specific index
+  const openPreview = (index) => {
+    setReferencePreview(false);
+    setPreviewIndex(index);
+  };
+
+  // Open reference preview
+  const openReferencePreview = () => {
+    setPreviewIndex(null);
+    setReferencePreview(true);
+  };
+
+  // Close preview
+  const closePreview = () => {
+    setPreviewIndex(null);
+    setReferencePreview(false);
+  };
 
   // Копирование промпта
   const copyPrompt = () => {
@@ -194,46 +240,136 @@ export function Message({ message }) {
                     src={message.referenceUrl}
                     alt="Reference"
                     className="max-h-32 rounded-lg cursor-pointer hover:opacity-90 transition"
-                    onClick={() => setPreviewImage(message.referenceUrl)}
+                    onClick={() => openReferencePreview()}
                   />
                 </div>
               )}
 
               {/* Generated images */}
               {message.imageUrls?.length > 0 && (
-                <div className={`grid gap-2 ${message.content ? 'mt-3' : ''} ${
-                  message.imageUrls.length === 1 ? 'grid-cols-1' :
-                  message.imageUrls.length === 2 ? 'grid-cols-2' :
-                  'grid-cols-2'
-                }`}>
-                  {message.imageUrls.map((url, index) => (
-                    <div key={index} className="relative group rounded-lg overflow-hidden animate-scale-in">
-                      <img
-                        src={url}
-                        alt={`Generated ${index + 1}`}
-                        className="w-full rounded-lg cursor-pointer"
-                        onClick={() => setPreviewImage(url)}
-                      />
-
-                      {/* Hover overlay */}
-                      <div className="image-overlay rounded-lg">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setPreviewImage(url); }}
-                          className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition"
-                          title="Увеличить"
-                        >
-                          <Maximize2 className="w-4 h-4 text-white" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); downloadImage(url, index); }}
-                          className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition"
-                          title="Скачать"
-                        >
-                          <Download className="w-4 h-4 text-white" />
-                        </button>
-                      </div>
+                <div className={`${message.content ? 'mt-4' : ''}`}>
+                  {/* Section header for multiple images */}
+                  {message.imageUrls.length > 1 && (
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
+                      <span className="text-xs text-text-muted font-medium px-2">
+                        {message.imageUrls.length} вариации
+                      </span>
+                      <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
                     </div>
-                  ))}
+                  )}
+
+                  {/* Responsive image grid */}
+                  <div className={`grid gap-3 ${
+                    message.imageUrls.length === 1
+                      ? 'grid-cols-1'
+                      : message.imageUrls.length === 2
+                        ? 'grid-cols-2'
+                        : message.imageUrls.length === 3
+                          ? 'grid-cols-3 md:grid-cols-3'
+                          : message.imageUrls.length === 4
+                            ? 'grid-cols-2'
+                            : 'grid-cols-3'
+                  }`}>
+                    {message.imageUrls.map((url, index) => (
+                      <div
+                        key={index}
+                        className={`relative group rounded-xl overflow-hidden animate-scale-in cursor-pointer
+                          ${message.imageUrls.length === 5 && index >= 3 ? 'col-span-1' : ''}
+                          transition-all duration-300 ease-out
+                          hover:scale-[1.02] hover:z-10
+                          ring-2 ring-transparent hover:ring-accent/50
+                          shadow-lg hover:shadow-xl hover:shadow-accent/20
+                        `}
+                        style={{ animationDelay: `${index * 75}ms` }}
+                        onClick={() => openPreview(index)}
+                      >
+                        {/* Image */}
+                        <img
+                          src={url}
+                          alt={`Вариация ${index + 1}`}
+                          className="w-full h-full object-cover aspect-square transition-transform duration-300"
+                        />
+
+                        {/* Variation number badge */}
+                        <div className="absolute top-2 left-2 z-10">
+                          <span className="
+                            inline-flex items-center justify-center
+                            w-6 h-6 text-xs font-bold
+                            bg-black/60 backdrop-blur-sm
+                            text-white rounded-full
+                            border border-white/20
+                            shadow-lg
+                          ">
+                            {index + 1}
+                          </span>
+                        </div>
+
+                        {/* Gradient overlay on hover */}
+                        <div className="
+                          absolute inset-0
+                          bg-gradient-to-t from-black/70 via-black/20 to-transparent
+                          opacity-0 group-hover:opacity-100
+                          transition-opacity duration-300
+                        " />
+
+                        {/* Action buttons overlay */}
+                        <div className="
+                          absolute inset-0
+                          flex items-center justify-center gap-3
+                          opacity-0 group-hover:opacity-100
+                          transition-all duration-300
+                          translate-y-2 group-hover:translate-y-0
+                        ">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openPreview(index); }}
+                            className="
+                              p-2.5
+                              bg-white/20 hover:bg-white/30
+                              backdrop-blur-sm
+                              rounded-full
+                              transition-all duration-200
+                              hover:scale-110
+                              border border-white/20
+                              shadow-lg
+                            "
+                            title="Увеличить"
+                          >
+                            <Maximize2 className="w-4 h-4 text-white" />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); downloadImage(url, index); }}
+                            className="
+                              p-2.5
+                              bg-white/20 hover:bg-white/30
+                              backdrop-blur-sm
+                              rounded-full
+                              transition-all duration-200
+                              hover:scale-110
+                              border border-white/20
+                              shadow-lg
+                            "
+                            title="Скачать"
+                          >
+                            <Download className="w-4 h-4 text-white" />
+                          </button>
+                        </div>
+
+                        {/* Bottom info bar */}
+                        <div className="
+                          absolute bottom-0 left-0 right-0
+                          p-2
+                          bg-gradient-to-t from-black/80 to-transparent
+                          opacity-0 group-hover:opacity-100
+                          transition-opacity duration-300
+                        ">
+                          <p className="text-xs text-white/80 text-center font-medium">
+                            Вариация {index + 1}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -304,26 +440,126 @@ export function Message({ message }) {
       {/* Image Preview Modal */}
       {previewImage && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 animate-fade-in"
-          onClick={() => setPreviewImage(null)}
+          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center animate-fade-in"
+          onClick={closePreview}
         >
-          <img
-            src={previewImage}
-            alt="Preview"
-            className="max-w-full max-h-full object-contain rounded-lg animate-scale-in"
-            onClick={(e) => e.stopPropagation()}
-          />
+          {/* Close button */}
+          <button
+            onClick={closePreview}
+            className="
+              absolute top-4 right-4 z-10
+              p-2 rounded-full
+              bg-white/10 hover:bg-white/20
+              backdrop-blur-sm
+              border border-white/10
+              transition-all duration-200
+              hover:scale-110
+            "
+            title="Закрыть (Esc)"
+          >
+            <X className="w-5 h-5 text-white" />
+          </button>
 
-          {/* Download button */}
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-4">
+          {/* Image counter badge */}
+          {hasMultipleImages && (
+            <div className="
+              absolute top-4 left-1/2 -translate-x-1/2 z-10
+              px-4 py-2 rounded-full
+              bg-black/60 backdrop-blur-sm
+              border border-white/10
+              text-white text-sm font-medium
+            ">
+              <span className="text-accent">{previewIndex + 1}</span>
+              <span className="text-white/60 mx-1">/</span>
+              <span>{message.imageUrls.length}</span>
+            </div>
+          )}
+
+          {/* Navigation - Previous */}
+          {hasMultipleImages && (
             <button
-              onClick={() => {
+              onClick={goToPrevious}
+              disabled={!canGoBack}
+              className={`
+                absolute left-4 top-1/2 -translate-y-1/2 z-10
+                p-3 rounded-full
+                bg-white/10 hover:bg-white/20
+                backdrop-blur-sm
+                border border-white/10
+                transition-all duration-200
+                ${canGoBack ? 'hover:scale-110 cursor-pointer' : 'opacity-30 cursor-not-allowed'}
+              `}
+              title="Предыдущее"
+            >
+              <ChevronLeft className="w-6 h-6 text-white" />
+            </button>
+          )}
+
+          {/* Navigation - Next */}
+          {hasMultipleImages && (
+            <button
+              onClick={goToNext}
+              disabled={!canGoForward}
+              className={`
+                absolute right-4 top-1/2 -translate-y-1/2 z-10
+                p-3 rounded-full
+                bg-white/10 hover:bg-white/20
+                backdrop-blur-sm
+                border border-white/10
+                transition-all duration-200
+                ${canGoForward ? 'hover:scale-110 cursor-pointer' : 'opacity-30 cursor-not-allowed'}
+              `}
+              title="Следующее"
+            >
+              <ChevronRight className="w-6 h-6 text-white" />
+            </button>
+          )}
+
+          {/* Main image container */}
+          <div className="relative max-w-[90vw] max-h-[80vh] p-4" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={previewImage}
+              alt={referencePreview ? 'Reference' : `Вариация ${previewIndex + 1}`}
+              className="max-w-full max-h-[75vh] object-contain rounded-xl shadow-2xl animate-scale-in"
+            />
+
+            {/* Variation badge on image */}
+            {!referencePreview && (
+              <div className="
+                absolute top-6 left-6
+                px-3 py-1.5 rounded-lg
+                bg-black/60 backdrop-blur-sm
+                border border-white/10
+                text-white text-sm font-medium
+              ">
+                Вариация {previewIndex + 1}
+              </div>
+            )}
+          </div>
+
+          {/* Bottom action bar */}
+          <div className="
+            absolute bottom-6 left-1/2 -translate-x-1/2
+            flex items-center gap-3
+            p-2 rounded-2xl
+            bg-black/60 backdrop-blur-md
+            border border-white/10
+          ">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
                 const a = document.createElement('a');
                 a.href = previewImage;
-                a.download = 'banner.png';
+                a.download = referencePreview ? 'reference.png' : `banner-variation-${previewIndex + 1}.png`;
                 a.click();
               }}
-              className="btn-primary flex items-center gap-2"
+              className="
+                flex items-center gap-2 px-4 py-2
+                bg-accent hover:bg-accent-hover
+                text-white rounded-xl
+                transition-all duration-200
+                font-medium text-sm
+              "
             >
               <Download className="w-4 h-4" />
               Скачать
@@ -332,7 +568,13 @@ export function Message({ message }) {
               href={previewImage}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-secondary flex items-center gap-2"
+              className="
+                flex items-center gap-2 px-4 py-2
+                bg-white/10 hover:bg-white/20
+                text-white rounded-xl
+                transition-all duration-200
+                font-medium text-sm
+              "
               onClick={(e) => e.stopPropagation()}
             >
               <ExternalLink className="w-4 h-4" />
@@ -340,10 +582,40 @@ export function Message({ message }) {
             </a>
           </div>
 
-          {/* Close hint */}
-          <p className="absolute top-4 right-4 text-text-muted text-sm">
-            Нажмите для закрытия
-          </p>
+          {/* Thumbnail strip for multiple images */}
+          {hasMultipleImages && message.imageUrls.length <= 5 && (
+            <div className="
+              absolute bottom-24 left-1/2 -translate-x-1/2
+              flex items-center gap-2
+              p-2 rounded-xl
+              bg-black/40 backdrop-blur-sm
+              border border-white/10
+            ">
+              {message.imageUrls.map((url, idx) => (
+                <button
+                  key={idx}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPreviewIndex(idx);
+                  }}
+                  className={`
+                    w-12 h-12 rounded-lg overflow-hidden
+                    transition-all duration-200
+                    ${idx === previewIndex
+                      ? 'ring-2 ring-accent scale-110'
+                      : 'opacity-60 hover:opacity-100 hover:scale-105'
+                    }
+                  `}
+                >
+                  <img
+                    src={url}
+                    alt={`Thumbnail ${idx + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
