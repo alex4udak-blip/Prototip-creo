@@ -359,8 +359,18 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
     imagesCount: images.length
   });
 
-  // Отправляем со streaming
-  const stream = await chat.sendMessageStream({ message });
+  let stream;
+  try {
+    // Отправляем со streaming
+    stream = await chat.sendMessageStream({ message });
+  } catch (error) {
+    log.error('Gemini sendMessageStream failed', {
+      chatId,
+      error: error.message,
+      stack: error.stack
+    });
+    throw error;
+  }
 
   const result = {
     text: '',
@@ -368,7 +378,8 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
   };
 
   // Обрабатываем stream
-  for await (const chunk of stream) {
+  try {
+    for await (const chunk of stream) {
     const parts = chunk.candidates?.[0]?.content?.parts || [];
 
     for (const part of parts) {
@@ -400,6 +411,14 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
         }
       }
     }
+  } catch (error) {
+    log.error('Gemini streaming iteration failed', {
+      chatId,
+      error: error.message,
+      partialText: result.text?.substring(0, 100),
+      imagesCount: result.images.length
+    });
+    throw error;
   }
 
   log.info('Gemini streaming response complete', {

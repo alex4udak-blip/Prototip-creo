@@ -272,15 +272,23 @@ async function processGeneration({ chatId, prompt, images, settings, userId, sta
     });
 
   } catch (error) {
-    log.error('Process generation error', { error: error.message, chatId });
+    log.error('Process generation error', {
+      error: error.message,
+      stack: error.stack,
+      chatId
+    });
 
     // Сохраняем ошибку как сообщение
-    await db.insert('messages', {
-      chat_id: chatId,
-      role: 'assistant',
-      content: null,
-      error_message: error.message
-    });
+    try {
+      await db.insert('messages', {
+        chat_id: chatId,
+        role: 'assistant',
+        content: null,
+        error_message: error.message
+      });
+    } catch (dbError) {
+      log.error('Failed to save error message to DB', { dbError: dbError.message });
+    }
 
     broadcastToChat(chatId, {
       type: 'generation_error',
