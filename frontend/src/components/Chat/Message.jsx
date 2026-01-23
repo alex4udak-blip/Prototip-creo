@@ -4,29 +4,78 @@ import { GENERATION_PHASES, PHASE_LABELS, useChatStore } from '../../hooks/useCh
 
 /**
  * Tool Use Indicator (like Genspark)
- * Показывает плашки: "Использование инструмента | 🔍 Понимание изображения"
+ * Показывает плашки: "Использование инструмента | 🔍 Понимание изображения | 🔗 URL"
  */
-function ToolUseIndicator({ tool, label, status }) {
-  const icons = {
-    image_understanding: '🔍',
-    analysis: '🧠',
-    clarification: '💬',
-    image_generation: '🎨',
-    thinking: '💭',
-    deep_research: '🔬'
+function ToolUseIndicator({ tool, label, status, referenceUrls }) {
+  const [showUrls, setShowUrls] = useState(false);
+
+  // Иконки для инструментов (поддерживаем динамические ID типа image_generation_1)
+  const getIcon = (toolName) => {
+    const icons = {
+      image_understanding: '🔍',
+      analysis: '🧠',
+      clarification: '💬',
+      image_generation: '🎨',
+      thinking: '💭',
+      deep_research: '🔬'
+    };
+
+    // Проверяем динамические tool ID (image_generation_1, image_generation_2, etc.)
+    if (toolName.startsWith('image_generation_')) {
+      return '🎨';
+    }
+
+    return icons[toolName] || '⚡';
   };
 
+  const hasUrls = referenceUrls && referenceUrls.length > 0;
+
   return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-bg-secondary rounded-lg border border-border mb-2 animate-fade-in">
-      <span className="text-xs text-text-muted">Использование инструмента</span>
-      <span className="text-text-muted">|</span>
-      <span>{icons[tool] || '⚡'}</span>
-      <span className="text-sm text-text-primary">{label}</span>
-      {status === 'running' && (
-        <Loader2 className="w-3 h-3 animate-spin text-accent ml-auto" />
-      )}
-      {status === 'complete' && (
-        <Check className="w-3 h-3 text-green-400 ml-auto" />
+    <div className="mb-2 animate-fade-in">
+      <div className="flex items-center gap-2 px-3 py-2 bg-bg-secondary rounded-lg border border-border">
+        <span className="text-xs text-text-muted">Использование инструмента</span>
+        <span className="text-text-muted">|</span>
+        <span>{getIcon(tool)}</span>
+        <span className="text-sm text-text-primary">{label}</span>
+
+        {/* Reference URL link (like Genspark) */}
+        {hasUrls && (
+          <>
+            <span className="text-text-muted">|</span>
+            <button
+              onClick={() => setShowUrls(!showUrls)}
+              className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition"
+            >
+              🔗 <span>{referenceUrls.length} референс{referenceUrls.length > 1 ? 'ов' : ''}</span>
+              <span className="text-text-muted">Посмотреть</span>
+            </button>
+          </>
+        )}
+
+        {status === 'running' && (
+          <Loader2 className="w-3 h-3 animate-spin text-accent ml-auto" />
+        )}
+        {status === 'complete' && (
+          <Check className="w-3 h-3 text-green-400 ml-auto" />
+        )}
+      </div>
+
+      {/* Reference URLs dropdown */}
+      {showUrls && hasUrls && (
+        <div className="mt-1 ml-4 flex flex-wrap gap-2 p-2 bg-bg-tertiary rounded-lg border border-border animate-fade-in">
+          {referenceUrls.map((url, i) => (
+            <a
+              key={i}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 px-2 py-1 bg-bg-secondary hover:bg-bg-hover rounded text-xs text-accent hover:text-accent-hover transition"
+            >
+              <ExternalLink className="w-3 h-3" />
+              <span>Референс {i + 1}</span>
+            </a>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -288,10 +337,32 @@ export function Message({ message }) {
 
           {/* Content */}
           <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
-            {/* Role label */}
-            <span className="text-xs text-text-muted mb-1">
-              {isUser ? 'Вы' : 'BannerGen'}
-            </span>
+            {/* Role label with Deep Research button for assistant */}
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs text-text-muted">
+                {isUser ? 'Вы' : 'BannerGen'}
+              </span>
+
+              {/* Deep Research button (like Genspark) - only for completed assistant messages */}
+              {!isUser && !message.isGenerating && message.content && (
+                <button
+                  onClick={() => {
+                    const input = document.querySelector('textarea');
+                    if (input) {
+                      input.value = `Проведи глубокое исследование по теме: ${message.content.substring(0, 100)}...`;
+                      input.focus();
+                      // Включаем Deep Research mode
+                      useChatStore.getState().updateSettings({ deepResearch: true });
+                    }
+                  }}
+                  className="flex items-center gap-1 px-2 py-0.5 text-xs text-purple-400 hover:text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 rounded-full transition"
+                  title="Глубокое исследование"
+                >
+                  <Search className="w-3 h-3" />
+                  <span>Глубокое исследование</span>
+                </button>
+              )}
+            </div>
 
             {/* Message bubble */}
             <div className={`rounded-2xl p-4 ${

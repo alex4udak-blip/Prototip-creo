@@ -57,7 +57,16 @@ export const useChatStore = create((set, get) => ({
     set({ chatsLoading: true });
     try {
       const chats = await chatsAPI.getAll();
-      set({ chats, chatsLoading: false });
+      // Обновляем currentChat если он есть в списке (для синхронизации title)
+      const { currentChat } = get();
+      let updatedCurrentChat = currentChat;
+      if (currentChat?.id) {
+        const foundChat = chats.find(c => c.id === currentChat.id);
+        if (foundChat) {
+          updatedCurrentChat = { ...currentChat, title: foundChat.title };
+        }
+      }
+      set({ chats, chatsLoading: false, currentChat: updatedCurrentChat });
     } catch (error) {
       console.error('Load chats error:', error);
       set({ chatsLoading: false });
@@ -327,8 +336,9 @@ export const useChatStore = create((set, get) => ({
           // Если пришёл новый текст, обновляем content
           content: data.partialText || updatedMessages[targetIndex].content,
           // Streaming images - показываем по мере генерации
+          // newImage может быть строкой URL или объектом {url, mimeType}
           imageUrls: data.newImage
-            ? [...(updatedMessages[targetIndex].imageUrls || []), data.newImage]
+            ? [...(updatedMessages[targetIndex].imageUrls || []), typeof data.newImage === 'object' ? data.newImage.url : data.newImage]
             : updatedMessages[targetIndex].imageUrls,
           // Progress percentage
           progress: data.progress || updatedMessages[targetIndex].progress
@@ -432,12 +442,18 @@ export const useChatStore = create((set, get) => ({
           return state; // Не нашли что обновлять
         }
 
+        // Извлекаем URLs из объектов {url, mimeType} или используем как есть если уже строки
+        let imageUrls = data.images || data.imageUrls || [];
+        if (imageUrls.length > 0 && typeof imageUrls[0] === 'object' && imageUrls[0].url) {
+          imageUrls = imageUrls.map(img => img.url);
+        }
+
         const updatedMessages = [...messages];
         updatedMessages[targetIndex] = {
           ...updatedMessages[targetIndex],
           id: data.messageId || updatedMessages[targetIndex].id,
           content: data.content,
-          imageUrls: data.images || data.imageUrls || [],
+          imageUrls: imageUrls,
           isGenerating: false,
           generationPhase: GENERATION_PHASES.COMPLETE
         };

@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import path from 'path';
 import { db } from '../db/client.js';
+import { config } from '../config/env.js';
 import { authMiddleware, checkGenerationLimit, incrementGenerationStats } from '../middleware/auth.middleware.js';
 import { uploadMiddleware, handleUploadError, getFileUrl } from '../middleware/upload.middleware.js';
 import { sendMessageStream, deleteChat, checkHealth } from '../services/gemini.service.js';
@@ -99,6 +101,46 @@ router.post('/',
         userMessageData.reference_urls = req.files.map(f => getFileUrl(f.filename, req));
       }
 
+      // Проверяем запрос на редактирование изображений
+      // Если пользователь просит изменить/улучшить/апскейлить — подтягиваем последние изображения из чата
+      const isEditRequest = /измен|улучш|апскейл|upscale|поменя|переделай|текст|цвет|ярче|темнее|добав|убер|увелич|уменьш/i.test(prompt);
+
+      if (isEditRequest && images.length === 0 && chatId) {
+        // Находим последние сгенерированные изображения в этом чате
+        const lastImageMessage = await db.getOne(`
+          SELECT image_urls FROM messages
+          WHERE chat_id = $1 AND role = 'assistant' AND image_urls IS NOT NULL AND array_length(image_urls, 1) > 0
+          ORDER BY created_at DESC LIMIT 1
+        `, [chatId]);
+
+        if (lastImageMessage?.image_urls?.length > 0) {
+          log.info('Loading previous images for editing', {
+            chatId,
+            imageCount: lastImageMessage.image_urls.length
+          });
+
+          // Загружаем изображения с диска и конвертируем в base64
+          for (const imageUrl of lastImageMessage.image_urls.slice(0, 4)) { // Максимум 4 для редактирования
+            try {
+              const filename = imageUrl.replace('/uploads/', '');
+              const filepath = path.join(config.storagePath, filename);
+
+              if (fs.existsSync(filepath)) {
+                const base64 = fs.readFileSync(filepath).toString('base64');
+                const mimeType = filename.endsWith('.jpg') ? 'image/jpeg' : 'image/png';
+                images.push({ data: base64, mimeType });
+              }
+            } catch (err) {
+              log.warn('Failed to load image for editing', { imageUrl, error: err.message });
+            }
+          }
+
+          if (images.length > 0) {
+            log.info('Loaded images for editing', { count: images.length });
+          }
+        }
+      }
+
       const userMessage = await db.insert('messages', userMessageData);
 
       // Отправляем начальный ответ клиенту
@@ -127,7 +169,8 @@ router.post('/',
         images,
         settings,
         userId,
-        startTime
+        startTime,
+        referenceUrls: userMessageData.reference_urls || []
       }).catch(error => {
         log.error('Background generation failed', { error: error.message, chatId });
         broadcastToChat(chatId, {
@@ -156,7 +199,7 @@ router.post('/',
 /**
  * Асинхронная обработка генерации со streaming, фазами и tool_use индикаторами
  */
-async function processGeneration({ chatId, prompt, images, settings, userId, startTime }) {
+async function processGeneration({ chatId, prompt, images, settings, userId, startTime, referenceUrls }) {
   try {
     // Tool use: Если есть референсы — показываем "Понимание изображения"
     if (images.length > 0) {
@@ -164,7 +207,8 @@ async function processGeneration({ chatId, prompt, images, settings, userId, sta
         type: 'tool_use',
         tool: 'image_understanding',
         label: 'Понимание изображения',
-        status: 'running'
+        status: 'running',
+        referenceUrls: referenceUrls || []  // URLs референсов для отображения
       });
     }
 
@@ -224,12 +268,14 @@ async function processGeneration({ chatId, prompt, images, settings, userId, sta
         imageCount++;
         const imageProgress = 40 + (imageCount / expectedImages) * 50;  // 40-90%
 
-        // Tool use: Генерация изображений
+        // Tool use: Индивидуальный индикатор для каждого изображения (like Genspark)
         broadcastToChat(chatId, {
           type: 'tool_use',
-          tool: 'image_generation',
-          label: `Генерация изображений (${imageCount}/${expectedImages})`,
-          status: 'running'
+          tool: `image_generation_${imageCount}`,  // Уникальный ID для каждого изображения
+          label: `Генерация изображения ${imageCount}`,
+          status: 'running',
+          imageIndex: imageCount,
+          totalImages: expectedImages
         });
 
         broadcastToChat(chatId, {
@@ -240,6 +286,18 @@ async function processGeneration({ chatId, prompt, images, settings, userId, sta
           newImage: progress.newImage,
           progress: Math.round(imageProgress)
         });
+
+        // Помечаем предыдущее изображение как complete
+        if (imageCount > 1) {
+          broadcastToChat(chatId, {
+            type: 'tool_use',
+            tool: `image_generation_${imageCount - 1}`,
+            label: `Генерация изображения ${imageCount - 1}`,
+            status: 'complete',
+            imageIndex: imageCount - 1,
+            totalImages: expectedImages
+          });
+        }
       }
     });
 
@@ -258,10 +316,15 @@ async function processGeneration({ chatId, prompt, images, settings, userId, sta
     // Обновляем статистику
     await incrementGenerationStats(userId, totalTime);
 
-    // Завершаем все tool_use
+    // Завершаем все tool_use (включая динамические image_generation_X)
+    const allTools = ['image_understanding', 'analysis', 'clarification', 'deep_research'];
+    // Добавляем индивидуальные tool ID для изображений
+    for (let i = 1; i <= imageCount; i++) {
+      allTools.push(`image_generation_${i}`);
+    }
     broadcastToChat(chatId, {
       type: 'tool_use_complete',
-      tools: ['image_understanding', 'analysis', 'clarification', 'image_generation', 'deep_research']
+      tools: allTools
     });
 
     // Фаза 3: Готово!
