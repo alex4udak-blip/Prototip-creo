@@ -82,6 +82,66 @@ function ToolUseIndicator({ tool, label, status, referenceUrls }) {
 }
 
 /**
+ * Quick Edit Buttons - instant actions that send prompts immediately
+ */
+function QuickEditButtons() {
+  const { sendMessage, isGenerating } = useChatStore();
+
+  const quickActions = [
+    {
+      icon: Edit3,
+      title: 'Изменить текст',
+      prompt: 'Сгенерируй такой же баннер, но измени текст — сделай его более продающим и цепляющим. Сохрани стиль и композицию.'
+    },
+    {
+      icon: Palette,
+      title: 'Изменить цвета',
+      prompt: 'Сгенерируй этот баннер в другой цветовой гамме — сделай цвета более яркими и контрастными, чтобы привлекали внимание.'
+    },
+    {
+      icon: Wand2,
+      title: 'Улучшить качество',
+      prompt: 'Сгенерируй улучшенную версию этого баннера — добавь больше деталей, сделай элементы чётче и профессиональнее.'
+    },
+    {
+      icon: Crop,
+      title: 'Другой размер',
+      prompt: 'Сгенерируй этот баннер в формате 1:1 (квадрат) для Instagram. Адаптируй композицию под новый формат.'
+    },
+    {
+      icon: RotateCcw,
+      title: 'Переделать',
+      prompt: 'Сгенерируй совершенно другой вариант баннера на эту же тему. Используй другую композицию, стиль и подход, но сохрани ключевое сообщение.'
+    }
+  ];
+
+  const handleQuickAction = async (prompt) => {
+    if (isGenerating) return;
+    try {
+      await sendMessage(prompt);
+    } catch (error) {
+      console.error('Quick action error:', error);
+    }
+  };
+
+  return (
+    <div className="flex gap-1 ml-2 pl-2 border-l border-border">
+      {quickActions.map(({ icon: Icon, title, prompt }) => (
+        <button
+          key={title}
+          onClick={() => handleQuickAction(prompt)}
+          disabled={isGenerating}
+          className="p-2 hover:bg-bg-hover rounded-lg transition group disabled:opacity-50 disabled:cursor-not-allowed"
+          title={title}
+        >
+          <Icon className="w-4 h-4 text-text-muted group-hover:text-text-primary" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
  * Simple Markdown parser - removes ** and converts to clean text
  */
 function parseMarkdown(text) {
@@ -564,74 +624,8 @@ export function Message({ message }) {
                       <span>Ещё варианты</span>
                     </button>
 
-                    {/* Quick edit actions */}
-                    <div className="flex gap-1 ml-2 pl-2 border-l border-border">
-                      <button
-                        onClick={() => {
-                          const input = document.querySelector('textarea');
-                          if (input) {
-                            input.value = 'Измени текст на: ';
-                            input.focus();
-                          }
-                        }}
-                        className="p-2 hover:bg-bg-hover rounded-lg transition group"
-                        title="Изменить текст"
-                      >
-                        <Edit3 className="w-4 h-4 text-text-muted group-hover:text-text-primary" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          const input = document.querySelector('textarea');
-                          if (input) {
-                            input.value = 'Измени цвета на более яркие';
-                            input.focus();
-                          }
-                        }}
-                        className="p-2 hover:bg-bg-hover rounded-lg transition group"
-                        title="Изменить цвета"
-                      >
-                        <Palette className="w-4 h-4 text-text-muted group-hover:text-text-primary" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          const input = document.querySelector('textarea');
-                          if (input) {
-                            input.value = 'Улучши качество и детализацию';
-                            input.focus();
-                          }
-                        }}
-                        className="p-2 hover:bg-bg-hover rounded-lg transition group"
-                        title="Улучшить качество"
-                      >
-                        <Wand2 className="w-4 h-4 text-text-muted group-hover:text-text-primary" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          const input = document.querySelector('textarea');
-                          if (input) {
-                            input.value = 'Сделай другой размер: 1:1 (квадрат)';
-                            input.focus();
-                          }
-                        }}
-                        className="p-2 hover:bg-bg-hover rounded-lg transition group"
-                        title="Изменить размер"
-                      >
-                        <Crop className="w-4 h-4 text-text-muted group-hover:text-text-primary" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          const input = document.querySelector('textarea');
-                          if (input) {
-                            input.value = 'Переделай полностью, сохрани только концепцию';
-                            input.focus();
-                          }
-                        }}
-                        className="p-2 hover:bg-bg-hover rounded-lg transition group"
-                        title="Переделать"
-                      >
-                        <RotateCcw className="w-4 h-4 text-text-muted group-hover:text-text-primary" />
-                      </button>
-                    </div>
+                    {/* Quick edit actions - instant send */}
+                    <QuickEditButtons />
                   </div>
                 </div>
               )}
