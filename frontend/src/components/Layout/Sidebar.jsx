@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { MessageSquarePlus, Trash2, Edit2, Check, X, Sparkles, History } from 'lucide-react';
+import { MessageSquarePlus, Trash2, Edit2, Check, X, History } from 'lucide-react';
 import { useChatStore } from '../../hooks/useChat';
 import { useAuthStore } from '../../hooks/useAuth';
+import { Logo } from '../UI/Logo';
 
 export function Sidebar({ className = '' }) {
   const { user, logout } = useAuthStore();
@@ -56,7 +57,7 @@ export function Sidebar({ className = '' }) {
       {/* Header */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center gap-2 mb-4">
-          <Sparkles className="w-6 h-6 text-accent" />
+          <Logo size={28} />
           <span className="font-bold text-lg text-gradient">MST CREO AI</span>
         </div>
 

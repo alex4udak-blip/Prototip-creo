@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Sparkles, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuthStore } from '../hooks/useAuth';
+import { Logo } from '../components/UI/Logo';
 
 export function InvitePage() {
   const { token } = useParams();
@@ -49,8 +50,8 @@ export function InvitePage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-accent to-accent-hover flex items-center justify-center">
-            <Sparkles className="w-8 h-8 text-white" />
+          <div className="mx-auto mb-4 w-16">
+            <Logo size={64} />
           </div>
           <h1 className="text-2xl font-bold text-gradient">MST CREO AI</h1>
           <p className="text-text-muted text-sm mt-1">AI Генератор Баннеров</p>

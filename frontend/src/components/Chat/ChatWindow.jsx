@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { Sparkles, Wand2, Image, Zap } from 'lucide-react';
+import { Wand2, Image, Zap } from 'lucide-react';
 import { useChatStore } from '../../hooks/useChat';
 import { Message } from './Message';
+import { Logo } from '../UI/Logo';
 
 export function ChatWindow({ className = '' }) {
   const {
@@ -34,8 +35,8 @@ export function ChatWindow({ className = '' }) {
       <div className={`flex-1 flex flex-col justify-center overflow-y-auto py-4 ${className}`}>
         <div className="text-center max-w-lg mx-auto px-4">
           {/* Logo - меньше */}
-          <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-gradient-to-br from-accent to-accent-hover flex items-center justify-center shadow-lg shadow-accent/20">
-            <Sparkles className="w-7 h-7 text-white" />
+          <div className="mx-auto mb-4">
+            <Logo size={56} />
           </div>
 
           <h2 className="text-xl font-bold text-text-primary mb-1">
@@ -111,7 +112,9 @@ export function ChatWindow({ className = '' }) {
         {messages.length === 0 ? (
           // Empty chat
           <div className="text-center py-12">
-            <Sparkles className="w-12 h-12 text-accent mx-auto mb-4 opacity-50" />
+            <div className="mx-auto mb-4 opacity-50 w-12">
+              <Logo size={48} />
+            </div>
             <p className="text-text-muted">
               Опишите баннер, который хотите создать
             </p>
