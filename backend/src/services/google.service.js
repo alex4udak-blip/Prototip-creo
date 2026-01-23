@@ -404,7 +404,7 @@ export async function checkGoogleHealth() {
     await getVertexAccessToken();
     return {
       available: true,
-      model: IMAGEN_MODEL,
+      model: `${IMAGEN_MODEL_GENERATE} / ${IMAGEN_MODEL_CUSTOMIZE}`,
       features: ['text-to-image', 'identity-lock', 'reference-images']
     };
   } catch (error) {
