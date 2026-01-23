@@ -32,7 +32,7 @@ export const useAuthStore = create(
 
       // Проверка авторизации
       checkAuth: async () => {
-        const token = localStorage.getItem('bannergen_token');
+        const token = localStorage.getItem('mstcreo_token');
         if (!token) {
           set({ user: null, token: null });
           return false;
@@ -44,7 +44,7 @@ export const useAuthStore = create(
           return true;
         } catch (error) {
           set({ user: null, token: null });
-          localStorage.removeItem('bannergen_token');
+          localStorage.removeItem('mstcreo_token');
           return false;
         }
       },
@@ -57,7 +57,7 @@ export const useAuthStore = create(
 
       // Проверка авторизован ли
       isAuthenticated: () => {
-        return !!get().token || !!localStorage.getItem('bannergen_token');
+        return !!get().token || !!localStorage.getItem('mstcreo_token');
       },
 
       // Очистка ошибки
