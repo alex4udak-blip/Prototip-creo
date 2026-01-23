@@ -162,22 +162,22 @@ router.post('/',
           isFollowUp = true;
           log.info('Detected follow-up message after AI questions', { chatId });
 
-          // При follow-up подгружаем референсы из первого user message чата
-          // чтобы Gemini мог использовать их для генерации
+          // При follow-up подгружаем референсы из ПОСЛЕДНЕГО user message с референсами
+          // (пользователь мог скинуть референс не сразу, а позже)
           if (images.length === 0) {
-            const firstUserMsg = await db.getOne(`
+            const lastUserMsgWithRef = await db.getOne(`
               SELECT reference_urls FROM messages
-              WHERE chat_id = $1 AND role = 'user' AND reference_urls IS NOT NULL
-              ORDER BY created_at ASC LIMIT 1
+              WHERE chat_id = $1 AND role = 'user' AND reference_urls IS NOT NULL AND array_length(reference_urls, 1) > 0
+              ORDER BY created_at DESC LIMIT 1
             `, [chatId]);
 
-            if (firstUserMsg?.reference_urls?.length > 0) {
-              log.info('Loading original references for follow-up generation', {
+            if (lastUserMsgWithRef?.reference_urls?.length > 0) {
+              log.info('Loading references for follow-up generation', {
                 chatId,
-                referenceCount: firstUserMsg.reference_urls.length
+                referenceCount: lastUserMsgWithRef.reference_urls.length
               });
 
-              for (const refUrl of firstUserMsg.reference_urls.slice(0, 4)) {
+              for (const refUrl of lastUserMsgWithRef.reference_urls.slice(0, 4)) {
                 try {
                   const filename = refUrl.replace('/uploads/', '');
                   const filepath = path.join(config.storagePath, filename);
