@@ -229,10 +229,22 @@ export const useChatStore = create((set, get) => ({
 
       // КРИТИЧНО: Если это новый чат или chatId изменился — переподписываемся на WebSocket
       if (response.chatId) {
-        const needResubscribe = !currentChat || currentChat.id !== response.chatId;
+        const isNewChat = !currentChat || currentChat.id !== response.chatId;
+        const isTitleDefault = currentChat?.title === 'Новый чат' || !currentChat?.title;
 
-        if (needResubscribe) {
-          set({ currentChat: { id: response.chatId, title: prompt?.substring(0, 50) || 'Новый чат' } });
+        if (isNewChat || isTitleDefault) {
+          // Устанавливаем title из prompt
+          const newTitle = prompt?.substring(0, 50) || 'Новый чат';
+          set({ currentChat: { id: response.chatId, title: newTitle } });
+
+          // Обновляем title в списке чатов
+          set(state => ({
+            chats: state.chats.map(chat =>
+              chat.id === response.chatId ? { ...chat, title: newTitle } : chat
+            )
+          }));
+
+          // Загружаем актуальный список чатов
           await get().loadChats();
         }
 
