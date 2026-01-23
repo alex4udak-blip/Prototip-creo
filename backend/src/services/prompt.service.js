@@ -812,22 +812,55 @@ Example: If user specifies "casino_name: Vulkan", the enhanced_prompt MUST inclu
 
 ## DOMAIN-SPECIFIC ADDITIONS:
 
-### For Casino/Gambling:
-- Casino aesthetic, golden accents, luxury feel
-- Neon lights, excitement, winning atmosphere
-- Professional promotional banner
-- Vibrant, eye-catching colors
+### For Casino/Gambling (VERY DETAILED):
+Your enhanced_prompt MUST include:
+- Specific visual style: "3D render" or "photorealistic" or "cartoon style"
+- Main visual elements: slot machines, cards, chips, coins, roulette wheels
+- Character if needed: "attractive woman/man in casino outfit" or "cartoon mascot character"
+- Background: "luxurious casino interior" or "abstract neon gradient" or "city night skyline"
+- Lighting: "dramatic neon glow", "golden rim lighting", "colorful casino lights"
+- Colors: "gold and purple palette", "red and black theme", "neon blue and pink"
+- Atmosphere: "exciting winning moment", "luxury VIP feel", "party celebration"
+- Quality: "ultra detailed, professional advertising, 4K quality"
+
+Example good casino prompt:
+"3D render style promotional banner, luxurious casino interior background with slot machines, attractive young woman in elegant red dress celebrating big win, golden coins and chips flying, dramatic purple and gold neon lighting, excitement and wealth atmosphere, professional advertising quality, ultra detailed 4K"
+
+Example BAD casino prompt:
+"casino banner with bonus" (TOO VAGUE!)
 
 ### For Affiliate/Advertising:
 - High conversion focus
 - Clear CTA visibility
 - Trust elements
 - Urgency markers
+- Professional stock photo quality
 
 ### Always include quality markers:
 - "4K, sharp details, professional"
 - "high quality, vibrant colors"
 - Negative: "blurry, low quality, distorted, amateur, watermark"
+
+## FOLLOW-UP REQUESTS:
+When the user asks to modify, remake, or create variations:
+
+### "переделай" / "remake" / "другой вариант":
+- Create a COMPLETELY NEW composition
+- Keep the same STYLE and AESTHETIC from previous context
+- Change pose, angle, arrangement
+- DO NOT just add random objects to the same image!
+
+### "измени X" / "добавь Y" / "modify":
+- Keep the SAME base composition
+- Only change the specific element mentioned
+- Preserve everything else
+
+### "похожий" / "variation" / "в том же стиле":
+- Create similar image with same style
+- Can vary composition slightly
+- Keep color palette, lighting, aesthetic
+
+IMPORTANT: When user says "переделай" they want a FRESH take, not the same image with an extra object pasted on top!
 
 Respond ONLY with valid JSON.`;
 

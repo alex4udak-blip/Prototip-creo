@@ -16,6 +16,53 @@ import { log } from '../utils/logger.js';
 
 const router = Router();
 
+/**
+ * Определяет тип follow-up запроса
+ * @returns 'remake' | 'modify' | 'variation' | null
+ */
+function detectFollowUpType(prompt) {
+  const lowerPrompt = prompt.toLowerCase();
+
+  // REMAKE: полная переделка с нуля, но с тем же стилем
+  const remakePatterns = [
+    'переделай', 'переделать', 'заново', 'сначала',
+    'remake', 'redo', 'start over', 'try again',
+    'другой вариант', 'другую версию', 'новый вариант',
+    'не нравится', 'плохо', 'ужасно', 'хуйня', 'говно',
+    'ещё раз', 'еще раз', 'повтори'
+  ];
+
+  // MODIFY: изменить конкретный элемент
+  const modifyPatterns = [
+    'измени', 'изменить', 'поменяй', 'замени',
+    'добавь', 'убери', 'удали', 'сделай',
+    'modify', 'change', 'add', 'remove', 'make',
+    'больше', 'меньше', 'ярче', 'темнее',
+    'другой цвет', 'другой фон', 'другой текст'
+  ];
+
+  // VARIATION: похожий но немного другой
+  const variationPatterns = [
+    'похожий', 'похожую', 'такой же', 'такую же',
+    'similar', 'like this', 'variation',
+    'в том же стиле', 'в этом стиле'
+  ];
+
+  for (const pattern of remakePatterns) {
+    if (lowerPrompt.includes(pattern)) return 'remake';
+  }
+
+  for (const pattern of modifyPatterns) {
+    if (lowerPrompt.includes(pattern)) return 'modify';
+  }
+
+  for (const pattern of variationPatterns) {
+    if (lowerPrompt.includes(pattern)) return 'variation';
+  }
+
+  return null;
+}
+
 // Все routes требуют авторизации
 router.use(authMiddleware);
 
@@ -185,6 +232,16 @@ router.post('/', checkGenerationLimit, async (req, res) => {
             break;
           }
         }
+      }
+
+      // FOLLOW-UP DETECTION: Определяем тип follow-up запроса
+      const followUpType = detectFollowUpType(prompt);
+      if (followUpType && inheritedReferenceUrl) {
+        log.info('Follow-up request detected', {
+          type: followUpType,
+          hasInheritedReference: !!inheritedReferenceUrl,
+          prompt: prompt.substring(0, 100)
+        });
       }
     }
 
