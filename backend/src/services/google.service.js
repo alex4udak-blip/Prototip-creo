@@ -162,29 +162,45 @@ Text rendering rules:
       const referencePart = await prepareReferenceForGoogle(referenceUrl);
       if (referencePart) {
         contentParts.push(referencePart);
-        // IDENTITY LOCK промпт - как Genspark!
-        // Сохраняем персонажа, стиль, элементы - меняем только текст/контент
-        finalPrompt = `IDENTITY LOCK TASK - Create a variation of this reference image.
 
-CRITICAL - PRESERVE THESE ELEMENTS FROM THE REFERENCE:
-1. SAME CHARACTER/PERSON - keep the exact same person, their appearance, pose style, clothing
-2. SAME VISUAL STYLE - 3D render quality, lighting, color grading
-3. SAME BRAND ELEMENTS - logos, UI elements, gift boxes, treasure chests if present
-4. SAME BACKGROUND STYLE - warehouse, neon, casino atmosphere
-5. SAME COMPOSITION APPROACH - layout structure, element placement
+        // IDENTITY LOCK промпт — техники от Google для Gemini 2.5 Flash Image
+        // Ключевые фразы: "this exact character", identity header, hard constraints
+        finalPrompt = `=== IDENTITY LOCK MODE ===
 
-WHAT TO CHANGE:
-- Update text/copy as specified in the request
-- Adapt for the target language/market
-- Minor composition adjustments for new text
+Generate a NEW VARIATION of this exact image while preserving character identity.
 
-THE NEW IMAGE MUST LOOK LIKE IT'S FROM THE SAME AD CAMPAIGN AS THE REFERENCE.
+## IDENTITY HEADER (DO NOT CHANGE):
+- This exact character must appear in the new image
+- Maintain identical facial geometry, eye spacing, nose width
+- Same hair color, length, and style
+- Same skin tone and complexion
+- Same clothing style and colors
+- Same body proportions and build
 
-REQUEST:
+## HARD CONSTRAINTS:
+- Do NOT change facial proportions
+- Do NOT morph or age the character
+- Do NOT change eye color or shape
+- Do NOT change hairstyle or hair color
+- Preserve all unique visual markers
+
+## STYLE PRESERVATION:
+- Same 3D render quality and technique
+- Same lighting style and color grading
+- Same visual atmosphere (neon, casino, premium)
+- Same background aesthetic
+- Same brand elements (treasure chests, coins, UI)
+
+## WHAT TO CREATE:
 ${finalPrompt}
 
-Generate a promotional banner that maintains visual consistency with the reference.`;
-        log.info('Added reference for Identity Lock', { referenceUrl });
+## VARIATION INSTRUCTIONS:
+Create a fresh variation with THIS EXACT CHARACTER in a slightly different pose or angle.
+The new image must look like it belongs to the same advertising campaign.
+Character identity must be 100% consistent with the reference.
+
+Generate now:`;
+        log.info('Added reference for Identity Lock with Google techniques', { referenceUrl });
       }
     }
 

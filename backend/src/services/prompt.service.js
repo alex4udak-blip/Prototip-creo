@@ -333,33 +333,54 @@ export async function analyzeReferenceImage(referenceUrl) {
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
+      max_tokens: 1500,
       messages: [{
         role: 'user',
         content: [
           imageContent,
           {
             type: 'text',
-            text: `Analyze this reference image for advertising/banner creation. Describe in Russian:
+            text: `Analyze this reference image for advertising/banner creation with IDENTITY LOCK capability.
 
-1. **Тип контента**: что это (казино, игра, продукт, etc)
-2. **Текст на изображении**: точный текст который видишь (если есть)
-3. **Визуальные элементы**: персонажи, объекты, иконки
-4. **Цветовая схема**: основные цвета
-5. **Стиль**: неон, премиум, 3D, минимализм, etc
-6. **Формат**: примерное соотношение сторон (9:16 stories, 1:1 квадрат, etc)
-7. **Для генерации**: что можно использовать как основу
+## CRITICAL: CHARACTER DESCRIPTION
+If there's a person/character in the image, describe them in EXTREME DETAIL for recreation:
+- Gender, approximate age, ethnicity
+- Hair: color, style, length
+- Face: expression, features
+- Clothing: exact description (color, style, accessories)
+- Pose: body position, hand gestures
+- Accessories: glasses, jewelry, props they're holding
 
-Отвечай кратко, по делу, на русском. Формат: JSON
+## OTHER ELEMENTS
+- Background: exact description (warehouse, neon, casino floor, etc.)
+- Objects: treasure chests, coins, cards, slot machines, etc.
+- Brand elements: logos, UI elements, buttons
+- Text: exact text visible
+- Colors: primary palette
+- Style: 3D render, photorealistic, cartoon, etc.
+- Lighting: neon glow, dramatic, soft, etc.
+
+## OUTPUT FORMAT (JSON):
 {
   "content_type": "casino/game/product/social",
-  "text_found": ["текст 1", "текст 2"],
-  "visual_elements": ["элемент 1", "элемент 2"],
-  "colors": ["цвет 1", "цвет 2"],
-  "style": "неон/премиум/3D/минимализм",
+  "has_character": true/false,
+  "character_description": "DETAILED description of the person/character for recreation - include ALL visual details",
+  "character_pose": "standing/sitting/action pose description",
+  "character_clothing": "exact clothing description",
+  "character_accessories": "what they're holding or wearing",
+  "background_description": "detailed background for recreation",
+  "objects": ["object 1 with details", "object 2 with details"],
+  "brand_elements": ["logo", "UI element"],
+  "text_found": ["exact text 1", "exact text 2"],
+  "colors": ["primary color", "secondary color", "accent"],
+  "style": "3D render/photorealistic/cartoon/etc",
+  "lighting": "neon glow/dramatic/soft/etc",
   "format": "9:16/1:1/16:9",
-  "summary": "Краткое описание на русском для пользователя"
-}`
+  "summary": "Brief Russian description for user",
+  "recreation_prompt": "English prompt to recreate this image style with a different pose/angle"
+}
+
+Be VERY SPECIFIC about the character - this will be used to generate variations with the SAME character in different poses.`
           }
         ]
       }]
