@@ -716,11 +716,8 @@ export const useChatStore = create((set, get) => ({
 
   loadPresets: async () => {
     try {
-      const [presets, models] = await Promise.all([
-        generateAPI.getPresets(),
-        generateAPI.getModels()
-      ]);
-      set({ sizePresets: presets, availableModels: models });
+      const presets = await generateAPI.getPresets();
+      set({ sizePresets: presets, availableModels: [] });  // Модели не нужны — только Nano Banana Pro
     } catch (error) {
       console.error('Load presets error:', error);
     }

@@ -25,10 +25,12 @@ const genAI = config.googleApiKey
  *
  * Документация: https://ai.google.dev/gemini-api/docs/image-generation
  */
+/**
+ * ВРЕМЕННО УПРОЩЕНО: Обе модели используют один Gemini
+ * gemini-2.0-flash-exp-image-generation — экспериментальная модель для генерации
+ */
 const GOOGLE_MODELS = {
-  // Nano Banana - быстрый Gemini 2.5 Flash Image (актуальная модель)
-  'google-nano': 'gemini-2.5-flash-image',
-  // Nano Banana Pro - Gemini 2.0 Flash Exp Image Generation (experimental model)
+  'google-nano': 'gemini-2.0-flash-exp-image-generation',
   'google-nano-pro': 'gemini-2.0-flash-exp-image-generation',
 };
 

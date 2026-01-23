@@ -1,4 +1,4 @@
-import { generateWithRunware } from './runware.service.js';
+// import { generateWithRunware } from './runware.service.js';  // ВРЕМЕННО ОТКЛЮЧЕНО
 import { generateWithGoogle } from './google.service.js';
 import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
@@ -149,149 +149,14 @@ export function selectStrategy(promptAnalysis, options = {}) {
 
 /**
  * Автоматический выбор лучшей модели для задачи
- * Based on Universal Creative Engine rules
  *
- * DECISION TREE:
- * 1. User explicit choice → use it
- * 2. Infographic/diagram → Google Nano Pro (REQUIRED)
- * 3. Long text (>4 words) → Google Nano Pro
- * 4. Short text (1-4 words) → Google Nano
- * 5. Reference + edit needed → Runware Kontext
- * 6. Reference + character consistency → Google Nano Pro (Identity Lock)
- * 7. Reference + style transfer → Runware FLUX Dev
- * 8. Quick draft/meme → Runware Schnell
- * 9. Default → Runware FLUX Dev
+ * ВРЕМЕННО УПРОЩЕНО: Только Nano Banana Pro для всего!
+ * Одна модель для всех задач — как у Genspark.
  */
 export function selectModel(promptAnalysis, options = {}) {
-  const { hasReference = false, userPreference = 'auto' } = options;
-
-  // Если пользователь выбрал конкретную модель — используем её
-  if (userPreference && userPreference !== 'auto') {
-    log.debug('Using user-selected model', { model: userPreference });
-    return userPreference;
-  }
-
-  const creativeType = analyzeCreativeType(promptAnalysis);
-  const hasGoogleApi = !!config.googleApiKey;
-  const suggestedModel = promptAnalysis.suggested_model || '';
-
-  // Логируем входные данные для отладки
-  log.debug('Model selection input', {
-    creativeType,
-    suggestedModel,
-    hasReference,
-    needsText: promptAnalysis.needs_text,
-    textContent: promptAnalysis.text_content?.substring(0, 20),
-    referencePurpose: promptAnalysis.reference_purpose,
-    needsCharacterConsistency: promptAnalysis.needs_character_consistency,
-    hasGoogleApi
-  });
-
-  // PRIORITY 1: Infographic ALWAYS uses Nano Banana Pro
-  if (creativeType === CREATIVE_TYPES.INFOGRAPHIC) {
-    if (hasGoogleApi) {
-      log.info('MODEL DECISION: google-nano-pro for infographic (REQUIRED)', { reason: 'infographic' });
-      return 'google-nano-pro';
-    }
-    log.warn('Infographic requested but Google API not available! Using FLUX Dev fallback');
-    return 'runware-flux-dev';
-  }
-
-  // PRIORITY 2: Reference image handling - ПРОВЕРЯЕМ ПЕРВЫМ!
-  // Если есть референс - ВСЕГДА google-nano-pro для Identity Lock (как Genspark)
-  if (hasReference) {
-    // ВАЖНО: Референс + Google API = google-nano-pro с Identity Lock
-    // Это даёт результат как у Genspark - стиль референса + чёткий текст
-    if (hasGoogleApi) {
-      log.info('MODEL DECISION: google-nano-pro for reference (Identity Lock like Genspark)', {
-        reason: 'reference_identity_lock',
-        hasText: promptAnalysis.needs_text,
-        text: promptAnalysis.text_content?.substring(0, 30)
-      });
-      return 'google-nano-pro';
-    }
-
-    // Claude suggested Kontext — trust it only for explicit editing (без Google API)
-    if (suggestedModel === 'kontext' || suggestedModel === 'flux-kontext') {
-      log.info('MODEL DECISION: runware-kontext for reference editing', { reason: 'claude_suggested_kontext' });
-      return 'runware-kontext';
-    }
-
-    // Reference purpose determines model (без Google API)
-    const purpose = promptAnalysis.reference_purpose || 'style';
-
-    if (purpose === 'edit' || purpose === 'modify') {
-      log.info('MODEL DECISION: runware-kontext for reference editing', { reason: 'edit_reference' });
-      return 'runware-kontext';
-    }
-
-    // Fallback на FLUX Dev для style reference
-    log.info('MODEL DECISION: runware-flux-dev for style reference', { reason: 'style_reference_no_google', purpose });
-    return 'runware-flux-dev';
-  }
-
-  // PRIORITY 3: Text on image (БЕЗ референса)
-  if (promptAnalysis.needs_text && promptAnalysis.text_content) {
-    const textLength = (promptAnalysis.text_content || '').split(/\s+/).filter(w => w.length > 0).length;
-
-    // Long text (>4 words) — Google Nano Pro is MUCH better
-    if (textLength > 4) {
-      if (hasGoogleApi) {
-        log.info('MODEL DECISION: google-nano-pro for long text', {
-          reason: 'long_text',
-          wordCount: textLength,
-          text: promptAnalysis.text_content?.substring(0, 30)
-        });
-        return 'google-nano-pro';
-      }
-      log.warn('Long text needs Google API for quality! Falling back to FLUX Dev');
-      return 'runware-flux-dev';
-    }
-
-    // Short text (1-4 words) — Google Nano is good enough
-    if (hasGoogleApi) {
-      log.info('MODEL DECISION: google-nano for short text', {
-        reason: 'short_text',
-        wordCount: textLength,
-        text: promptAnalysis.text_content?.substring(0, 30)
-      });
-      return 'google-nano';
-    }
-
-    log.warn('Text rendering needs Google API! Falling back to FLUX Dev (text may be imperfect)');
-    return 'runware-flux-dev';
-  }
-
-  // PRIORITY 4: Speed requirements
-  if (creativeType === CREATIVE_TYPES.MEME) {
-    log.info('MODEL DECISION: runware-schnell for meme', { reason: 'meme_speed' });
-    return 'runware-schnell';
-  }
-
-  if (suggestedModel === 'flux-schnell' || suggestedModel === 'schnell') {
-    log.info('MODEL DECISION: runware-schnell for quick draft', { reason: 'claude_suggested_schnell' });
-    return 'runware-schnell';
-  }
-
-  // PRIORITY 5: Claude's suggestion (if not handled above)
-  if (suggestedModel === 'nano-banana-pro' && hasGoogleApi) {
-    log.info('MODEL DECISION: google-nano-pro (Claude suggested)', { reason: 'claude_suggested' });
-    return 'google-nano-pro';
-  }
-
-  if (suggestedModel === 'nano-banana' && hasGoogleApi) {
-    log.info('MODEL DECISION: google-nano (Claude suggested)', { reason: 'claude_suggested' });
-    return 'google-nano';
-  }
-
-  if (suggestedModel === 'flux-dev') {
-    log.info('MODEL DECISION: runware-flux-dev (Claude suggested)', { reason: 'claude_suggested' });
-    return 'runware-flux-dev';
-  }
-
-  // PRIORITY 6: Default — FLUX Dev for quality
-  log.info('MODEL DECISION: runware-flux-dev (default)', { reason: 'default_quality' });
-  return 'runware-flux-dev';
+  // ВРЕМЕННО: Только Nano Banana Pro для всего
+  log.info('MODEL DECISION: google-nano-pro (simplified - single model)', { reason: 'simplified_nano_banana_pro' });
+  return 'google-nano-pro';
 }
 
 /**
@@ -417,158 +282,47 @@ function extractBackgroundPrompt(prompt) {
 }
 
 /**
- * Генерация изображения через выбранную модель
+ * Генерация изображения через Nano Banana Pro
  *
- * Routing logic:
- * - google-* models -> generateWithGoogle
- * - runware-* models -> generateWithRunware
- *
- * Reference handling:
- * - Google: может использовать для Identity Lock
- * - Runware Kontext: для редактирования
- * - Runware FLUX: для style transfer
+ * ВРЕМЕННО УПРОЩЕНО: Только Google Nano Banana Pro!
+ * Если Google упал — просто кидаем ошибку, не пытаемся Runware.
  */
 export async function generateImage(prompt, options = {}) {
   const {
     model,
-    negativePrompt = 'blurry, low quality, distorted, ugly, amateur, deformed',
     width = 1200,
     height = 628,
     numImages = 1,
     referenceUrl = null,
     textContent = null,
-    textStyle = null,
-    useStyleReference = false,
-    strength = 0.7  // Renamed from editStrength for clarity
+    textStyle = null
   } = options;
 
-  log.info('Starting image generation', {
-    model,
+  log.info('Starting image generation with Nano Banana Pro', {
     width,
     height,
+    numImages,
     hasReference: !!referenceUrl,
-    hasText: !!textContent,
-    strength: referenceUrl ? strength : null
+    hasText: !!textContent
   });
 
   const startTime = Date.now();
 
-  try {
-    let result;
+  // ТОЛЬКО Google Nano Banana Pro
+  const result = await generateWithGoogle(prompt, {
+    model: 'google-nano-pro',
+    width,
+    height,
+    textContent,
+    textStyle,
+    referenceUrl,
+    numImages
+  });
 
-    // Выбираем провайдера по модели
-    if (model && model.startsWith('google')) {
-      // Google Nano Banana / Nano Banana Pro
-      result = await generateWithGoogle(prompt, {
-        model,
-        width,
-        height,
-        textContent,
-        textStyle,
-        referenceUrl,  // Google может использовать для Identity Lock
-        numImages      // Количество изображений
-      });
-    } else {
-      // Runware (FLUX Schnell, FLUX Dev, Kontext)
-      result = await generateWithRunware(prompt, {
-        model: model || 'runware-flux-dev',
-        negativePrompt,
-        width,
-        height,
-        numImages,
-        referenceUrl,
-        strength,  // Для img2img и Kontext
-        useStyleReference
-      });
-    }
-
-    const totalTime = Date.now() - startTime;
-
-    log.info('Image generation complete', {
-      model,
-      totalTime,
-      numImages: result.images?.length || 0
-    });
-
-    return {
-      ...result,
-      totalTime
-    };
-
-  } catch (error) {
-    log.error('Image generation failed', {
-      model,
-      error: error.message,
-      stack: error.stack?.substring(0, 200)
-    });
-
-    const timeElapsed = Date.now() - startTime;
-
-    // Fallback strategy: try alternative model
-    const shouldFallback = model !== 'runware-flux-dev' && !model?.startsWith('google');
-
-    if (shouldFallback) {
-      log.info('Attempting fallback to runware-flux-dev', { originalModel: model, hasReference: !!referenceUrl });
-
-      try {
-        // Для fallback используем FLUX Dev, но если есть референс — пробуем Kontext
-        const fallbackModel = referenceUrl ? 'runware-kontext' : 'runware-flux-dev';
-
-        const fallbackResult = await generateWithRunware(prompt, {
-          model: fallbackModel,
-          negativePrompt,
-          width,
-          height,
-          numImages,
-          referenceUrl // Передаём референс в fallback
-        });
-
-        return {
-          ...fallbackResult,
-          totalTime: Date.now() - startTime,
-          fallback: true,
-          originalModel: model,
-          fallbackReason: error.message
-        };
-      } catch (fallbackError) {
-        log.error('Fallback also failed', {
-          error: fallbackError.message,
-          originalError: error.message
-        });
-      }
-    }
-
-    // If Google failed, try Runware as fallback
-    if (model?.startsWith('google') && config.runwareApiKey) {
-      log.info('Google failed, trying Runware fallback', { hasReference: !!referenceUrl });
-
-      try {
-        // Если был референс — используем Kontext, иначе FLUX Dev
-        const fallbackModel = referenceUrl ? 'runware-kontext' : 'runware-flux-dev';
-
-        const fallbackResult = await generateWithRunware(prompt, {
-          model: fallbackModel,
-          negativePrompt,
-          width,
-          height,
-          numImages,
-          referenceUrl // Передаём референс
-        });
-
-        return {
-          ...fallbackResult,
-          totalTime: Date.now() - startTime,
-          fallback: true,
-          originalModel: model,
-          fallbackReason: `Google API error: ${error.message}`
-        };
-      } catch (fallbackError) {
-        log.error('Runware fallback also failed', { error: fallbackError.message });
-      }
-    }
-
-    throw error;
-  }
+  return {
+    ...result,
+    totalTime: Date.now() - startTime
+  };
 }
 
 /**
@@ -720,63 +474,19 @@ function extractSizeFromPrompt(prompt) {
 
 /**
  * Получить информацию о доступных моделях
+ * ВРЕМЕННО УПРОЩЕНО: Только Nano Banana Pro
  */
 export function getAvailableModels() {
-  const models = [];
-
-  // Runware модели (всегда доступны если есть ключ)
-  if (config.runwareApiKey) {
-    models.push(
-      {
-        id: 'runware-flux-dev',
-        name: 'FLUX Dev',
-        description: 'Высокое качество, 5-8 сек',
-        provider: 'runware',
-        features: ['quality', 'details'],
-        costPer1k: 4 // $0.004
-      },
-      {
-        id: 'runware-schnell',
-        name: 'FLUX Schnell',
-        description: 'Быстрый черновик, 2-3 сек',
-        provider: 'runware',
-        features: ['fast', 'draft'],
-        costPer1k: 0.6 // $0.0006
-      },
-      {
-        id: 'runware-kontext',
-        name: 'FLUX Kontext',
-        description: 'Редактирование с референсом',
-        provider: 'runware',
-        features: ['reference', 'edit'],
-        costPer1k: 10 // $0.01
-      }
-    );
-  }
-
-  // Google модели
-  if (config.googleApiKey) {
-    models.push(
-      {
-        id: 'google-nano',
-        name: 'Nano Banana',
-        description: 'Быстрый, хороший текст',
-        provider: 'google',
-        features: ['text', 'fast'],
-        costPer1k: 39 // $0.039
-      },
-      {
-        id: 'google-nano-pro',
-        name: 'Nano Banana Pro',
-        description: 'Лучший для текста и инфографик',
-        provider: 'google',
-        features: ['text', 'quality', 'identity-lock'],
-        costPer1k: 130 // $0.13
-      }
-    );
-  }
-
-  return models;
+  return [
+    {
+      id: 'google-nano-pro',
+      name: 'Nano Banana Pro',
+      description: 'Лучшая модель для текста и картинок',
+      provider: 'google',
+      features: ['text', 'quality', 'identity-lock'],
+      costPer1k: 130
+    }
+  ];
 }
 
 /**

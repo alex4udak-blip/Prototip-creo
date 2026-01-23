@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
-import { X, Cpu, Ruler, Hash, Sparkles, Zap, Image } from 'lucide-react';
+import { X, Cpu, Ruler, Hash, Sparkles } from 'lucide-react';
 import { useChatStore } from '../../hooks/useChat';
 
 export function SettingsModal({ isOpen, onClose }) {
-  const { settings, updateSettings, sizePresets, availableModels, loadPresets } = useChatStore();
+  const { settings, updateSettings, sizePresets, loadPresets } = useChatStore();
 
   // Загружаем пресеты при открытии
   useEffect(() => {
@@ -13,13 +13,6 @@ export function SettingsModal({ isOpen, onClose }) {
   }, [isOpen, loadPresets]);
 
   if (!isOpen) return null;
-
-  // Группируем модели по провайдеру
-  const modelGroups = availableModels.reduce((acc, model) => {
-    if (!acc[model.provider]) acc[model.provider] = [];
-    acc[model.provider].push(model);
-    return acc;
-  }, {});
 
   return (
     <div
@@ -46,98 +39,22 @@ export function SettingsModal({ isOpen, onClose }) {
 
         {/* Content */}
         <div className="p-4 space-y-6 overflow-y-auto max-h-[calc(90vh-120px)]">
-          {/* Model selection */}
+          {/* Model info - ВРЕМЕННО УПРОЩЕНО */}
           <div>
             <label className="flex items-center gap-2 text-sm font-medium mb-3">
               <Cpu className="w-4 h-4 text-text-muted" />
               Модель генерации
             </label>
 
-            <div className="space-y-2">
-              {/* Auto option */}
-              <button
-                onClick={() => updateSettings({ model: 'auto' })}
-                className={`w-full flex items-center gap-3 p-3 rounded-xl border transition ${
-                  settings.model === 'auto'
-                    ? 'border-accent bg-accent/10'
-                    : 'border-border hover:border-border-light'
-                }`}
-              >
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-accent-hover flex items-center justify-center">
-                  <Sparkles className="w-5 h-5 text-white" />
-                </div>
-                <div className="text-left flex-1">
-                  <p className="font-medium">Авто</p>
-                  <p className="text-xs text-text-muted">AI выберет лучшую модель</p>
-                </div>
-                {settings.model === 'auto' && (
-                  <div className="w-2 h-2 rounded-full bg-accent" />
-                )}
-              </button>
-
-              {/* Runware models */}
-              {modelGroups.runware && (
-                <div className="mt-3">
-                  <p className="text-xs text-text-muted mb-2 px-1">Runware (FLUX)</p>
-                  {modelGroups.runware.map(model => (
-                    <button
-                      key={model.id}
-                      onClick={() => updateSettings({ model: model.id })}
-                      className={`w-full flex items-center gap-3 p-3 rounded-xl border transition mb-2 ${
-                        settings.model === model.id
-                          ? 'border-accent bg-accent/10'
-                          : 'border-border hover:border-border-light'
-                      }`}
-                    >
-                      <div className="w-10 h-10 rounded-lg bg-bg-primary flex items-center justify-center">
-                        {model.features.includes('fast') ? (
-                          <Zap className="w-5 h-5 text-warning" />
-                        ) : model.features.includes('reference') ? (
-                          <Image className="w-5 h-5 text-success" />
-                        ) : (
-                          <Sparkles className="w-5 h-5 text-accent" />
-                        )}
-                      </div>
-                      <div className="text-left flex-1">
-                        <p className="font-medium">{model.name}</p>
-                        <p className="text-xs text-text-muted">{model.description}</p>
-                      </div>
-                      {settings.model === model.id && (
-                        <div className="w-2 h-2 rounded-full bg-accent" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Google models */}
-              {modelGroups.google && (
-                <div className="mt-3">
-                  <p className="text-xs text-text-muted mb-2 px-1">Google (Nano Banana)</p>
-                  {modelGroups.google.map(model => (
-                    <button
-                      key={model.id}
-                      onClick={() => updateSettings({ model: model.id })}
-                      className={`w-full flex items-center gap-3 p-3 rounded-xl border transition mb-2 ${
-                        settings.model === model.id
-                          ? 'border-accent bg-accent/10'
-                          : 'border-border hover:border-border-light'
-                      }`}
-                    >
-                      <div className="w-10 h-10 rounded-lg bg-bg-primary flex items-center justify-center text-lg">
-                        🍌
-                      </div>
-                      <div className="text-left flex-1">
-                        <p className="font-medium">{model.name}</p>
-                        <p className="text-xs text-text-muted">{model.description}</p>
-                      </div>
-                      {settings.model === model.id && (
-                        <div className="w-2 h-2 rounded-full bg-accent" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div className="flex items-center gap-3 p-3 rounded-xl border border-accent bg-accent/10">
+              <div className="w-10 h-10 rounded-lg bg-bg-primary flex items-center justify-center text-lg">
+                🍌
+              </div>
+              <div className="text-left flex-1">
+                <p className="font-medium">Nano Banana Pro</p>
+                <p className="text-xs text-text-muted">Лучшая модель для текста и картинок</p>
+              </div>
+              <div className="w-2 h-2 rounded-full bg-accent" />
             </div>
           </div>
 
