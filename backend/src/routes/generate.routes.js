@@ -161,6 +161,42 @@ router.post('/',
             lastAssistantMsg.content.includes('?')) {
           isFollowUp = true;
           log.info('Detected follow-up message after AI questions', { chatId });
+
+          // При follow-up подгружаем референсы из первого user message чата
+          // чтобы Gemini мог использовать их для генерации
+          if (images.length === 0) {
+            const firstUserMsg = await db.getOne(`
+              SELECT reference_urls FROM messages
+              WHERE chat_id = $1 AND role = 'user' AND reference_urls IS NOT NULL
+              ORDER BY created_at ASC LIMIT 1
+            `, [chatId]);
+
+            if (firstUserMsg?.reference_urls?.length > 0) {
+              log.info('Loading original references for follow-up generation', {
+                chatId,
+                referenceCount: firstUserMsg.reference_urls.length
+              });
+
+              for (const refUrl of firstUserMsg.reference_urls.slice(0, 4)) {
+                try {
+                  const filename = refUrl.replace('/uploads/', '');
+                  const filepath = path.join(config.storagePath, filename);
+
+                  if (fs.existsSync(filepath)) {
+                    const base64 = fs.readFileSync(filepath).toString('base64');
+                    const mimeType = filename.endsWith('.jpg') ? 'image/jpeg' : 'image/png';
+                    images.push({ data: base64, mimeType });
+                  }
+                } catch (err) {
+                  log.warn('Failed to load reference for follow-up', { refUrl, error: err.message });
+                }
+              }
+
+              if (images.length > 0) {
+                log.info('Loaded references for follow-up', { count: images.length });
+              }
+            }
+          }
         }
       }
 
