@@ -155,7 +155,7 @@ async function processGeneration({ chatId, prompt, images, settings, userId, sta
       content: result.text,
       image_urls: result.images.map(img => img.url),
       generation_time_ms: totalTime,
-      model_used: 'gemini-2.0-flash-exp'
+      model_used: 'gemini-3-pro-image-preview'
     });
 
     // Обновляем статистику
