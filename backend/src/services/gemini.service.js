@@ -110,10 +110,11 @@ export function getOrCreateChat(chatId) {
  * @param {string|number} chatId - ID чата
  * @param {string} text - Текст сообщения
  * @param {Array} images - Массив изображений [{data: base64, mimeType: string}]
- * @param {Object} _settings - Не используется (оставлено для обратной совместимости)
+ * @param {Object} options - Опции: expectedImages (сколько картинок ожидаем)
  * @param {Function} onProgress - Callback для прогресса
  */
-export async function sendMessageStream(chatId, text, images = [], _settings = {}, onProgress) {
+export async function sendMessageStream(chatId, text, images = [], options = {}, onProgress) {
+  const { expectedImages = 1 } = options;
   const chat = getOrCreateChat(chatId);
 
   // Просто отправляем текст как есть — модель сама разберётся
@@ -223,6 +224,7 @@ export async function sendMessageStream(chatId, text, images = [], _settings = {
     hasText: !!result.text,
     textLength: result.text?.length || 0,
     imagesCount: result.images.length,
+    expectedImages,
     finishReason: result.finishReason
   });
 
@@ -234,6 +236,64 @@ export async function sendMessageStream(chatId, text, images = [], _settings = {
   // IMAGE_SAFETY — контент заблокирован
   if (result.finishReason === 'IMAGE_SAFETY') {
     throw new Error('Изображения заблокированы политикой безопасности. Попробуйте изменить запрос.');
+  }
+
+  // Auto-retry: если получили меньше изображений чем ожидали — запросим ещё
+  if (result.images.length > 0 && result.images.length < expectedImages) {
+    const remaining = expectedImages - result.images.length;
+    log.info('Auto-retry: requesting more images', {
+      chatId,
+      got: result.images.length,
+      expected: expectedImages,
+      remaining
+    });
+
+    if (onProgress) {
+      onProgress({
+        status: 'generating_more',
+        text: result.text,
+        imagesCount: result.images.length,
+        message: `Генерирую ещё ${remaining} вариант(а)...`
+      });
+    }
+
+    try {
+      // Просим ещё вариантов в том же стиле
+      const retryMessage = `Сгенерируй ещё ${remaining} ${remaining === 1 ? 'вариант' : 'варианта'} в том же стиле. ВАЖНО: сгенерируй именно ${remaining} изображени${remaining === 1 ? 'е' : 'я'}.`;
+
+      const retryStream = await chat.sendMessageStream({ message: retryMessage });
+
+      for await (const chunk of retryStream) {
+        const parts = chunk.candidates?.[0]?.content?.parts || [];
+        for (const part of parts) {
+          if (part.text) {
+            result.text += '\n' + part.text;
+          } else if (part.inlineData) {
+            const imageUrl = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
+            result.images.push({
+              url: imageUrl,
+              mimeType: part.inlineData.mimeType
+            });
+            if (onProgress) {
+              onProgress({
+                status: 'generating_image',
+                text: result.text,
+                imagesCount: result.images.length,
+                newImage: imageUrl
+              });
+            }
+          }
+        }
+      }
+
+      log.info('Auto-retry complete', {
+        chatId,
+        totalImages: result.images.length
+      });
+    } catch (retryError) {
+      log.warn('Auto-retry failed', { chatId, error: retryError.message });
+      // Не бросаем ошибку — возвращаем что есть
+    }
   }
 
   return result;

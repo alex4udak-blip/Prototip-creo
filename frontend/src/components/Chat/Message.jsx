@@ -97,6 +97,77 @@ async function fetchImageAsFile(url) {
 }
 
 /**
+ * Image Edit Button - appears on hover over each image
+ * Allows editing specific image
+ */
+function ImageEditButton({ imageUrl, index }) {
+  const { sendMessage, isGenerating } = useChatStore();
+  const [loading, setLoading] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+
+  const editOptions = [
+    { label: 'Изменить текст', prompt: 'Сгенерируй такой же баннер но с другим, более продающим текстом. Сохрани стиль.' },
+    { label: 'Другие цвета', prompt: 'Сгенерируй такой же баннер но в другой цветовой гамме — более яркой.' },
+    { label: 'Улучшить', prompt: 'Сгенерируй улучшенную версию — добавь деталей, сделай чётче.' },
+    { label: 'Квадрат 1:1', prompt: 'Сгенерируй такой же баннер но в формате 1:1 (квадрат).' },
+    { label: 'Переделать', prompt: 'Сгенерируй другой вариант в похожем стиле.' }
+  ];
+
+  const handleEdit = async (prompt) => {
+    if (isGenerating || loading) return;
+
+    setLoading(true);
+    setShowMenu(false);
+    try {
+      const imageFile = await fetchImageAsFile(imageUrl);
+      await sendMessage(
+        `Используя это изображение как референс: ${prompt}`,
+        imageFile ? [imageFile] : null
+      );
+    } catch (error) {
+      console.error('Image edit error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
+        disabled={isGenerating || loading}
+        className="w-full flex items-center justify-center gap-1.5 px-2 py-1 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded text-xs text-white font-medium transition disabled:opacity-50"
+      >
+        {loading ? (
+          <Loader2 className="w-3 h-3 animate-spin" />
+        ) : (
+          <Edit3 className="w-3 h-3" />
+        )}
+        <span>Редактировать #{index + 1}</span>
+      </button>
+
+      {/* Dropdown menu */}
+      {showMenu && (
+        <div
+          className="absolute bottom-full left-0 right-0 mb-1 bg-bg-secondary/95 backdrop-blur-sm rounded-lg border border-border shadow-xl z-20 overflow-hidden animate-fade-in"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {editOptions.map(({ label, prompt }) => (
+            <button
+              key={label}
+              onClick={() => handleEdit(prompt)}
+              className="w-full px-3 py-2 text-left text-xs text-text-primary hover:bg-bg-hover transition"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * More Variants Button - generates 3 more variants using the image as reference
  */
 function MoreVariantsButton({ imageUrls }) {
@@ -655,7 +726,7 @@ export function Message({ message }) {
                           </button>
                         </div>
 
-                        {/* Bottom info bar */}
+                        {/* Bottom action bar with edit button */}
                         <div className="
                           absolute bottom-0 left-0 right-0
                           p-2
@@ -663,9 +734,7 @@ export function Message({ message }) {
                           opacity-0 group-hover:opacity-100
                           transition-opacity duration-300
                         ">
-                          <p className="text-xs text-white/80 text-center font-medium">
-                            Вариация {index + 1}
-                          </p>
+                          <ImageEditButton imageUrl={url} index={index} />
                         </div>
                       </div>
                     ))}
@@ -684,9 +753,6 @@ export function Message({ message }) {
                       <span>Скачать все</span>
                     </button>
                     <MoreVariantsButton imageUrls={message.imageUrls} />
-
-                    {/* Quick edit actions - instant send with image as reference */}
-                    <QuickEditButtons imageUrls={message.imageUrls} />
                   </div>
                 </div>
               )}

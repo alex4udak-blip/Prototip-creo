@@ -193,9 +193,17 @@ async function processGeneration({ chatId, prompt, images, userId, startTime, re
 
     let imageCount = 0;
 
-    // Вызываем Gemini
-    const result = await sendMessageStream(chatId, prompt, images, {}, (progress) => {
-      if (progress.status === 'generating_text') {
+    // Вызываем Gemini с ожиданием 3 изображений
+    const result = await sendMessageStream(chatId, prompt, images, { expectedImages: 3 }, (progress) => {
+      if (progress.status === 'generating_more') {
+        broadcastToChat(chatId, {
+          type: 'generation_progress',
+          status: 'generating',
+          message: progress.message,
+          imagesCount: progress.imagesCount,
+          progress: 60
+        });
+      } else if (progress.status === 'generating_text') {
         broadcastToChat(chatId, {
           type: 'generation_progress',
           status: 'generating',
