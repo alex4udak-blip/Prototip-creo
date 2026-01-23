@@ -173,25 +173,34 @@ function sendToClient(ws, data) {
  * Отправка сообщения всем подписчикам чата
  */
 export function broadcastToChat(chatId, data) {
-  const chatConnections = connections.get(chatId);
+  // Убедимся что chatId — число
+  const numericChatId = typeof chatId === 'string' ? parseInt(chatId) : chatId;
+
+  const chatConnections = connections.get(numericChatId);
 
   if (!chatConnections || chatConnections.size === 0) {
-    log.debug('No WebSocket connections for chat', { chatId });
+    log.warn('No WebSocket connections for chat', {
+      chatId: numericChatId,
+      type: data.type,
+      availableChats: Array.from(connections.keys())
+    });
     return;
   }
 
   const message = JSON.stringify(data);
+  let sentCount = 0;
 
   for (const ws of chatConnections) {
     if (ws.readyState === ws.OPEN) {
       ws.send(message);
+      sentCount++;
     }
   }
 
-  log.debug('Broadcast to chat', {
-    chatId,
+  log.info('Broadcast to chat', {
+    chatId: numericChatId,
     type: data.type,
-    recipients: chatConnections.size
+    recipients: sentCount
   });
 }
 

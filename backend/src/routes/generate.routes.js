@@ -99,6 +99,10 @@ router.post('/',
         status: 'processing'
       });
 
+      // КРИТИЧНО: Даём фронтенду время подписаться на WebSocket
+      // Без этой задержки broadcast уйдёт до того как клиент подпишется
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       // Фаза 1: Анализ запроса
       broadcastToChat(chatId, {
         type: 'generation_progress',
