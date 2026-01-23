@@ -275,6 +275,31 @@ export const useChatStore = create((set, get) => ({
         generationPhase: GENERATION_PHASES.GENERATING,
         generationProgress: data.message
       });
+
+      // Обновляем placeholder с текущим progress
+      set(state => {
+        const messages = state.messages;
+        let targetIndex = -1;
+
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].role === 'assistant' && messages[i].isGenerating) {
+            targetIndex = i;
+            break;
+          }
+        }
+
+        if (targetIndex === -1) {
+          return state;
+        }
+
+        const updatedMessages = [...messages];
+        updatedMessages[targetIndex] = {
+          ...updatedMessages[targetIndex],
+          generationProgress: data.message
+        };
+
+        return { messages: updatedMessages };
+      });
     });
 
     wsManager.on('generation_complete', (data) => {
@@ -285,20 +310,42 @@ export const useChatStore = create((set, get) => ({
       });
 
       // Обновляем сообщение с результатом
-      if (data.messageId) {
-        set(state => ({
-          messages: state.messages.map(msg =>
-            msg.id === data.messageId
-              ? {
-                  ...msg,
-                  content: data.content,
-                  images: data.images,
-                  isGenerating: false
-                }
-              : msg
-          )
-        }));
-      }
+      // Ищем: 1) по messageId 2) по временному ID 3) последний generating assistant
+      set(state => {
+        const messages = state.messages;
+        let targetIndex = -1;
+
+        // Сначала ищем по messageId от сервера
+        if (data.messageId) {
+          targetIndex = messages.findIndex(msg => msg.id === data.messageId);
+        }
+
+        // Если не нашли, ищем последний assistant placeholder (isGenerating: true)
+        if (targetIndex === -1) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].role === 'assistant' && messages[i].isGenerating) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex === -1) {
+          return state; // Не нашли что обновлять
+        }
+
+        const updatedMessages = [...messages];
+        updatedMessages[targetIndex] = {
+          ...updatedMessages[targetIndex],
+          id: data.messageId || updatedMessages[targetIndex].id,
+          content: data.content,
+          imageUrls: data.images || data.imageUrls || [],
+          isGenerating: false,
+          generationPhase: GENERATION_PHASES.COMPLETE
+        };
+
+        return { messages: updatedMessages };
+      });
 
       get().loadChats();
     });
@@ -310,19 +357,38 @@ export const useChatStore = create((set, get) => ({
         generationProgress: null
       });
 
-      if (data.messageId) {
-        set(state => ({
-          messages: state.messages.map(msg =>
-            msg.id === data.messageId
-              ? {
-                  ...msg,
-                  errorMessage: data.error,
-                  isGenerating: false
-                }
-              : msg
-          )
-        }));
-      }
+      // Ищем placeholder так же как в generation_complete
+      set(state => {
+        const messages = state.messages;
+        let targetIndex = -1;
+
+        if (data.messageId) {
+          targetIndex = messages.findIndex(msg => msg.id === data.messageId);
+        }
+
+        if (targetIndex === -1) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].role === 'assistant' && messages[i].isGenerating) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex === -1) {
+          return state;
+        }
+
+        const updatedMessages = [...messages];
+        updatedMessages[targetIndex] = {
+          ...updatedMessages[targetIndex],
+          errorMessage: data.error,
+          isGenerating: false,
+          generationPhase: GENERATION_PHASES.ERROR
+        };
+
+        return { messages: updatedMessages };
+      });
     });
   },
 

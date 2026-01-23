@@ -1,48 +1,97 @@
 import { useState } from 'react';
-import { Download, Copy, Check, ExternalLink, AlertCircle, Sparkles, User, Maximize2, ImageIcon, ChevronLeft, ChevronRight, X, RefreshCw, Edit3, Wrench } from 'lucide-react';
+import { Download, Copy, Check, ExternalLink, AlertCircle, Sparkles, User, Maximize2, ImageIcon, ChevronLeft, ChevronRight, X, RefreshCw, Edit3, Wrench, Brain, MessageSquare } from 'lucide-react';
 import { GENERATION_PHASES, PHASE_LABELS, useChatStore } from '../../hooks/useChat';
 
 /**
+ * Simple Markdown parser - removes ** and converts to clean text
+ */
+function parseMarkdown(text) {
+  if (!text) return '';
+  return text
+    // Bold **text** → text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    // Italic *text* → text
+    .replace(/\*([^*]+)\*/g, '$1')
+    // Headers ## → nothing
+    .replace(/^#+\s*/gm, '')
+    // Lists - → •
+    .replace(/^-\s+/gm, '• ')
+    // Numbered lists
+    .replace(/^\d+\.\s+/gm, '')
+    .trim();
+}
+
+/**
  * Generation Status Indicator Component
- * Simplified: only GENERATING and ERROR phases
+ * Dynamic phases: thinking, clarifying, generating
  */
 function GenerationStatus({ phase, progress }) {
-  const phaseConfig = {
-    [GENERATION_PHASES.GENERATING]: {
-      icon: ImageIcon,
-      color: 'text-green-400',
-      bgColor: 'bg-green-500/10'
-    },
-    [GENERATION_PHASES.ERROR]: {
-      icon: AlertCircle,
-      color: 'text-error',
-      bgColor: 'bg-error/10'
+  // Определяем текущую фазу по тексту progress
+  const getPhaseInfo = () => {
+    const progressLower = (progress || '').toLowerCase();
+
+    // Фаза: Думает/Анализирует
+    if (progressLower.includes('анализ') || progressLower.includes('думаю') ||
+        progressLower.includes('изучаю') || progressLower.includes('смотрю') ||
+        progressLower.includes('понимаю') || progressLower.includes('читаю')) {
+      return {
+        icon: Brain,
+        label: 'Анализирую запрос',
+        color: 'text-purple-400',
+        bgColor: 'bg-purple-500/10'
+      };
     }
+
+    // Фаза: Уточняет
+    if (progressLower.includes('уточн') || progressLower.includes('вопрос') ||
+        progressLower.includes('clarif') || progressLower.includes('спрашиваю')) {
+      return {
+        icon: MessageSquare,
+        label: 'Уточняю детали',
+        color: 'text-blue-400',
+        bgColor: 'bg-blue-500/10'
+      };
+    }
+
+    // Фаза: Генерирует картинки
+    if (progressLower.includes('генер') || progressLower.includes('созда') ||
+        progressLower.includes('рису') || progressLower.includes('image') ||
+        progressLower.includes('картин') || progressLower.includes('баннер')) {
+      return {
+        icon: ImageIcon,
+        label: 'Генерация изображения',
+        color: 'text-yellow-400',
+        bgColor: 'bg-yellow-500/10'
+      };
+    }
+
+    // По умолчанию: работает
+    return {
+      icon: Wrench,
+      label: progress || 'Обрабатываю...',
+      color: 'text-blue-400',
+      bgColor: 'bg-blue-500/10'
+    };
   };
 
-  const config = phaseConfig[phase] || phaseConfig[GENERATION_PHASES.GENERATING];
-  const label = PHASE_LABELS[phase] || 'Генерирую...';
+  const phaseInfo = getPhaseInfo();
+  const Icon = phaseInfo.icon;
 
   return (
-    <div className={`flex items-center gap-2 p-3 rounded-xl ${config.bgColor} animate-fade-in`}>
-      {/* Tool indicator like Genspark */}
+    <div className={`flex items-center gap-3 p-3 rounded-xl ${phaseInfo.bgColor} animate-fade-in`}>
+      {/* Dynamic phase indicator */}
       <div className="flex items-center gap-2 text-sm">
-        <span className="flex items-center gap-1 text-blue-400">
-          <Wrench className="w-4 h-4" />
-          <span>Использование инструмента</span>
-        </span>
-        <span className="text-text-muted">|</span>
-        <span className="flex items-center gap-1 text-yellow-400">
-          <ImageIcon className="w-4 h-4" />
-          <span>Генерация изображения</span>
+        <span className={`flex items-center gap-1.5 ${phaseInfo.color}`}>
+          <Icon className="w-4 h-4" />
+          <span className="font-medium">{phaseInfo.label}</span>
         </span>
       </div>
 
       {/* Animated dots */}
       <div className="flex gap-1 ml-auto">
-        <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 opacity-40 animate-bounce-dot-1"></span>
-        <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 opacity-40 animate-bounce-dot-2"></span>
-        <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 opacity-40 animate-bounce-dot-3"></span>
+        <span className={`w-1.5 h-1.5 rounded-full ${phaseInfo.color.replace('text-', 'bg-')} opacity-60 animate-pulse`} style={{ animationDelay: '0ms' }}></span>
+        <span className={`w-1.5 h-1.5 rounded-full ${phaseInfo.color.replace('text-', 'bg-')} opacity-60 animate-pulse`} style={{ animationDelay: '150ms' }}></span>
+        <span className={`w-1.5 h-1.5 rounded-full ${phaseInfo.color.replace('text-', 'bg-')} opacity-60 animate-pulse`} style={{ animationDelay: '300ms' }}></span>
       </div>
     </div>
   );
@@ -169,7 +218,7 @@ export function Message({ message }) {
               {/* Text content (only if not generating and has content) */}
               {message.content && !message.isGenerating && (
                 <p className="text-text-primary whitespace-pre-wrap">
-                  {message.content}
+                  {parseMarkdown(message.content)}
                 </p>
               )}
 
