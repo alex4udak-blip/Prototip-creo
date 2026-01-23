@@ -324,7 +324,8 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
 
   const result = {
     text: '',
-    images: []
+    images: [],
+    finishReason: null
   };
 
   // Обрабатываем stream
@@ -334,6 +335,11 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
       chunkCount++;
       const candidate = chunk.candidates?.[0];
       const parts = candidate?.content?.parts || [];
+
+      // Сохраняем finishReason для анализа после завершения
+      if (candidate?.finishReason) {
+        result.finishReason = candidate.finishReason;
+      }
 
       // DEBUG: Логируем каждый chunk
       log.info('Gemini chunk received', {
@@ -391,12 +397,30 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
     textLength: result.text?.length || 0,
     textPreview: result.text?.substring(0, 150),
     imagesCount: result.images.length,
-    imageUrls: result.images.map(i => i.url)
+    imageUrls: result.images.map(i => i.url),
+    finishReason: result.finishReason
   });
 
   // Если Gemini вернул пустой ответ — это content moderation или ошибка
   if (!result.text && result.images.length === 0) {
     throw new Error('Запрос заблокирован модерацией. Попробуйте изменить формулировку.');
+  }
+
+  // Проверяем finishReason — если IMAGE_OTHER/IMAGE_SAFETY, картинки заблокированы
+  if (result.finishReason === 'IMAGE_SAFETY') {
+    throw new Error('Изображения заблокированы политикой безопасности. Попробуйте изменить запрос.');
+  }
+
+  // IMAGE_OTHER — попытка генерации не удалась, но текст есть
+  // Пробуем повторить генерацию с более явной инструкцией
+  if (result.finishReason === 'IMAGE_OTHER' && result.images.length === 0 && result.text) {
+    log.warn('IMAGE_OTHER received, images expected but not generated', {
+      chatId,
+      textPreview: result.text.substring(0, 100)
+    });
+    // Возвращаем результат как есть — пользователь увидит текст и сможет попробовать снова
+    // Но добавляем предупреждение в текст
+    result.text += '\n\n⚠️ Изображения не удалось сгенерировать. Попробуйте ещё раз или измените запрос.';
   }
 
   return result;
