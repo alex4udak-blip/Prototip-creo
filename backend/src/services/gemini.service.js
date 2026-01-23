@@ -379,6 +379,11 @@ export async function sendMessageStream(chatId, text, images = [], settings = {}
     imageUrls: result.images.map(i => i.url)
   });
 
+  // Если Gemini вернул пустой ответ — это content moderation или ошибка
+  if (!result.text && result.images.length === 0) {
+    throw new Error('Запрос заблокирован модерацией. Попробуйте изменить формулировку.');
+  }
+
   return result;
 }
 
