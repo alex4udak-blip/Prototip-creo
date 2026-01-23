@@ -124,7 +124,10 @@ router.post('/',
           // Загружаем изображения с диска и конвертируем в base64
           for (const imageUrl of lastImageMessage.image_urls.slice(0, 4)) { // Максимум 4 для редактирования
             try {
-              const filename = imageUrl.replace('/uploads/', '');
+              // Извлекаем filename правильно - обрабатываем и полные URL, и относительные пути
+              const filename = imageUrl.includes('/uploads/')
+                ? imageUrl.split('/uploads/').pop()
+                : imageUrl;
               const filepath = path.join(config.storagePath, filename);
 
               if (fs.existsSync(filepath)) {
