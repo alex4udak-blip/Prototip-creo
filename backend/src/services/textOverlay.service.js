@@ -332,8 +332,128 @@ export async function processRunwareImages(images, prompt) {
   return processedImages;
 }
 
+/**
+ * Наложить PNG изображение текста на базовое изображение
+ * Используется для стилизованного текста от Gemini
+ *
+ * @param {string} baseImageUrl - URL базового изображения (/uploads/...)
+ * @param {string} textImageUrl - URL PNG с текстом (/uploads/...)
+ * @param {Object} position - Позиция: {x, y, width, height} или preset ('top', 'center', 'bottom')
+ * @returns {string} URL результирующего изображения
+ */
+export async function overlayPngText(baseImageUrl, textImageUrl, position = 'center') {
+  try {
+    // Получаем пути к файлам
+    const baseFilename = baseImageUrl.replace('/uploads/', '');
+    const textFilename = textImageUrl.replace('/uploads/', '');
+    const basePath = path.join(config.storagePath, baseFilename);
+    const textPath = path.join(config.storagePath, textFilename);
+
+    if (!fs.existsSync(basePath) || !fs.existsSync(textPath)) {
+      log.warn('Image files not found for PNG overlay', { basePath, textPath });
+      return baseImageUrl;
+    }
+
+    // Получаем метаданные обоих изображений
+    const baseMetadata = await sharp(basePath).metadata();
+    const textMetadata = await sharp(textPath).metadata();
+
+    // Вычисляем позицию текста
+    let left, top;
+    const textWidth = textMetadata.width;
+    const textHeight = textMetadata.height;
+
+    if (typeof position === 'string') {
+      // Preset позиции
+      switch (position) {
+        case 'top':
+          left = Math.floor((baseMetadata.width - textWidth) / 2);
+          top = Math.floor(baseMetadata.height * 0.1);
+          break;
+        case 'center':
+          left = Math.floor((baseMetadata.width - textWidth) / 2);
+          top = Math.floor((baseMetadata.height - textHeight) / 2);
+          break;
+        case 'bottom':
+          left = Math.floor((baseMetadata.width - textWidth) / 2);
+          top = Math.floor(baseMetadata.height * 0.7);
+          break;
+        default:
+          left = Math.floor((baseMetadata.width - textWidth) / 2);
+          top = Math.floor(baseMetadata.height * 0.3);
+      }
+    } else {
+      // Кастомная позиция
+      left = position.x || 0;
+      top = position.y || 0;
+    }
+
+    // Убедимся что текст не выходит за границы
+    left = Math.max(0, Math.min(left, baseMetadata.width - textWidth));
+    top = Math.max(0, Math.min(top, baseMetadata.height - textHeight));
+
+    // Создаём композит
+    const outputFilename = `styled-${uuidv4()}.png`;
+    const outputPath = path.join(config.storagePath, outputFilename);
+
+    await sharp(basePath)
+      .composite([{
+        input: textPath,
+        top: top,
+        left: left,
+        blend: 'over'  // Стандартное наложение с учётом alpha
+      }])
+      .png()
+      .toFile(outputPath);
+
+    log.info('PNG text overlay applied', {
+      baseFile: baseFilename,
+      textFile: textFilename,
+      outputFile: outputFilename,
+      position: { left, top }
+    });
+
+    return `/uploads/${outputFilename}`;
+
+  } catch (error) {
+    log.error('Failed to overlay PNG text', {
+      baseImageUrl,
+      textImageUrl,
+      error: error.message
+    });
+    return baseImageUrl;
+  }
+}
+
+/**
+ * Определить стиль текста по контексту промпта
+ */
+export function detectTextStyle(prompt) {
+  const lowerPrompt = prompt.toLowerCase();
+
+  if (lowerPrompt.includes('crypto') || lowerPrompt.includes('крипто') ||
+      lowerPrompt.includes('bitcoin') || lowerPrompt.includes('биткоин')) {
+    return 'crypto';
+  }
+
+  if (lowerPrompt.includes('betting') || lowerPrompt.includes('беттинг') ||
+      lowerPrompt.includes('ставки') || lowerPrompt.includes('sport')) {
+    return 'betting';
+  }
+
+  if (lowerPrompt.includes('bonus') || lowerPrompt.includes('бонус') ||
+      lowerPrompt.includes('free') || lowerPrompt.includes('бесплатн')) {
+    return 'bonus';
+  }
+
+  // По умолчанию - казино стиль
+  return 'casino';
+}
+
 export default {
   extractTextFromPrompt,
   overlayTextOnImage,
-  processRunwareImages
+  processRunwareImages,
+  overlayPngText,
+  detectTextStyle
 };

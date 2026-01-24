@@ -115,7 +115,11 @@ export function getOrCreateChat(chatId) {
  * @param {Function} onProgress - Callback для прогресса
  */
 export async function sendMessageStream(chatId, text, images = [], options = {}, onProgress) {
-  const { expectedImages = 1 } = options;
+  const {
+    expectedImages = 1,
+    width = 1024,   // Размер для Runware fallback
+    height = 1024
+  } = options;
   const chat = getOrCreateChat(chatId);
 
   // Просто отправляем текст как есть — модель сама разберётся
@@ -286,6 +290,8 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
           fullText, // Исходный промпт
           {
             count: expectedImages,
+            width,   // Передаём размеры
+            height,
             referenceImages: images // Передаём те же референсы что были для Gemini
           },
           onProgress
@@ -421,9 +427,98 @@ export async function checkHealth() {
   };
 }
 
+/**
+ * Сгенерировать стилизованный текст как PNG через Gemini
+ * Используется для наложения на Runware изображения
+ *
+ * @param {string} text - Текст для генерации
+ * @param {string} style - Стиль текста (casino, crypto, betting)
+ * @param {Object} options - Опции: width, height, textType (headline/cta/disclaimer)
+ * @returns {Object} {url, mimeType} или null если не удалось
+ */
+export async function generateStyledTextPng(text, style = 'casino', options = {}) {
+  const { width = 1024, height = 256, textType = 'headline' } = options;
+
+  // Промпт для генерации ТОЛЬКО текста на прозрачном фоне
+  const styleDescriptions = {
+    casino: 'golden gradient with metallic shine, 3D effect, casino luxury style, glowing edges',
+    crypto: 'neon blue and purple gradient, futuristic tech style, glowing effect',
+    betting: 'green and gold gradient, sporty bold style, dynamic feel',
+    bonus: 'bright orange to yellow gradient, exciting promotional style, bold and attention-grabbing'
+  };
+
+  const styleDesc = styleDescriptions[style] || styleDescriptions.casino;
+
+  const textPrompt = `Generate ONLY the text "${text}" as a stylized banner heading.
+
+CRITICAL REQUIREMENTS:
+- Transparent background (PNG with alpha channel)
+- Text only, no other elements, no decorations around
+- Style: ${styleDesc}
+- Text must be perfectly readable and centered
+- Resolution: ${width}x${height} pixels
+- ${textType === 'cta' ? 'Include a subtle button/badge shape behind the text' : 'Just the styled text, nothing else'}
+
+The text should look like professional casino/gambling banner typography with rich visual effects.`;
+
+  log.info('Generating styled text PNG via Gemini', {
+    text,
+    style,
+    textType,
+    width,
+    height
+  });
+
+  try {
+    const geminiConfig = config.gemini;
+
+    // Одиночный запрос (не чат) для генерации текста
+    const response = await ai.models.generateContent({
+      model: geminiConfig.model,
+      contents: [{ role: 'user', parts: [{ text: textPrompt }] }],
+      config: {
+        responseModalities: ['IMAGE'],
+        // Более мягкие настройки - текст не должен блокироваться
+        safetySettings: [
+          {
+            category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+            threshold: 'BLOCK_ONLY_HIGH'
+          }
+        ]
+      }
+    });
+
+    const parts = response.candidates?.[0]?.content?.parts || [];
+    const imagePart = parts.find(p => p.inlineData);
+
+    if (imagePart?.inlineData) {
+      const imageUrl = await saveBase64Image(imagePart.inlineData.data, imagePart.inlineData.mimeType);
+      log.info('Styled text PNG generated', { text, url: imageUrl });
+      return {
+        url: imageUrl,
+        mimeType: imagePart.inlineData.mimeType || 'image/png'
+      };
+    }
+
+    log.warn('Gemini did not return image for text generation', {
+      text,
+      finishReason: response.candidates?.[0]?.finishReason
+    });
+    return null;
+
+  } catch (error) {
+    log.error('Failed to generate styled text PNG', {
+      text,
+      error: error.message
+    });
+    return null;
+  }
+}
+
 export default {
   getOrCreateChat,
   sendMessageStream,
   deleteChat,
-  checkHealth
+  checkHealth,
+  generateStyledTextPng
 };

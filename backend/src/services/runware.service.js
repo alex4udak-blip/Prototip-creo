@@ -4,22 +4,44 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
-import { processRunwareImages, extractTextFromPrompt } from './textOverlay.service.js';
+import { extractTextFromPrompt, overlayPngText, detectTextStyle } from './textOverlay.service.js';
+
+// Ленивый импорт для избежания циклической зависимости
+let generateStyledTextPng = null;
+async function getGenerateStyledTextPng() {
+  if (!generateStyledTextPng) {
+    const geminiModule = await import('./gemini.service.js');
+    generateStyledTextPng = geminiModule.generateStyledTextPng;
+  }
+  return generateStyledTextPng;
+}
 
 // Singleton instance
 let runwareClient = null;
 
 /**
- * Модели Runware
+ * Модели Runware — FALLBACK для заблокированного Gemini контента
  *
+ * КЛЮЧЕВЫЕ ОСОБЕННОСТИ:
+ * ✅ checkNSFW: false — отключаем NSFW фильтр для gambling/casino/18+ контента
+ * ✅ Juggernaut Pro FLUX — модель БЕЗ ОГРАНИЧЕНИЙ (unrestricted)
+ * ✅ IPAdapter — для сохранения стиля референсов
+ * ✅ Gemini генерирует стилизованный текст PNG отдельно
+ *
+ * Модели:
  * runware:100@1 - FLUX Schnell (быстрый, базовый) - $0.0013/1024x1024
  * runware:101@1 - FLUX Dev (для IPAdapter) - ~$0.02/1024x1024
  * runware:105@1 - FLUX Redux (IPAdapter для стиля) - используется с FLUX Dev
- * rundiffusion:130@100 - Juggernaut Pro FLUX (фотореализм) - $0.0066/1024x1024
+ * rundiffusion:130@100 - Juggernaut Pro FLUX (фотореализм, БЕЗ ЦЕНЗУРЫ) - $0.0066/1024x1024
  *
  * Стратегия:
- * - С референсами: FLUX Dev + IPAdapter Redux (как Gemini — понимает стиль концептуально)
- * - Без референсов: Juggernaut Pro (фотореализм, меньше цензуры)
+ * - С референсами: FLUX Dev + IPAdapter Redux (понимает стиль концептуально)
+ * - Без референсов: Juggernaut Pro (фотореализм, unrestricted)
+ * - Текст: Gemini генерирует PNG → накладываем через Sharp
+ *
+ * Источники:
+ * - https://runware.ai/models/juggernaut-pro-flux-by-rundiffusion
+ * - https://github.com/Runware/sdk-js
  */
 const MODELS = {
   FLUX_SCHNELL: 'runware:100@1',
@@ -123,6 +145,8 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
     }
 
     // Базовые параметры генерации
+    // ВАЖНО: checkNSFW: false — отключаем NSFW фильтр для генерации казино/беттинг контента
+    // Juggernaut Pro FLUX — модель без ограничений, идеально для gambling тематики
     const inferenceParams = {
       positivePrompt: prompt,
       negativePrompt: 'blurry, low quality, distorted text, watermark, signature, ugly, deformed, bad anatomy',
@@ -131,7 +155,8 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
       height: height,
       numberResults: count,
       outputType: 'URL',
-      outputFormat: 'PNG'
+      outputFormat: 'PNG',
+      checkNSFW: false  // Отключаем NSFW проверку — разрешаем gambling/casino/18+ контент
     };
 
     // Настройки в зависимости от стратегии
@@ -213,8 +238,9 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
       strategy: useIPAdapter ? 'IPAdapter' : 'Direct'
     });
 
-    // Этап 2: Наложение текста из промпта
-    // FLUX модели плохо рендерят текст, поэтому накладываем программно
+    // Этап 2: Стилизованный текст через Gemini
+    // FLUX модели плохо рендерят текст, поэтому используем Gemini для генерации
+    // красивого текста PNG и накладываем его
     let finalImages = results;
     const extractedTexts = extractTextFromPrompt(prompt);
 
@@ -222,20 +248,82 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
       if (onProgress) {
         onProgress({
           status: 'runware_adding_text',
-          message: 'Добавляю текст на изображения...',
+          message: 'Генерирую стилизованный текст через Gemini...',
           imagesCount: results.length
         });
       }
 
+      // Определяем стиль по контексту
+      const textStyle = detectTextStyle(prompt);
+
       try {
-        finalImages = await processRunwareImages(results, prompt);
-        log.info('Text overlay applied to Runware images', {
-          textsCount: extractedTexts.length,
-          imagesProcessed: finalImages.length
+        // Получаем функцию генерации текста (ленивый импорт)
+        const genStyledText = await getGenerateStyledTextPng();
+
+        // Генерируем стилизованный текст для главного заголовка
+        const headlineText = extractedTexts.find(t => t.type === 'headline') || extractedTexts[0];
+        const ctaText = extractedTexts.find(t => t.type === 'cta');
+
+        // Генерируем PNG текста через Gemini (параллельно если есть CTA)
+        const textGenerationPromises = [];
+
+        if (headlineText) {
+          textGenerationPromises.push(
+            genStyledText(headlineText.text, textStyle, {
+              width: width,
+              height: Math.floor(height * 0.25),
+              textType: 'headline'
+            }).then(result => ({ ...result, type: 'headline', position: 'top' }))
+          );
+        }
+
+        if (ctaText) {
+          textGenerationPromises.push(
+            genStyledText(ctaText.text, textStyle, {
+              width: Math.floor(width * 0.4),
+              height: Math.floor(height * 0.15),
+              textType: 'cta'
+            }).then(result => ({ ...result, type: 'cta', position: 'bottom' }))
+          );
+        }
+
+        const textPngs = (await Promise.all(textGenerationPromises)).filter(t => t?.url);
+
+        log.info('Generated styled text PNGs via Gemini', {
+          requested: textGenerationPromises.length,
+          generated: textPngs.length,
+          style: textStyle
         });
+
+        // Накладываем текст на каждое изображение
+        if (textPngs.length > 0) {
+          const processedImages = [];
+
+          for (const image of results) {
+            let currentUrl = image.url;
+
+            // Накладываем каждый текстовый PNG
+            for (const textPng of textPngs) {
+              currentUrl = await overlayPngText(currentUrl, textPng.url, textPng.position);
+            }
+
+            processedImages.push({
+              ...image,
+              url: currentUrl,
+              hasStyledText: true
+            });
+          }
+
+          finalImages = processedImages;
+
+          log.info('Styled text overlay applied to Runware images', {
+            textsCount: textPngs.length,
+            imagesProcessed: finalImages.length
+          });
+        }
       } catch (textError) {
-        log.error('Failed to apply text overlay', { error: textError.message });
-        // Продолжаем с оригинальными изображениями
+        log.error('Failed to generate/apply styled text', { error: textError.message });
+        // Продолжаем с оригинальными изображениями (без текста)
       }
     }
 

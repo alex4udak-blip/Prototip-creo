@@ -41,6 +41,21 @@ describe('Gemini Service', () => {
     it('should export checkHealth function', () => {
       expect(typeof geminiService?.checkHealth).toBe('function');
     });
+
+    it('should export generateStyledTextPng function for Runware fallback', () => {
+      expect(typeof geminiService?.generateStyledTextPng).toBe('function');
+    });
+  });
+
+  describe('generateStyledTextPng (Runware fallback text generation)', () => {
+    it('should be a callable async function', () => {
+      expect(typeof geminiService?.generateStyledTextPng).toBe('function');
+    });
+
+    it('should accept text, style and options parameters', () => {
+      // Function signature: (text, style = 'casino', options = {})
+      expect(geminiService?.generateStyledTextPng.length).toBeGreaterThanOrEqual(1);
+    });
   });
 
   describe('deleteChat', () => {
