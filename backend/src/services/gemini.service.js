@@ -4,7 +4,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
-import { generateWithRunway } from './runway.service.js';
+import { generateWithRunware } from './runware.service.js';
 
 // Инициализация клиента
 const ai = new GoogleGenAI({ apiKey: config.googleApiKey });
@@ -269,40 +269,40 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
       imagesCount: result.images.length
     });
 
-    // Пробуем Runway fallback
-    if (config.runway.enabled) {
-      log.info('Attempting Runway fallback', { chatId });
+    // Пробуем Runware fallback
+    if (config.runware.enabled) {
+      log.info('Attempting Runware fallback', { chatId });
 
       if (onProgress) {
         onProgress({
-          status: 'fallback_runway',
-          message: 'Gemini заблокировал запрос, переключаюсь на Runway...'
+          status: 'fallback_runware',
+          message: 'Gemini заблокировал запрос, переключаюсь на Runware FLUX...'
         });
       }
 
       try {
-        const runwayResult = await generateWithRunway(
+        const runwareResult = await generateWithRunware(
           fullText, // Исходный промпт
           { count: expectedImages },
           onProgress
         );
 
         return {
-          text: runwayResult.text,
-          images: runwayResult.images,
-          finishReason: 'RUNWAY_FALLBACK',
-          source: 'runway'
+          text: runwareResult.text,
+          images: runwareResult.images,
+          finishReason: 'RUNWARE_FALLBACK',
+          source: 'runware'
         };
-      } catch (runwayError) {
-        log.error('Runway fallback failed', {
+      } catch (runwareError) {
+        log.error('Runware fallback failed', {
           chatId,
-          error: runwayError.message
+          error: runwareError.message
         });
-        // Если Runway тоже не смог — бросаем оригинальную ошибку
+        // Если Runware тоже не смог — бросаем оригинальную ошибку
       }
     }
 
-    // Если Runway не доступен или тоже не смог
+    // Если Runware не доступен или тоже не смог
     const errorMessage = result.finishReason === 'IMAGE_SAFETY'
       ? 'Изображения заблокированы политикой безопасности.'
       : 'Запрос заблокирован модерацией.';
