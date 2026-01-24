@@ -253,10 +253,13 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
     tokens: result.usage?.totalTokens || 'unknown'
   });
 
-  // Если пустой ответ или IMAGE_SAFETY — модерация заблокировала
+  // Если пустой ответ или finishReason указывает на блокировку — модерация заблокировала
+  // IMAGE_SAFETY — прямая блокировка безопасности
+  // IMAGE_OTHER — другие причины отказа генерации (часто тоже модерация)
   // Пробуем Runway fallback если доступен
   const isModerationBlock = (!result.text && result.images.length === 0) ||
-                            result.finishReason === 'IMAGE_SAFETY';
+                            result.finishReason === 'IMAGE_SAFETY' ||
+                            result.finishReason === 'IMAGE_OTHER';
 
   if (isModerationBlock) {
     log.warn('Gemini moderation blocked content', {
