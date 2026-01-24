@@ -257,16 +257,21 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
     tokens: result.usage?.totalTokens || 'unknown'
   });
 
-  // Если пустой ответ или finishReason указывает на блокировку — модерация заблокировала
-  // IMAGE_SAFETY — прямая блокировка безопасности
-  // IMAGE_OTHER — другие причины отказа генерации (часто тоже модерация)
-  // Пробуем Runway fallback если доступен
-  const isModerationBlock = (!result.text && result.images.length === 0) ||
-                            result.finishReason === 'IMAGE_SAFETY' ||
+  // Проверяем нужен ли Runware fallback:
+  // 1. IMAGE_SAFETY / IMAGE_OTHER — прямая блокировка безопасности
+  // 2. Пустой ответ (ни текста, ни изображений)
+  // 3. Ожидали изображения но получили 0 — Gemini "отказался" генерировать
+  const isModerationBlock = result.finishReason === 'IMAGE_SAFETY' ||
                             result.finishReason === 'IMAGE_OTHER';
 
-  if (isModerationBlock) {
-    log.warn('Gemini moderation blocked content', {
+  const noImagesWhenExpected = expectedImages > 0 && result.images.length === 0;
+
+  const needsFallback = isModerationBlock ||
+                        (!result.text && result.images.length === 0) ||
+                        noImagesWhenExpected;
+
+  if (needsFallback) {
+    log.warn('Gemini did not generate images, trying Runware fallback', {
       chatId,
       finishReason: result.finishReason,
       hasText: !!result.text,
@@ -278,9 +283,12 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
       log.info('Attempting Runware fallback', { chatId });
 
       if (onProgress) {
+        const fallbackMessage = isModerationBlock
+          ? 'Gemini заблокировал запрос, переключаюсь на Runware FLUX...'
+          : 'Gemini не сгенерировал изображения, переключаюсь на Runware FLUX...';
         onProgress({
           status: 'fallback_runware',
-          message: 'Gemini заблокировал запрос, переключаюсь на Runware FLUX...'
+          message: fallbackMessage
         });
       }
 
@@ -313,9 +321,16 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
     }
 
     // Если Runware не доступен или тоже не смог
-    const errorMessage = result.finishReason === 'IMAGE_SAFETY'
-      ? 'Изображения заблокированы политикой безопасности.'
-      : 'Запрос заблокирован модерацией.';
+    let errorMessage;
+    if (result.finishReason === 'IMAGE_SAFETY') {
+      errorMessage = 'Изображения заблокированы политикой безопасности.';
+    } else if (result.finishReason === 'IMAGE_OTHER') {
+      errorMessage = 'Gemini отказался генерировать изображения.';
+    } else if (noImagesWhenExpected) {
+      errorMessage = 'Gemini не сгенерировал изображения. Runware fallback недоступен.';
+    } else {
+      errorMessage = 'Запрос заблокирован.';
+    }
 
     throw new Error(`${errorMessage} Попробуйте изменить формулировку.`);
   }
