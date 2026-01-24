@@ -43,8 +43,11 @@ async function getRunwareClient() {
  * Конвертировать base64 в data URI для Runware
  */
 function toDataUri(base64Data, mimeType = 'image/png') {
+  if (!base64Data) {
+    return null;
+  }
   // Если уже data URI — возвращаем как есть
-  if (base64Data.startsWith('data:')) {
+  if (typeof base64Data === 'string' && base64Data.startsWith('data:')) {
     return base64Data;
   }
   return `data:${mimeType};base64,${base64Data}`;
@@ -121,17 +124,19 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
 
     // Если есть референсы — используем image-to-image с первым референсом
     // Это позволяет сохранить стиль оригинального изображения
-    if (referenceImages.length > 0) {
+    if (referenceImages.length > 0 && referenceImages[0]?.data) {
       const firstRef = referenceImages[0];
       const seedImageUri = toDataUri(firstRef.data, firstRef.mimeType);
 
-      inferenceParams.seedImage = seedImageUri;
-      inferenceParams.strength = 0.75; // Баланс между оригиналом и промптом
+      if (seedImageUri) {
+        inferenceParams.seedImage = seedImageUri;
+        inferenceParams.strength = 0.75; // Баланс между оригиналом и промптом
 
-      log.info('Using reference image for Runware', {
-        mimeType: firstRef.mimeType,
-        dataLength: firstRef.data?.length
-      });
+        log.info('Using reference image for Runware', {
+          mimeType: firstRef.mimeType,
+          dataLength: firstRef.data?.length
+        });
+      }
     }
 
     // Генерируем изображения
