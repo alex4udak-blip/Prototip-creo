@@ -281,9 +281,13 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
       }
 
       try {
+        // Передаём референсы в Runware для сохранения стиля
         const runwareResult = await generateWithRunware(
           fullText, // Исходный промпт
-          { count: expectedImages },
+          {
+            count: expectedImages,
+            referenceImages: images // Передаём те же референсы что были для Gemini
+          },
           onProgress
         );
 

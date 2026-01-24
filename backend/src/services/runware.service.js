@@ -9,6 +9,25 @@ import { log } from '../utils/logger.js';
 let runwareClient = null;
 
 /**
+ * Модели Runware
+ *
+ * runware:100@1 - FLUX Schnell (быстрый, базовый) - $0.0013/1024x1024
+ * runware:101@1 - FLUX Dev (качественнее, для IPAdapter) - ~$0.02/1024x1024
+ * rundiffusion:130@100 - Juggernaut Pro FLUX (фотореализм, меньше цензуры) - $0.0066/1024x1024
+ *
+ * Для fallback используем Juggernaut Pro FLUX — лучшее качество и меньше ограничений
+ */
+const MODELS = {
+  FLUX_SCHNELL: 'runware:100@1',           // Быстрый, дешёвый
+  FLUX_DEV: 'runware:101@1',               // Для IPAdapter/Redux
+  JUGGERNAUT_PRO: 'rundiffusion:130@100',  // Фотореализм, меньше цензуры
+  JUGGERNAUT_LIGHTNING: 'rundiffusion:133@100' // Быстрый Juggernaut
+};
+
+// Используем Juggernaut Pro для лучшего качества и меньшей цензуры
+const DEFAULT_MODEL = MODELS.JUGGERNAUT_PRO;
+
+/**
  * Получить или создать Runware клиент
  */
 async function getRunwareClient() {
@@ -21,11 +40,26 @@ async function getRunwareClient() {
 }
 
 /**
- * Генерация изображений через Runware API (FLUX модели)
+ * Конвертировать base64 в data URI для Runware
+ */
+function toDataUri(base64Data, mimeType = 'image/png') {
+  // Если уже data URI — возвращаем как есть
+  if (base64Data.startsWith('data:')) {
+    return base64Data;
+  }
+  return `data:${mimeType};base64,${base64Data}`;
+}
+
+/**
+ * Генерация изображений через Runware API
  * Используется как fallback когда Gemini блокирует контент
  *
  * @param {string} prompt - Текст промпта
  * @param {Object} options - Опции генерации
+ * @param {Array} options.referenceImages - Референсы [{data: base64, mimeType}]
+ * @param {number} options.width - Ширина
+ * @param {number} options.height - Высота
+ * @param {number} options.count - Количество изображений
  * @param {Function} onProgress - Callback для прогресса
  */
 export async function generateWithRunware(prompt, options = {}, onProgress) {
@@ -34,23 +68,30 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
   }
 
   const {
+    referenceImages = [],
     width = 1024,
     height = 1024,
     count = 1
   } = options;
+
+  const model = config.runware.model || DEFAULT_MODEL;
 
   log.info('Starting Runware image generation', {
     promptLength: prompt.length,
     width,
     height,
     count,
-    model: config.runware.model
+    model,
+    hasReferences: referenceImages.length > 0,
+    referencesCount: referenceImages.length
   });
 
   if (onProgress) {
     onProgress({
       status: 'runware_starting',
-      message: 'Переключаюсь на Runware FLUX...'
+      message: referenceImages.length > 0
+        ? 'Переключаюсь на Runware с референсами...'
+        : 'Переключаюсь на Runware Juggernaut...'
     });
   }
 
@@ -60,20 +101,41 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
     if (onProgress) {
       onProgress({
         status: 'runware_generating',
-        message: `Генерирую ${count} изображени${count === 1 ? 'е' : 'я'} через FLUX...`
+        message: `Генерирую ${count} изображени${count === 1 ? 'е' : 'я'} через Juggernaut Pro...`
       });
     }
 
-    // Генерируем изображения
-    const images = await client.imageInference({
+    // Базовые параметры генерации
+    const inferenceParams = {
       positivePrompt: prompt,
-      model: config.runware.model,
+      negativePrompt: 'blurry, low quality, distorted text, watermark, signature, ugly, deformed',
+      model: model,
       width: width,
       height: height,
       numberResults: count,
       outputType: 'URL',
-      outputFormat: 'PNG'
-    });
+      outputFormat: 'PNG',
+      steps: 25,           // Оптимально для Juggernaut Pro
+      CFGScale: 3.0        // Рекомендуемое значение для Juggernaut
+    };
+
+    // Если есть референсы — используем image-to-image с первым референсом
+    // Это позволяет сохранить стиль оригинального изображения
+    if (referenceImages.length > 0) {
+      const firstRef = referenceImages[0];
+      const seedImageUri = toDataUri(firstRef.data, firstRef.mimeType);
+
+      inferenceParams.seedImage = seedImageUri;
+      inferenceParams.strength = 0.75; // Баланс между оригиналом и промптом
+
+      log.info('Using reference image for Runware', {
+        mimeType: firstRef.mimeType,
+        dataLength: firstRef.data?.length
+      });
+    }
+
+    // Генерируем изображения
+    const images = await client.imageInference(inferenceParams);
 
     log.info('Runware generation response', {
       imagesCount: images?.length || 0,
@@ -114,13 +176,14 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
 
     log.info('Runware generation complete', {
       requested: count,
-      generated: results.length
+      generated: results.length,
+      model: model
     });
 
     return {
       images: results,
       text: results.length > 0
-        ? `Сгенерировано ${results.length} изображений через Runware FLUX (Gemini заблокировал запрос).`
+        ? `Сгенерировано ${results.length} изображений через Runware Juggernaut Pro (Gemini заблокировал запрос).`
         : 'Не удалось сгенерировать изображения.',
       source: 'runware'
     };
@@ -170,7 +233,7 @@ export async function checkRunwareHealth() {
     const client = await getRunwareClient();
     return {
       available: !!client,
-      model: config.runware.model
+      model: config.runware.model || DEFAULT_MODEL
     };
   } catch (error) {
     return { available: false, reason: error.message };

@@ -28,7 +28,8 @@ export const config = {
   // Runware API (Fallback для заблокированного контента)
   runwareApiKey: process.env.RUNWARE_API_KEY,
   runware: {
-    model: process.env.RUNWARE_MODEL || 'runware:100@1', // FLUX Schnell по умолчанию
+    // Juggernaut Pro FLUX — фотореализм, меньше цензуры, $0.0066/1024x1024
+    model: process.env.RUNWARE_MODEL || 'rundiffusion:130@100',
     enabled: !!process.env.RUNWARE_API_KEY
   },
 
