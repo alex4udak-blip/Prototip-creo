@@ -12,20 +12,21 @@ let runwareClient = null;
  * Модели Runware
  *
  * runware:100@1 - FLUX Schnell (быстрый, базовый) - $0.0013/1024x1024
- * runware:101@1 - FLUX Dev (качественнее, для IPAdapter) - ~$0.02/1024x1024
- * rundiffusion:130@100 - Juggernaut Pro FLUX (фотореализм, меньше цензуры) - $0.0066/1024x1024
+ * runware:101@1 - FLUX Dev (для IPAdapter) - ~$0.02/1024x1024
+ * runware:105@1 - FLUX Redux (IPAdapter для стиля) - используется с FLUX Dev
+ * rundiffusion:130@100 - Juggernaut Pro FLUX (фотореализм) - $0.0066/1024x1024
  *
- * Для fallback используем Juggernaut Pro FLUX — лучшее качество и меньше ограничений
+ * Стратегия:
+ * - С референсами: FLUX Dev + IPAdapter Redux (как Gemini — понимает стиль концептуально)
+ * - Без референсов: Juggernaut Pro (фотореализм, меньше цензуры)
  */
 const MODELS = {
-  FLUX_SCHNELL: 'runware:100@1',           // Быстрый, дешёвый
-  FLUX_DEV: 'runware:101@1',               // Для IPAdapter/Redux
-  JUGGERNAUT_PRO: 'rundiffusion:130@100',  // Фотореализм, меньше цензуры
-  JUGGERNAUT_LIGHTNING: 'rundiffusion:133@100' // Быстрый Juggernaut
+  FLUX_SCHNELL: 'runware:100@1',
+  FLUX_DEV: 'runware:101@1',              // Базовая модель для IPAdapter
+  FLUX_REDUX: 'runware:105@1',            // IPAdapter для стилевого переноса
+  JUGGERNAUT_PRO: 'rundiffusion:130@100',
+  JUGGERNAUT_LIGHTNING: 'rundiffusion:133@100'
 };
-
-// Используем Juggernaut Pro для лучшего качества и меньшей цензуры
-const DEFAULT_MODEL = MODELS.JUGGERNAUT_PRO;
 
 /**
  * Получить или создать Runware клиент
@@ -46,7 +47,6 @@ function toDataUri(base64Data, mimeType = 'image/png') {
   if (!base64Data) {
     return null;
   }
-  // Если уже data URI — возвращаем как есть
   if (typeof base64Data === 'string' && base64Data.startsWith('data:')) {
     return base64Data;
   }
@@ -56,6 +56,10 @@ function toDataUri(base64Data, mimeType = 'image/png') {
 /**
  * Генерация изображений через Runware API
  * Используется как fallback когда Gemini блокирует контент
+ *
+ * Стратегия:
+ * - С референсами: FLUX Dev + IPAdapter (понимает стиль концептуально, как Gemini)
+ * - Без референсов: Juggernaut Pro (фотореализм, меньше цензуры)
  *
  * @param {string} prompt - Текст промпта
  * @param {Object} options - Опции генерации
@@ -77,7 +81,13 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
     count = 1
   } = options;
 
-  const model = config.runware.model || DEFAULT_MODEL;
+  const hasReferences = referenceImages.length > 0 && referenceImages[0]?.data;
+
+  // Выбираем стратегию:
+  // - С референсами: FLUX Dev + IPAdapter (стилевой перенос как у Gemini)
+  // - Без референсов: Juggernaut Pro (фотореализм, меньше цензуры)
+  const useIPAdapter = hasReferences;
+  const model = useIPAdapter ? MODELS.FLUX_DEV : (config.runware.model || MODELS.JUGGERNAUT_PRO);
 
   log.info('Starting Runware image generation', {
     promptLength: prompt.length,
@@ -85,15 +95,16 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
     height,
     count,
     model,
-    hasReferences: referenceImages.length > 0,
+    strategy: useIPAdapter ? 'IPAdapter (style transfer)' : 'Direct generation',
+    hasReferences,
     referencesCount: referenceImages.length
   });
 
   if (onProgress) {
     onProgress({
       status: 'runware_starting',
-      message: referenceImages.length > 0
-        ? 'Переключаюсь на Runware с референсами...'
+      message: useIPAdapter
+        ? 'Переключаюсь на Runware с IPAdapter (стилевой перенос)...'
         : 'Переключаюсь на Runware Juggernaut...'
     });
   }
@@ -104,39 +115,53 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
     if (onProgress) {
       onProgress({
         status: 'runware_generating',
-        message: `Генерирую ${count} изображени${count === 1 ? 'е' : 'я'} через Juggernaut Pro...`
+        message: useIPAdapter
+          ? `Генерирую ${count} изображени${count === 1 ? 'е' : 'я'} по стилю референса...`
+          : `Генерирую ${count} изображени${count === 1 ? 'е' : 'я'} через Juggernaut Pro...`
       });
     }
 
     // Базовые параметры генерации
     const inferenceParams = {
       positivePrompt: prompt,
-      negativePrompt: 'blurry, low quality, distorted text, watermark, signature, ugly, deformed',
+      negativePrompt: 'blurry, low quality, distorted text, watermark, signature, ugly, deformed, bad anatomy',
       model: model,
       width: width,
       height: height,
       numberResults: count,
       outputType: 'URL',
-      outputFormat: 'PNG',
-      steps: 25,           // Оптимально для Juggernaut Pro
-      CFGScale: 3.0        // Рекомендуемое значение для Juggernaut
+      outputFormat: 'PNG'
     };
 
-    // Если есть референсы — используем image-to-image с первым референсом
-    // Это позволяет сохранить стиль оригинального изображения
-    if (referenceImages.length > 0 && referenceImages[0]?.data) {
+    // Настройки в зависимости от стратегии
+    if (useIPAdapter) {
+      // IPAdapter стратегия — понимает стиль концептуально (как Gemini)
+      // Используем FLUX Dev + Redux IPAdapter
+      inferenceParams.steps = 28;      // Больше шагов для качества
+      inferenceParams.CFGScale = 3.5;  // Немного выше для следования промпту
+
+      // Добавляем IPAdapter с референсом
       const firstRef = referenceImages[0];
-      const seedImageUri = toDataUri(firstRef.data, firstRef.mimeType);
+      const guideImageUri = toDataUri(firstRef.data, firstRef.mimeType);
 
-      if (seedImageUri) {
-        inferenceParams.seedImage = seedImageUri;
-        inferenceParams.strength = 0.75; // Баланс между оригиналом и промптом
+      if (guideImageUri) {
+        inferenceParams.ipAdapters = [{
+          model: MODELS.FLUX_REDUX,    // FLUX Redux для стилевого переноса
+          guideImage: guideImageUri,
+          weight: 0.8                   // Сила влияния стиля (0.8 = сильное)
+        }];
 
-        log.info('Using reference image for Runware', {
+        log.info('Using IPAdapter for style transfer', {
+          ipAdapterModel: MODELS.FLUX_REDUX,
+          weight: 0.8,
           mimeType: firstRef.mimeType,
           dataLength: firstRef.data?.length
         });
       }
+    } else {
+      // Прямая генерация через Juggernaut Pro
+      inferenceParams.steps = 25;
+      inferenceParams.CFGScale = 3.0;
     }
 
     // Генерируем изображения
@@ -144,7 +169,8 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
 
     log.info('Runware generation response', {
       imagesCount: images?.length || 0,
-      firstImageUrl: images?.[0]?.imageURL?.substring(0, 50)
+      firstImageUrl: images?.[0]?.imageURL?.substring(0, 50),
+      strategy: useIPAdapter ? 'IPAdapter' : 'Direct'
     });
 
     const results = [];
@@ -182,13 +208,18 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
     log.info('Runware generation complete', {
       requested: count,
       generated: results.length,
-      model: model
+      model: model,
+      strategy: useIPAdapter ? 'IPAdapter' : 'Direct'
     });
+
+    const sourceText = useIPAdapter
+      ? 'Runware FLUX + IPAdapter (стилевой перенос)'
+      : 'Runware Juggernaut Pro';
 
     return {
       images: results,
       text: results.length > 0
-        ? `Сгенерировано ${results.length} изображений через Runware Juggernaut Pro (Gemini заблокировал запрос).`
+        ? `Сгенерировано ${results.length} изображений через ${sourceText} (Gemini заблокировал запрос).`
         : 'Не удалось сгенерировать изображения.',
       source: 'runware'
     };
@@ -238,7 +269,10 @@ export async function checkRunwareHealth() {
     const client = await getRunwareClient();
     return {
       available: !!client,
-      model: config.runware.model || DEFAULT_MODEL
+      models: {
+        withReferences: `${MODELS.FLUX_DEV} + ${MODELS.FLUX_REDUX} (IPAdapter)`,
+        withoutReferences: config.runware.model || MODELS.JUGGERNAUT_PRO
+      }
     };
   } catch (error) {
     return { available: false, reason: error.message };
