@@ -4,6 +4,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
+import { processRunwareImages, extractTextFromPrompt } from './textOverlay.service.js';
 
 // Singleton instance
 let runwareClient = null;
@@ -212,14 +213,44 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
       strategy: useIPAdapter ? 'IPAdapter' : 'Direct'
     });
 
+    // Этап 2: Наложение текста из промпта
+    // FLUX модели плохо рендерят текст, поэтому накладываем программно
+    let finalImages = results;
+    const extractedTexts = extractTextFromPrompt(prompt);
+
+    if (extractedTexts.length > 0 && results.length > 0) {
+      if (onProgress) {
+        onProgress({
+          status: 'runware_adding_text',
+          message: 'Добавляю текст на изображения...',
+          imagesCount: results.length
+        });
+      }
+
+      try {
+        finalImages = await processRunwareImages(results, prompt);
+        log.info('Text overlay applied to Runware images', {
+          textsCount: extractedTexts.length,
+          imagesProcessed: finalImages.length
+        });
+      } catch (textError) {
+        log.error('Failed to apply text overlay', { error: textError.message });
+        // Продолжаем с оригинальными изображениями
+      }
+    }
+
     const sourceText = useIPAdapter
       ? 'Runware FLUX + IPAdapter (стилевой перенос)'
       : 'Runware Juggernaut Pro';
 
+    const textNote = extractedTexts.length > 0
+      ? ' Текст добавлен программно.'
+      : '';
+
     return {
-      images: results,
-      text: results.length > 0
-        ? `Сгенерировано ${results.length} изображений через ${sourceText} (Gemini заблокировал запрос).`
+      images: finalImages,
+      text: finalImages.length > 0
+        ? `Сгенерировано ${finalImages.length} изображений через ${sourceText} (Gemini заблокировал запрос).${textNote}`
         : 'Не удалось сгенерировать изображения.',
       source: 'runware'
     };
