@@ -25,11 +25,12 @@ export const config = {
     safetyThreshold: process.env.GEMINI_SAFETY_THRESHOLD || 'BLOCK_ONLY_HIGH'
   },
 
-  // Runway API (Fallback для заблокированного контента)
-  runwayApiKey: process.env.RUNWAY_API_KEY,
-  runway: {
-    model: process.env.RUNWAY_MODEL || 'gen4_image',
-    enabled: !!process.env.RUNWAY_API_KEY
+  // Runware API (Fallback для заблокированного контента)
+  runwareApiKey: process.env.RUNWARE_API_KEY,
+  runware: {
+    // Juggernaut Pro FLUX — фотореализм, меньше цензуры, $0.0066/1024x1024
+    model: process.env.RUNWARE_MODEL || 'rundiffusion:130@100',
+    enabled: !!process.env.RUNWARE_API_KEY
   },
 
   // Storage (Railway Volume)
@@ -53,11 +54,11 @@ export const config = {
       console.warn('⚠️  GOOGLE_API_KEY not set - Gemini AI features disabled');
     }
 
-    // Проверка Runway API Key
-    if (!this.runwayApiKey) {
-      console.warn('⚠️  RUNWAY_API_KEY not set - Runway fallback disabled');
+    // Проверка Runware API Key
+    if (!this.runwareApiKey) {
+      console.warn('⚠️  RUNWARE_API_KEY not set - Runware fallback disabled');
     } else {
-      console.log('✅ Runway API fallback enabled');
+      console.log('✅ Runware API fallback enabled');
     }
   }
 };
