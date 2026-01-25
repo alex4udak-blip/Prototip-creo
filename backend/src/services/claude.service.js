@@ -4,6 +4,13 @@ import { log } from '../utils/logger.js';
 import { buildExampleBasedPrompt, getExampleForMechanic } from './landing-examples.js';
 import { buildPromptWithExamples, validateGeneratedHtml } from './examples-loader.service.js';
 import * as ratingService from './rating.service.js';
+// 2025-2026 Best Practices: v0.dev-style structured prompts
+import {
+  ANALYSIS_SYSTEM_PROMPT,
+  CODE_GENERATION_SYSTEM_PROMPT,
+  buildSystemPromptWithExamples,
+  buildCodeGenerationUserPrompt
+} from './prompts/landing-system-prompt.js';
 
 // Lazy initialization
 let anthropic = null;
@@ -330,45 +337,19 @@ export async function analyzeRequest(prompt, screenshotBase64 = null) {
     }
   ];
 
-  log.info('Claude: Analyzing request with Extended Thinking', { promptLength: prompt.length, hasScreenshot: !!screenshotBase64 });
+  log.info('Claude: Analyzing request with Extended Thinking (v0.dev-style prompts)', { promptLength: prompt.length, hasScreenshot: !!screenshotBase64 });
 
   try {
+    // Use 2025-2026 best practices: XML-structured system prompt
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      // Enable Extended Thinking for better analysis
+      // Enable Extended Thinking for better analysis (Chain-of-Thought)
       thinking: {
         type: 'enabled',
         budget_tokens: THINKING_BUDGET
       },
-      system: `${LANDING_SYSTEM_PROMPT}
-
-For this request, analyze and return a JSON object with:
-{
-  "slotName": "extracted or inferred slot/brand name",
-  "isRealSlot": true/false (if it's a known casino/slot game),
-  "mechanicType": "descriptive type - can be standard (wheel, boxes, crash, slot) OR custom description based on what user wants",
-  "mechanicDescription": "detailed description of how the game should work",
-  "prizes": ["prize1", "prize2", ...] (extract from request or generate appropriate ones),
-  "language": "detected language code (en, de, es, ru, etc.)",
-  "theme": "visual theme description (colors, mood, style)",
-  "style": "art style (cartoon, realistic, neon, dark, bright, etc.)",
-  "offerUrl": "extracted URL or null",
-  "assetsNeeded": [
-    { "type": "background|character|element|logo", "description": "detailed description of what to generate" }
-  ],
-  "soundsNeeded": ["spin", "win", "click"],
-  "confidence": 0-100
-}
-
-IMPORTANT: For mechanicType, don't limit yourself to predefined types!
-- If user asks for "wheel" or "колесо фортуны" → mechanicType: "wheel"
-- If user asks for "Chicken Road" or "crash game" → mechanicType: "crash"
-- If user asks for "Aviator style" → mechanicType: "aviator"
-- If user asks for "plinko" → mechanicType: "plinko"
-- If user describes something custom → mechanicType: brief descriptive name
-
-The mechanicDescription field should contain a clear explanation of how the game works, so code generation can implement it correctly.`,
+      system: ANALYSIS_SYSTEM_PROMPT,
       messages
     });
 
@@ -439,40 +420,38 @@ export async function generateLandingCode(spec, assets, colors) {
     log.warn('Could not load DB examples', { error: e.message });
   }
 
-  // Build examples prompt from DB examples (if available)
-  let dbExamplesPrompt = '';
-  if (dbExamples && dbExamples.length > 0) {
-    dbExamplesPrompt = `## TOP-RATED PRODUCTION EXAMPLES (Learn from these!):\n\n`;
-    for (const ex of dbExamples) {
-      dbExamplesPrompt += `### Example: ${ex.name} (Rating: ${ex.avg_rating}/5, Used ${ex.usage_count} times)\n`;
-      dbExamplesPrompt += `Features: ${JSON.stringify(ex.features)}\n`;
-      // Include code snippet (truncated for token efficiency)
-      const codeSnippet = ex.html_code?.slice(0, 5000) || '';
-      dbExamplesPrompt += `Code pattern:\n\`\`\`html\n${codeSnippet}\n...\`\`\`\n\n`;
-    }
-  }
+  // 2025-2026 Best Practice: Use structured v0.dev-style prompts with examples
+  // Build system prompt with examples using semantic similarity approach
+  let systemPrompt;
 
-  // Fallback to filesystem examples if no DB examples
-  let realExamples = null;
-  if (!dbExamples || dbExamples.length === 0) {
+  if (dbExamples && dbExamples.length > 0) {
+    // Use v0.dev-style XML-structured prompt with top-rated examples
+    systemPrompt = buildSystemPromptWithExamples(dbExamples, spec.mechanicType);
+    log.info('Claude: Using v0.dev-style prompt with DB examples', {
+      exampleCount: dbExamples.length,
+      avgRating: dbExamples.reduce((sum, e) => sum + (e.avg_rating || 5), 0) / dbExamples.length
+    });
+  } else {
+    // Try filesystem examples as fallback
     try {
-      realExamples = await buildPromptWithExamples(spec.mechanicType, 1);
+      const fsExamples = await buildPromptWithExamples(spec.mechanicType, 1);
+      if (fsExamples) {
+        // Combine v0.dev base prompt with filesystem examples
+        systemPrompt = CODE_GENERATION_SYSTEM_PROMPT + '\n\n' + fsExamples;
+        log.info('Claude: Using v0.dev-style prompt with filesystem examples');
+      } else {
+        // Pure v0.dev-style prompt without examples
+        systemPrompt = CODE_GENERATION_SYSTEM_PROMPT;
+        log.info('Claude: Using pure v0.dev-style prompt (no examples)');
+      }
     } catch (e) {
       log.warn('Could not load filesystem examples', { error: e.message });
+      systemPrompt = CODE_GENERATION_SYSTEM_PROMPT;
     }
   }
 
-  // Build system prompt - prefer DB examples > filesystem examples > hardcoded
-  let systemPrompt;
-  if (dbExamplesPrompt) {
-    systemPrompt = `You are an expert gambling landing page generator.\n\n${dbExamplesPrompt}\n\n${buildExampleBasedPrompt(spec.mechanicType)}`;
-  } else if (realExamples) {
-    systemPrompt = `You are an expert gambling landing page generator.\n\n${realExamples}\n\n${buildExampleBasedPrompt(spec.mechanicType)}`;
-  } else {
-    systemPrompt = buildExampleBasedPrompt(spec.mechanicType);
-  }
-
-  const prompt = buildCodeGenerationPrompt(spec, assets, colors);
+  // Build user prompt using structured XML format (v0.dev best practice)
+  const prompt = buildCodeGenerationUserPrompt(spec, assets, colors);
 
   log.info('Claude: Generating landing code with learning system', {
     mechanicType: spec.mechanicType,
@@ -539,38 +518,25 @@ export async function generateLandingCodeStream(spec, assets, colors, onChunk) {
     log.warn('Could not load DB examples', { error: e.message });
   }
 
-  // Build examples prompt from DB examples
-  let dbExamplesPrompt = '';
-  if (dbExamples && dbExamples.length > 0) {
-    dbExamplesPrompt = `## TOP-RATED PRODUCTION EXAMPLES:\n\n`;
-    for (const ex of dbExamples) {
-      dbExamplesPrompt += `### ${ex.name} (Rating: ${ex.avg_rating}/5)\n`;
-      const codeSnippet = ex.html_code?.slice(0, 5000) || '';
-      dbExamplesPrompt += `\`\`\`html\n${codeSnippet}\n...\`\`\`\n\n`;
-    }
-  }
+  // 2025-2026 Best Practice: Use v0.dev-style XML-structured prompts
+  let systemPrompt;
 
-  // Fallback to filesystem examples
-  let realExamples = null;
-  if (!dbExamples || dbExamples.length === 0) {
+  if (dbExamples && dbExamples.length > 0) {
+    systemPrompt = buildSystemPromptWithExamples(dbExamples, spec.mechanicType);
+  } else {
     try {
-      realExamples = await buildPromptWithExamples(spec.mechanicType, 1);
+      const fsExamples = await buildPromptWithExamples(spec.mechanicType, 1);
+      systemPrompt = fsExamples
+        ? CODE_GENERATION_SYSTEM_PROMPT + '\n\n' + fsExamples
+        : CODE_GENERATION_SYSTEM_PROMPT;
     } catch (e) {
       log.warn('Could not load filesystem examples', { error: e.message });
+      systemPrompt = CODE_GENERATION_SYSTEM_PROMPT;
     }
   }
 
-  // Build system prompt
-  let systemPrompt;
-  if (dbExamplesPrompt) {
-    systemPrompt = `You are an expert gambling landing page generator.\n\n${dbExamplesPrompt}\n\n${buildExampleBasedPrompt(spec.mechanicType)}`;
-  } else if (realExamples) {
-    systemPrompt = `You are an expert gambling landing page generator.\n\n${realExamples}\n\n${buildExampleBasedPrompt(spec.mechanicType)}`;
-  } else {
-    systemPrompt = buildExampleBasedPrompt(spec.mechanicType);
-  }
-
-  const prompt = buildCodeGenerationPrompt(spec, assets, colors);
+  // Use structured XML user prompt (v0.dev best practice)
+  const prompt = buildCodeGenerationUserPrompt(spec, assets, colors);
 
   log.info('Claude: Starting streaming with learning system', {
     mechanicType: spec.mechanicType,

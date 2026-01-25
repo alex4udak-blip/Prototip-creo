@@ -415,6 +415,67 @@ router.get('/stats/learning', auth, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/landing/v2/admin/import-examples
+ * Import curated examples from filesystem to database
+ * This bootstraps the RLHF learning system with known-good examples
+ */
+router.post('/admin/import-examples', auth, async (req, res) => {
+  try {
+    // Dynamic import to avoid loading on startup
+    const { addCuratedExample } = await import('../services/rating.service.js');
+    const fs = await import('fs/promises');
+    const path = await import('path');
+
+    const examplesDir = path.join(process.cwd(), 'docs', 'examples');
+
+    // Example metadata
+    const curatedExamples = {
+      '585_landing_archive': { type: 'wheel', name: 'Gates of Olympus Premium Wheel', language: 'pl', features: ['animated-loader', 'wheel-8-sectors', 'spin-animation', 'win-celebration', 'modal-popup', 'sound-integration'] },
+      '684_landing_archive': { type: 'boxes', name: 'Amazon Style Gift Hunt', language: 'es', features: ['box-selection', 'character-guide', 'speech-bubbles', 'progress-multiplier', '3d-effects'] },
+      '688_landing_archive': { type: 'crash', name: 'Grid Road Game', language: 'en', features: ['grid-layout', 'step-progression', 'multiplier-display', 'character-movement'] },
+      '691_landing_archive': { type: 'wheel', name: 'French Wheel with Loader', language: 'fr', features: ['animated-loader', 'progress-bar', 'wheel-spin', 'sector-highlight', 'effects-rings'] }
+    };
+
+    const results = { imported: 0, skipped: 0, failed: 0 };
+
+    for (const [dirName, metadata] of Object.entries(curatedExamples)) {
+      try {
+        const htmlPath = path.join(examplesDir, dirName, 'index.html');
+        const html = await fs.readFile(htmlPath, 'utf-8');
+
+        const result = await addCuratedExample({
+          name: metadata.name,
+          mechanicType: metadata.type,
+          language: metadata.language,
+          htmlCode: html,
+          features: metadata.features
+        });
+
+        if (result) {
+          results.imported++;
+        } else {
+          results.skipped++;
+        }
+      } catch (e) {
+        log.warn('Failed to import example', { dir: dirName, error: e.message });
+        results.failed++;
+      }
+    }
+
+    const stats = await ratingService.getLearningStats();
+
+    res.json({
+      success: true,
+      results,
+      learningStats: stats
+    });
+  } catch (error) {
+    log.error('Failed to import examples', { error: error.message });
+    res.status(500).json({ error: 'Failed to import examples' });
+  }
+});
+
 // ===========================================
 // OTHER DYNAMIC ROUTES
 // ===========================================

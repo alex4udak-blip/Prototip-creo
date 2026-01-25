@@ -11,6 +11,7 @@
     "migrate": "node src/db/migrate.js",
     "migrate:down": "node src/db/migrate.js down",
     "seed": "node src/db/seed.js",
+    "import-examples": "node src/scripts/import-curated-examples.js",
     "test": "NODE_OPTIONS='--experimental-vm-modules --no-experimental-webstorage' jest"
   },
   "dependencies": {
