@@ -6,8 +6,18 @@ import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
 import { generateWithRunware } from './runware.service.js';
 
-// Инициализация клиента
-const ai = new GoogleGenAI({ apiKey: config.googleApiKey });
+// Lazy инициализация клиента (только когда есть API key)
+let ai = null;
+
+function getAI() {
+  if (!ai && config.googleApiKey) {
+    ai = new GoogleGenAI({ apiKey: config.googleApiKey });
+  }
+  if (!ai) {
+    throw new Error('Gemini API key not configured');
+  }
+  return ai;
+}
 
 // Хранилище чат-сессий
 const chatSessions = new Map();
@@ -90,7 +100,7 @@ export function getOrCreateChat(chatId) {
       ]
     };
 
-    const chat = ai.chats.create({
+    const chat = getAI().chats.create({
       model: geminiConfig.model,
       config: chatConfig
     });
@@ -488,7 +498,7 @@ The text should look like professional casino/gambling banner typography with ri
     const geminiConfig = config.gemini;
 
     // Одиночный запрос (не чат) для генерации текста
-    const response = await ai.models.generateContent({
+    const response = await getAI().models.generateContent({
       model: geminiConfig.model,
       contents: [{ role: 'user', parts: [{ text: textPrompt }] }],
       config: {

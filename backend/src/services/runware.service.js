@@ -378,24 +378,23 @@ async function downloadAndSaveImage(imageUrl) {
 
 /**
  * Проверка доступности Runware API
+ * НЕ подключается реально — только проверяет конфигурацию
  */
 export async function checkRunwareHealth() {
   if (!config.runwareApiKey) {
     return { available: false, reason: 'API key not configured' };
   }
 
-  try {
-    const client = await getRunwareClient();
-    return {
-      available: !!client,
-      models: {
-        withReferences: `${MODELS.FLUX_DEV} + ${MODELS.FLUX_REDUX} (IPAdapter)`,
-        withoutReferences: config.runware.model || MODELS.JUGGERNAUT_PRO
-      }
-    };
-  } catch (error) {
-    return { available: false, reason: error.message };
-  }
+  // Возвращаем информацию о конфигурации без реального подключения
+  // Реальное подключение происходит только при генерации
+  return {
+    available: true,
+    configured: true,
+    models: {
+      withReferences: `${MODELS.FLUX_DEV} + ${MODELS.FLUX_REDUX} (IPAdapter)`,
+      withoutReferences: config.runware.model || MODELS.JUGGERNAUT_PRO
+    }
+  };
 }
 
 export default {

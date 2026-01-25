@@ -13,6 +13,7 @@ import { log } from './utils/logger.js';
 import authRoutes from './routes/auth.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import generateRoutes from './routes/generate.routes.js';
+import landingRoutes from './routes/landing.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -85,6 +86,9 @@ app.use('/api/chats', chatRoutes);
 
 // Generate routes
 app.use('/api/generate', generateRoutes);
+
+// Landing routes
+app.use('/api/landing', landingRoutes);
 
 // ===========================================
 // Static Frontend (Production)
