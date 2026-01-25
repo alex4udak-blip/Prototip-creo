@@ -9,7 +9,7 @@
  * 5. System continuously improves based on human feedback
  */
 
-import db from '../db/index.js';
+import { db } from '../db/connection.js';
 import { log } from '../utils/logger.js';
 
 /**

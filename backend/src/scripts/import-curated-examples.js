@@ -192,7 +192,7 @@ async function importExamples() {
   console.log('🚀 Starting Curated Examples Import...\n');
 
   // Dynamic import for ES modules compatibility
-  const { default: db } = await import('../db/index.js');
+  const { pool } = await import('../db/connection.js');
   const { addCuratedExample, getLearningStats } = await import('../services/rating.service.js');
 
   const examplesDir = path.join(PROJECT_ROOT, 'docs', 'examples');
@@ -296,7 +296,7 @@ async function importExamples() {
   console.log('\n✨ Import complete! First generation will now use high-quality examples.\n');
 
   // Close database connection
-  await db.end();
+  await pool.end();
   process.exit(0);
 }
 
