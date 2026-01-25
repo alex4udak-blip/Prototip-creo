@@ -382,7 +382,7 @@ export async function generateLanding(session, request) {
       message: 'Убираю фоны с элементов...'
     });
 
-    await processTransparentAssets(session.assets);
+    await processTransparentAssets(session.assets, session);
 
     // ============================================
     // STEP 6: Generate HTML/CSS/JS with Claude (STREAMING)
@@ -394,21 +394,23 @@ export async function generateLanding(session, request) {
 
     // Stream HTML chunks to frontend for real-time preview (like Deepseek Artifacts)
     let chunkCount = 0;
+    let htmlLength = 0;
     const html = await claudeService.generateLandingCodeStream(
       analysis,
       session.assets,
       palette,
       (chunk) => {
         chunkCount++;
+        htmlLength += chunk.length;
         // Send HTML chunk via WebSocket for real-time preview
         sendHtmlChunk(session.userId, session.id, chunk, false);
 
-        // Update progress based on content generation
-        const currentProgress = 70 + Math.min(15, chunkCount * 0.5);
-        if (chunkCount % 20 === 0) {
+        // Update progress more frequently (every 5 chunks) for better UX
+        const currentProgress = 70 + Math.min(14, chunkCount * 0.3);
+        if (chunkCount % 5 === 0) {
           session.setState(STATES.GENERATING_CODE, {
             progress: Math.floor(currentProgress),
-            message: `Генерирую HTML... (${chunkCount} чанков)`
+            message: `Стриминг HTML... ${Math.round(htmlLength / 1024)}KB`
           });
         }
       }
@@ -523,6 +525,12 @@ async function generateAssets(session, analysis, palette) {
           height: asset.height
         };
 
+        // Update with completion of this asset
+        session.setState(STATES.GENERATING_ASSETS, {
+          progress,
+          message: `✓ ${asset.name} готов (${assetIndex}/${totalAssets})`
+        });
+
         log.info('Asset generated', {
           key: asset.key,
           path: result.images[0].path
@@ -611,30 +619,40 @@ Colors: primary ${palette.primary}, secondary ${palette.secondary}`;
 /**
  * Process assets that need transparent backgrounds
  */
-async function processTransparentAssets(assets) {
-  for (const [key, asset] of Object.entries(assets)) {
-    if (asset.needsTransparency && asset.path) {
-      try {
-        log.info('Removing background from asset', { key });
+async function processTransparentAssets(assets, session) {
+  const assetsNeedingTransparency = Object.entries(assets).filter(([, asset]) => asset.needsTransparency && asset.path);
+  const totalToProcess = assetsNeedingTransparency.length;
+  let processed = 0;
 
-        // Read the image file
-        const fs = await import('fs/promises');
-        const imageBuffer = await fs.readFile(asset.path);
+  for (const [key, asset] of assetsNeedingTransparency) {
+    try {
+      processed++;
+      const progress = 60 + Math.floor((processed / totalToProcess) * 8);
 
-        // Remove background using Runware
-        const transparentBuffer = await removeBackground(imageBuffer);
+      session.setState(STATES.REMOVING_BACKGROUNDS, {
+        progress,
+        message: `Убираю фон: ${key} (${processed}/${totalToProcess})`
+      });
 
-        // Save the processed image
-        await fs.writeFile(asset.path, transparentBuffer);
+      log.info('Removing background from asset', { key });
 
-        log.info('Background removed successfully', { key });
-      } catch (error) {
-        log.warn('Background removal failed', {
-          key,
-          error: error.message
-        });
-        // Keep the original asset
-      }
+      // Read the image file
+      const fs = await import('fs/promises');
+      const imageBuffer = await fs.readFile(asset.path);
+
+      // Remove background using Runware
+      const transparentBuffer = await removeBackground(imageBuffer);
+
+      // Save the processed image
+      await fs.writeFile(asset.path, transparentBuffer);
+
+      log.info('Background removed successfully', { key });
+    } catch (error) {
+      log.warn('Background removal failed', {
+        key,
+        error: error.message
+      });
+      // Keep the original asset
     }
   }
 }

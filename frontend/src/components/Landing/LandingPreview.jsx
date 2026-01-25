@@ -18,7 +18,8 @@ export function LandingPreview() {
   const iframeHeight = viewMode === 'mobile' ? 844 : '100%';
 
   // Content to display: streaming HTML during generation, or final HTML when complete
-  const displayHtml = streamingHtml || previewHtml;
+  // Use streamingHtml if it has content (even during streaming), otherwise use previewHtml
+  const displayHtml = (streamingHtml && streamingHtml.length > 0) ? streamingHtml : previewHtml;
 
   // Update iframe content (real-time streaming like Deepseek Artifacts)
   useEffect(() => {
@@ -34,14 +35,43 @@ export function LandingPreview() {
     }
   }, [displayHtml]);
 
-  const handleDownload = () => {
-    if (zipUrl) {
-      window.open(zipUrl, '_blank');
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (!zipUrl || isDownloading) return;
+
+    setIsDownloading(true);
+    try {
+      const token = localStorage.getItem('mstcreo_token');
+      const response = await fetch(zipUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `landing-${Date.now()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Download failed:', error);
+    } finally {
+      setIsDownloading(false);
     }
   };
 
   const handleOpenInNewTab = useCallback(() => {
-    const htmlToOpen = previewHtml || streamingHtml;
+    // Use displayHtml for consistency
+    const htmlToOpen = displayHtml;
     if (htmlToOpen) {
       // Clean up previous blob URL
       if (blobUrlRef.current) {
@@ -59,7 +89,7 @@ export function LandingPreview() {
         }
       }, 5000);
     }
-  }, [previewHtml, streamingHtml]);
+  }, [displayHtml]);
 
   // Cleanup blob URL on unmount
   useEffect(() => {
@@ -71,9 +101,9 @@ export function LandingPreview() {
   }, []);
 
   const handleCopyHtml = async () => {
-    const htmlToCopy = previewHtml || streamingHtml;
-    if (htmlToCopy) {
-      await navigator.clipboard.writeText(htmlToCopy);
+    // Use displayHtml for consistency - it already has the right priority
+    if (displayHtml) {
+      await navigator.clipboard.writeText(displayHtml);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -99,13 +129,19 @@ export function LandingPreview() {
         <div className="text-center text-[var(--text-muted)] max-w-sm px-4">
           <div className="w-16 h-16 rounded-2xl bg-[var(--bg-secondary)]
             flex items-center justify-center mx-auto mb-4">
-            <Monitor className="w-8 h-8 opacity-40" />
+            {generationState === 'generating' ? (
+              <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)]" />
+            ) : (
+              <Monitor className="w-8 h-8 opacity-40" />
+            )}
           </div>
           <p className="text-lg font-serif font-medium text-[var(--text-secondary)] mb-2">
-            Предпросмотр лендинга
+            {generationState === 'generating' ? 'Генерация лендинга...' : 'Предпросмотр лендинга'}
           </p>
           <p className="text-sm font-sans opacity-60">
-            Здесь появится готовый лендинг после генерации
+            {generationState === 'generating'
+              ? 'Ожидаем HTML-код от Claude...'
+              : 'Здесь появится готовый лендинг после генерации'}
           </p>
         </div>
       </div>
@@ -199,12 +235,20 @@ export function LandingPreview() {
           {zipUrl && (
             <button
               onClick={handleDownload}
-              className="flex items-center gap-2 px-3 py-1.5 ml-2
-                bg-[var(--accent)] text-white rounded-xl
-                hover:bg-[var(--accent-hover)] transition-colors font-sans text-sm font-medium"
+              disabled={isDownloading}
+              className={`flex items-center gap-2 px-3 py-1.5 ml-2
+                rounded-xl transition-colors font-sans text-sm font-medium ${
+                  isDownloading
+                    ? 'bg-[var(--bg-hover)] text-[var(--text-muted)] cursor-wait'
+                    : 'bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]'
+                }`}
             >
-              <Download className="w-4 h-4" />
-              <span>ZIP</span>
+              {isDownloading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              <span>{isDownloading ? 'Загрузка...' : 'ZIP'}</span>
             </button>
           )}
         </div>
