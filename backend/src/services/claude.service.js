@@ -457,7 +457,6 @@ export async function generateLandingCode(spec, assets, colors) {
     mechanicType: spec.mechanicType,
     slotName: spec.slotName,
     hasDbExamples: !!(dbExamples && dbExamples.length > 0),
-    hasFilesystemExamples: !!realExamples,
     examplesUsed
   });
 
@@ -540,8 +539,7 @@ export async function generateLandingCodeStream(spec, assets, colors, onChunk) {
 
   log.info('Claude: Starting streaming with learning system', {
     mechanicType: spec.mechanicType,
-    hasDbExamples: !!(dbExamples && dbExamples.length > 0),
-    hasFilesystemExamples: !!realExamples
+    hasDbExamples: !!(dbExamples && dbExamples.length > 0)
   });
 
   let html = '';

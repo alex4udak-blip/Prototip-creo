@@ -413,23 +413,30 @@ export async function generateLanding(session, request) {
     });
 
     try {
-      const soundKeywords = getSoundKeywords(analysis.mechanicType, analysis.theme);
-      log.info('Searching sounds with keywords', { soundKeywords });
+      // Use analysis.soundsNeeded if Claude suggested specific sounds
+      const soundTheme = analysis.soundsNeeded?.includes('epic') ? 'epic'
+        : analysis.soundsNeeded?.includes('cartoon') ? 'cartoon'
+        : analysis.theme?.includes('neon') ? 'neon'
+        : 'classic';
 
-      const sounds = await pixabayService.findGameSounds(soundKeywords);
+      log.info('Searching sounds', { theme: soundTheme, requested: analysis.soundsNeeded });
+
+      // Use new function that downloads and saves sounds (not just metadata!)
+      const soundsOutputDir = `${config.storagePath}/sounds_${session.id}`;
+      const sounds = await pixabayService.getGameSoundsWithFallback(soundTheme, soundsOutputDir);
 
       if (sounds && Object.keys(sounds).length > 0) {
         session.sounds = sounds;
-        log.info('Sounds fetched from Pixabay', {
+        log.info('Sounds ready', {
           count: Object.keys(sounds).length,
-          types: Object.keys(sounds)
+          paths: Object.values(sounds)
         });
         session.setState(STATES.GENERATING_ASSETS, {
           progress: 58,
-          message: `Найдено ${Object.keys(sounds).length} звуков`
+          message: `Звуки готовы: ${Object.keys(sounds).join(', ')}`
         });
       } else {
-        log.info('Using default sounds (Pixabay returned empty)');
+        log.info('Using default sounds (no sounds found)');
       }
     } catch (soundError) {
       log.warn('Sound search failed, using defaults', { error: soundError.message });

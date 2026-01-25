@@ -127,23 +127,114 @@ export async function downloadSound(soundUrl) {
 }
 
 /**
- * Получить fallback звуки (локальные)
+ * Получить fallback звуки (локальные) - АБСОЛЮТНЫЕ пути
  * @returns {Object} пути к локальным звукам
  */
 export function getFallbackSounds() {
-  const basePath = 'assets/sounds';
+  const path = await import('path');
+  const basePath = path.join(process.cwd(), 'assets', 'sounds');
   return {
-    spin: `${basePath}/spin.mp3`,
-    win: `${basePath}/win.mp3`,
-    click: `${basePath}/click.mp3`,
-    coins: `${basePath}/coins.mp3`,
-    ambient: null // опционально
+    spin: path.join(basePath, 'spin.mp3'),
+    win: path.join(basePath, 'win.mp3'),
+    click: null, // опционально
+    coins: null,
+    ambient: null
   };
+}
+
+/**
+ * Скачать и сохранить звуки на диск
+ * @param {Object} soundsMetadata - результат findGameSounds
+ * @param {string} outputDir - папка для сохранения
+ * @returns {Promise<Object>} пути к скачанным файлам
+ */
+export async function downloadAndSaveSounds(soundsMetadata, outputDir) {
+  const fs = await import('fs/promises');
+  const path = await import('path');
+
+  // Создаём папку если нет
+  await fs.mkdir(outputDir, { recursive: true });
+
+  const savedPaths = {};
+
+  for (const [key, sound] of Object.entries(soundsMetadata || {})) {
+    if (!sound || !sound.url) {
+      // Используем fallback звук если есть
+      const fallbackPath = path.join(process.cwd(), 'assets', 'sounds', `${key}.mp3`);
+      try {
+        await fs.access(fallbackPath);
+        savedPaths[key] = fallbackPath;
+        console.log(`[Pixabay] Using fallback for ${key}: ${fallbackPath}`);
+      } catch {
+        console.log(`[Pixabay] No sound for ${key}`);
+      }
+      continue;
+    }
+
+    try {
+      const buffer = await downloadSound(sound.url);
+      const filename = `${key}.mp3`;
+      const filePath = path.join(outputDir, filename);
+      await fs.writeFile(filePath, buffer);
+      savedPaths[key] = filePath;
+      console.log(`[Pixabay] Downloaded ${key} to ${filePath}`);
+    } catch (error) {
+      console.error(`[Pixabay] Failed to download ${key}:`, error.message);
+      // Try fallback
+      const fallbackPath = path.join(process.cwd(), 'assets', 'sounds', `${key}.mp3`);
+      try {
+        await fs.access(fallbackPath);
+        savedPaths[key] = fallbackPath;
+      } catch {
+        // No fallback available
+      }
+    }
+  }
+
+  return savedPaths;
+}
+
+/**
+ * Получить звуки с fallback на локальные
+ * @param {string} theme - тема
+ * @param {string} outputDir - папка для сохранения (если скачиваем)
+ * @returns {Promise<Object>} пути к звукам
+ */
+export async function getGameSoundsWithFallback(theme, outputDir) {
+  const path = await import('path');
+  const fs = await import('fs/promises');
+
+  // Сначала пробуем найти в Pixabay
+  const pixabaySounds = await findGameSounds(theme);
+  const hasPixabay = Object.values(pixabaySounds).some(s => s && s.url);
+
+  if (hasPixabay && outputDir) {
+    // Скачиваем если есть результаты
+    return await downloadAndSaveSounds(pixabaySounds, outputDir);
+  }
+
+  // Fallback на локальные звуки
+  const basePath = path.join(process.cwd(), 'assets', 'sounds');
+  const fallbackSounds = {};
+
+  for (const key of ['spin', 'win']) {
+    const filePath = path.join(basePath, `${key}.mp3`);
+    try {
+      await fs.access(filePath);
+      fallbackSounds[key] = filePath;
+    } catch {
+      // File not found
+    }
+  }
+
+  return fallbackSounds;
 }
 
 export default {
   searchSounds,
   findGameSounds,
   downloadSound,
-  getFallbackSounds
+  getFallbackSounds,
+  downloadAndSaveSounds,
+  getGameSoundsWithFallback
 };

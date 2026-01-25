@@ -525,11 +525,17 @@ Match or exceed the quality of these examples. Use the SAME patterns for:
  * Structured for optimal Claude understanding
  */
 export function buildCodeGenerationUserPrompt(spec, assets, colors) {
-  // Format asset paths
+  // Format asset paths with full metadata
   const assetsList = Object.entries(assets || {})
     .map(([key, asset]) => {
-      const path = typeof asset === 'string' ? asset : (asset.url || asset.path || `assets/${key}.png`);
-      return `  <asset name="${key}" path="${path}" />`;
+      if (typeof asset === 'string') {
+        return `  <asset name="${key}" path="${asset}" />`;
+      }
+      const path = asset.url || asset.path || `assets/${key}.png`;
+      const width = asset.width || 1024;
+      const height = asset.height || 1024;
+      const transparent = asset.needsTransparency ? 'true' : 'false';
+      return `  <asset name="${key}" path="${path}" width="${width}" height="${height}" transparent="${transparent}" />`;
     })
     .join('\n');
 

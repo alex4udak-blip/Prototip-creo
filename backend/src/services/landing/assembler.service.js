@@ -11,13 +11,16 @@ import { log } from '../../utils/logger.js';
  */
 
 /**
- * Default sound files (bundled with backend)
+ * Get default sound files with absolute paths
+ * @returns {Object} Default sound paths
  */
-const DEFAULT_SOUNDS = {
-  spin: 'sounds/spin.mp3',
-  win: 'sounds/win.mp3',
-  click: 'sounds/click.mp3'
-};
+function getDefaultSounds() {
+  const soundsBase = path.join(process.cwd(), 'assets', 'sounds');
+  return {
+    spin: path.join(soundsBase, 'spin.mp3'),
+    win: path.join(soundsBase, 'win.mp3')
+  };
+}
 
 /**
  * Validate and sanitize path to prevent path traversal attacks
@@ -147,13 +150,17 @@ export async function assembleLanding(params) {
 
   // Copy sounds (use defaults if not provided)
   const soundPaths = {};
-  const soundsToUse = sounds && Object.keys(sounds).length > 0 ? sounds : DEFAULT_SOUNDS;
+  const defaultSounds = getDefaultSounds();
+  const soundsToUse = sounds && Object.keys(sounds).length > 0 ? sounds : defaultSounds;
 
   for (const [key, soundPath] of Object.entries(soundsToUse)) {
+    if (!soundPath) continue;
+
     try {
+      // soundPath is now always absolute (from pixabay or getDefaultSounds)
       const sourcePath = path.isAbsolute(soundPath)
         ? soundPath
-        : path.join(process.cwd(), 'assets', soundPath);
+        : path.join(process.cwd(), 'assets', 'sounds', soundPath);
 
       // Check if source exists
       try {
@@ -162,10 +169,24 @@ export async function assembleLanding(params) {
         const destPath = path.join(soundsDir, fileName);
         await fs.copyFile(sourcePath, destPath);
         soundPaths[key] = `sounds/${fileName}`;
-        log.info('Sound copied', { key, destPath });
+        log.info('Sound copied', { key, from: sourcePath, to: destPath });
       } catch {
-        // If default sound doesn't exist, skip
-        log.debug('Sound not found, skipping', { key, sourcePath });
+        // Try fallback from default sounds
+        const fallback = defaultSounds[key];
+        if (fallback && fallback !== soundPath) {
+          try {
+            await fs.access(fallback);
+            const fileName = `${key}.mp3`;
+            const destPath = path.join(soundsDir, fileName);
+            await fs.copyFile(fallback, destPath);
+            soundPaths[key] = `sounds/${fileName}`;
+            log.info('Sound copied from fallback', { key, from: fallback });
+          } catch {
+            log.debug('Sound not found, skipping', { key });
+          }
+        } else {
+          log.debug('Sound not found, skipping', { key, sourcePath });
+        }
       }
     } catch (error) {
       log.warn('Failed to copy sound', { key, error: error.message });
@@ -175,16 +196,28 @@ export async function assembleLanding(params) {
   // Process HTML - replace asset placeholders
   let processedHtml = html;
   for (const [key, assetPath] of Object.entries(assetPaths)) {
-    // Replace various placeholder formats
+    // Replace various placeholder formats for asset paths
+    // 1. Simple: assets/background.png
     processedHtml = processedHtml
       .replace(new RegExp(`assets/${key}\\.png`, 'g'), assetPath)
       .replace(new RegExp(`assets/${key}\\.webp`, 'g'), assetPath)
+      .replace(new RegExp(`assets/${key}\\.jpg`, 'g'), assetPath);
+
+    // 2. Template variables: {{background}} or ${assets.background}
+    processedHtml = processedHtml
       .replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), assetPath)
       .replace(new RegExp(`\\$\\{assets\\.${key}\\}`, 'g'), assetPath);
+
+    // 3. Case-insensitive partial matches for camelCase/PascalCase
+    // e.g., wheelFrame.png, boxClosed.png
+    const keyLower = key.toLowerCase();
+    processedHtml = processedHtml
+      .replace(new RegExp(`assets/[^"']*${keyLower}[^"']*\\.(png|webp|jpg)`, 'gi'), assetPath);
   }
 
-  // Add sound paths to CONFIG if present in HTML
-  if (processedHtml.includes('CONFIG')) {
+  // Replace sound paths in HTML
+  // 1. Replace in CONFIG.sounds object if present
+  if (processedHtml.includes('CONFIG') && Object.keys(soundPaths).length > 0) {
     const soundConfig = Object.entries(soundPaths)
       .map(([key, p]) => `${key}: '${p}'`)
       .join(',\n    ');
@@ -194,6 +227,20 @@ export async function assembleLanding(params) {
         /sounds:\s*\{[^}]*\}/,
         `sounds: {\n    ${soundConfig}\n  }`
       );
+    }
+  }
+
+  // 2. Replace new Audio() paths directly
+  for (const [key, soundPath] of Object.entries(soundPaths)) {
+    // Match patterns like: new Audio('assets/sounds/spin.mp3') or new Audio('sounds/spin.mp3')
+    const patterns = [
+      new RegExp(`new Audio\\(['"]assets/sounds/${key}\\.mp3['"]\\)`, 'g'),
+      new RegExp(`new Audio\\(['"]sounds/${key}\\.mp3['"]\\)`, 'g'),
+      new RegExp(`new Audio\\(['"]assets/[^'"]*${key}[^'"]*\\.mp3['"]\\)`, 'g')
+    ];
+
+    for (const pattern of patterns) {
+      processedHtml = processedHtml.replace(pattern, `new Audio('${soundPath}')`);
     }
   }
 
