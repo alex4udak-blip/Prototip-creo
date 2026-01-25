@@ -13,7 +13,7 @@ export function ChatPage() {
   const navigate = useNavigate();
   const { checkAuth } = useAuthStore();
   const { loadChats, initWebSocket, disconnectWebSocket } = useChatStore();
-  const { reset: resetLanding, loadMechanics, cleanup: cleanupLanding, generationState } = useLandingStore();
+  const { reset: resetLanding, loadMechanics, cleanup: cleanupLanding, generationState, restoreSession } = useLandingStore();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,6 +38,9 @@ export function ChatPage() {
 
       // Подключаем WebSocket
       initWebSocket();
+
+      // Восстанавливаем сессию лендинга если была
+      restoreSession();
 
       setIsLoading(false);
     };

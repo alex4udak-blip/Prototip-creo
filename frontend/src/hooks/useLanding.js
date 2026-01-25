@@ -1,43 +1,52 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { apiClient, API_BASE_URL } from '../services/api';
+
+/**
+ * Storage key for landing state
+ */
+const STORAGE_KEY = 'mstcreo_landing_state';
 
 /**
  * Landing Generator Store
  * Manages state for landing page generation
+ * Persists key data to localStorage for page refresh resilience
  */
-export const useLandingStore = create((set, get) => ({
-  // Current generation session
-  currentLandingId: null,
-  generationState: 'idle', // idle, generating, complete, error
-  progress: 0,
-  progressMessage: '',
-  error: null,
+export const useLandingStore = create(
+  persist(
+    (set, get) => ({
+      // Current generation session
+      currentLandingId: null,
+      generationState: 'idle', // idle, generating, complete, error
+      progress: 0,
+      progressMessage: '',
+      error: null,
 
-  // Current prompt (what user sent)
-  currentPrompt: null,
+      // Current prompt (what user sent)
+      currentPrompt: null,
 
-  // Claude's thinking log
-  thinkingLog: [],
+      // Claude's thinking log
+      thinkingLog: [],
 
-  // Analysis results
-  analysis: null,
-  palette: null,
+      // Analysis results
+      analysis: null,
+      palette: null,
 
-  // Generated content
-  previewHtml: null,
-  streamingHtml: '', // Real-time HTML chunks (like Deepseek Artifacts)
-  isStreaming: false,
-  zipUrl: null,
+      // Generated content
+      previewHtml: null,
+      streamingHtml: '', // Real-time HTML chunks (like Deepseek Artifacts)
+      isStreaming: false,
+      zipUrl: null,
 
-  // History
-  landings: [],
-  isLoadingHistory: false,
+      // History
+      landings: [],
+      isLoadingHistory: false,
 
-  // Mechanics list
-  mechanics: [],
+      // Mechanics list
+      mechanics: [],
 
-  // WebSocket connection
-  ws: null,
+      // WebSocket connection (not persisted)
+      ws: null,
 
   /**
    * Start landing generation
@@ -333,7 +342,57 @@ export const useLandingStore = create((set, get) => ({
     if (ws) {
       ws.close();
     }
+  },
+
+  /**
+   * Restore session after page refresh
+   * Called on app initialization to reconnect to active generation
+   */
+  restoreSession: () => {
+    const { currentLandingId, generationState } = get();
+
+    // If there was an active generation, try to reconnect
+    if (currentLandingId && generationState === 'generating') {
+      console.log('Restoring landing session:', currentLandingId);
+
+      // Add log entry about restoration
+      set(state => ({
+        thinkingLog: [
+          ...state.thinkingLog,
+          { time: new Date(), message: '🔄 Восстановление сессии после обновления страницы...' }
+        ]
+      }));
+
+      // Reconnect WebSocket
+      get().subscribeToLanding(currentLandingId);
+
+      // Also poll status as fallback
+      get().pollLandingStatus(currentLandingId);
+    } else if (currentLandingId && generationState === 'complete') {
+      // Reload the completed landing data
+      get().loadLanding(currentLandingId);
+    }
   }
-}));
+}),
+    {
+      name: STORAGE_KEY,
+      // Only persist these fields (exclude ws, isStreaming, etc.)
+      partialize: (state) => ({
+        currentLandingId: state.currentLandingId,
+        generationState: state.generationState,
+        progress: state.progress,
+        progressMessage: state.progressMessage,
+        currentPrompt: state.currentPrompt,
+        thinkingLog: state.thinkingLog,
+        analysis: state.analysis,
+        palette: state.palette,
+        previewHtml: state.previewHtml,
+        streamingHtml: state.streamingHtml,
+        zipUrl: state.zipUrl,
+        error: state.error
+      })
+    }
+  )
+);
 
 export default useLandingStore;
