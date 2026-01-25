@@ -13,6 +13,12 @@ export const useLandingStore = create((set, get) => ({
   progressMessage: '',
   error: null,
 
+  // Current prompt (what user sent)
+  currentPrompt: null,
+
+  // Claude's thinking log
+  thinkingLog: [],
+
   // Analysis results
   analysis: null,
   palette: null,
@@ -43,7 +49,9 @@ export const useLandingStore = create((set, get) => ({
       progressMessage: 'Запускаю генерацию...',
       error: null,
       previewHtml: null,
-      zipUrl: null
+      zipUrl: null,
+      currentPrompt: prompt,
+      thinkingLog: [{ time: new Date(), message: `Отправляю запрос: "${prompt.slice(0, 100)}${prompt.length > 100 ? '...' : ''}"` }]
     });
 
     try {
@@ -96,11 +104,17 @@ export const useLandingStore = create((set, get) => ({
         const data = JSON.parse(event.data);
 
         if (data.type === 'landing_update' && data.landingId === landingId) {
+          const currentLog = get().thinkingLog;
+          const newLogEntry = data.message ? { time: new Date(), message: data.message } : null;
+
           set({
             progress: data.progress || get().progress,
             progressMessage: data.message || get().progressMessage,
             generationState: data.state === 'complete' ? 'complete' :
-                            data.state === 'error' ? 'error' : 'generating'
+                            data.state === 'error' ? 'error' : 'generating',
+            thinkingLog: newLogEntry ? [...currentLog, newLogEntry] : currentLog,
+            // Save analysis if provided
+            analysis: data.analysis || get().analysis
           });
 
           if (data.state === 'complete') {
@@ -109,7 +123,10 @@ export const useLandingStore = create((set, get) => ({
           }
 
           if (data.state === 'error') {
-            set({ error: data.error || 'Generation failed' });
+            set({
+              error: data.error || 'Generation failed',
+              thinkingLog: [...get().thinkingLog, { time: new Date(), message: `❌ Ошибка: ${data.error}` }]
+            });
           }
         }
       } catch {
@@ -270,6 +287,8 @@ export const useLandingStore = create((set, get) => ({
       progress: 0,
       progressMessage: '',
       error: null,
+      currentPrompt: null,
+      thinkingLog: [],
       analysis: null,
       palette: null,
       previewHtml: null,

@@ -94,7 +94,9 @@ class LandingSession {
       state: this.state,
       progress: this.progress,
       message: data.message || this.getStateMessage(),
-      timestamp: this.updatedAt.toISOString()
+      timestamp: this.updatedAt.toISOString(),
+      // Include analysis if available
+      analysis: this.analysis || null
     };
 
     // Notify all listeners
@@ -214,11 +216,20 @@ export async function generateLanding(session, request) {
       mechanicType: analysis.mechanicType
     });
 
+    // Send analysis update to frontend
+    session.setState(STATES.ANALYZING, {
+      progress: 10,
+      message: `Анализ завершён: ${analysis.slotName || 'Custom'} → ${analysis.mechanicType}`
+    });
+
     // ============================================
     // STEP 2: Fetch reference image if real slot
     // ============================================
     if (analysis.isRealSlot && analysis.slotName) {
-      session.setState(STATES.FETCHING_REFERENCE, { progress: 15 });
+      session.setState(STATES.FETCHING_REFERENCE, {
+        progress: 15,
+        message: `Ищу референс для ${analysis.slotName}...`
+      });
 
       try {
         const refImage = await serperService.getSlotReferenceImage(analysis.slotName);
@@ -229,9 +240,18 @@ export async function generateLanding(session, request) {
           source: refImage.source,
           provider: refImage.provider
         });
+
+        session.setState(STATES.FETCHING_REFERENCE, {
+          progress: 20,
+          message: `Референс найден: ${refImage.provider || 'unknown'}`
+        });
       } catch (e) {
         log.warn('Failed to fetch reference image, continuing without', {
           error: e.message
+        });
+        session.setState(STATES.FETCHING_REFERENCE, {
+          progress: 20,
+          message: 'Референс не найден, использую дефолты'
         });
       }
     }
@@ -239,7 +259,10 @@ export async function generateLanding(session, request) {
     // ============================================
     // STEP 3: Extract color palette
     // ============================================
-    session.setState(STATES.EXTRACTING_PALETTE, { progress: 25 });
+    session.setState(STATES.EXTRACTING_PALETTE, {
+      progress: 25,
+      message: 'Извлекаю цветовую палитру...'
+    });
 
     let palette = {
       primary: '#FFD700',
@@ -252,6 +275,10 @@ export async function generateLanding(session, request) {
       try {
         palette = await extractPalette(session.referenceImage.buffer);
         log.info('Palette extracted', { palette });
+        session.setState(STATES.EXTRACTING_PALETTE, {
+          progress: 30,
+          message: `Палитра: ${palette.primary}, ${palette.accent}`
+        });
       } catch (e) {
         log.warn('Palette extraction failed, using defaults', { error: e.message });
       }
@@ -262,22 +289,36 @@ export async function generateLanding(session, request) {
     // ============================================
     // STEP 4: Generate assets with Gemini
     // ============================================
-    session.setState(STATES.GENERATING_ASSETS, { progress: 35 });
+    session.setState(STATES.GENERATING_ASSETS, {
+      progress: 35,
+      message: 'Генерирую графику с помощью Gemini...'
+    });
 
     const assets = await generateAssets(session, analysis, palette);
     session.assets = assets;
 
+    session.setState(STATES.GENERATING_ASSETS, {
+      progress: 55,
+      message: `Сгенерировано ${Object.keys(assets).length} ассетов`
+    });
+
     // ============================================
     // STEP 5: Remove backgrounds from transparent assets
     // ============================================
-    session.setState(STATES.REMOVING_BACKGROUNDS, { progress: 55 });
+    session.setState(STATES.REMOVING_BACKGROUNDS, {
+      progress: 60,
+      message: 'Убираю фоны с элементов...'
+    });
 
     await processTransparentAssets(session.assets);
 
     // ============================================
     // STEP 6: Generate HTML/CSS/JS with Claude
     // ============================================
-    session.setState(STATES.GENERATING_CODE, { progress: 70 });
+    session.setState(STATES.GENERATING_CODE, {
+      progress: 70,
+      message: 'Claude генерирует код лендинга...'
+    });
 
     const html = await claudeService.generateLandingCode(
       analysis,
@@ -286,10 +327,18 @@ export async function generateLanding(session, request) {
     );
     session.html = html;
 
+    session.setState(STATES.GENERATING_CODE, {
+      progress: 85,
+      message: `HTML готов (${Math.round(html.length / 1024)}KB)`
+    });
+
     // ============================================
     // STEP 7: Assemble ZIP
     // ============================================
-    session.setState(STATES.ASSEMBLING, { progress: 90 });
+    session.setState(STATES.ASSEMBLING, {
+      progress: 90,
+      message: 'Собираю ZIP архив...'
+    });
 
     const result = await assembleLanding({
       landingId: session.id,
@@ -308,7 +357,7 @@ export async function generateLanding(session, request) {
     // ============================================
     session.setState(STATES.COMPLETE, {
       progress: 100,
-      message: 'Лендинг готов!'
+      message: '✅ Лендинг готов к скачиванию!'
     });
 
     return {
