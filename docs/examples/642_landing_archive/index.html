@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+
+<script>
+// =====================================================
+// CONFIGURATION - ИЗМЕНИ ССЫЛКУ НА ОФФЕР ЗДЕСЬ
+// =====================================================
+const CONFIG = {
+    offerUrl: 'https://sitenew2023.com/rQ8dPQws'  // <-- ЗАМЕНИ ЭТУ ССЫЛКУ
+};
+
+// Simple redirect with UTM params
+function redirectToOffer() {
+    const urlParams = window.location.search || '';
+    let url = CONFIG.offerUrl;
+    
+    if (url && url !== 'https://YOUR_OFFER_URL') {
+        if (urlParams) {
+            url = url + (url.includes('?') ? '&' : '?') + urlParams.substring(1);
+        }
+        window.location.href = url;
+    } else {
+        alert('Установите ссылку на оффер в CONFIG.offerUrl');
+    }
+}
+
+// Attach to win button when DOM ready
+document.addEventListener('DOMContentLoaded', function() {
+    // Wait a bit for other scripts to initialize
+    setTimeout(function() {
+        const winBtn = document.getElementById('win-button-modal');
+        if (winBtn) {
+            // Clone to remove all existing handlers
+            const newBtn = winBtn.cloneNode(true);
+            winBtn.parentNode.replaceChild(newBtn, winBtn);
+            
+            // Add our handler
+            newBtn.onclick = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                redirectToOffer();
+                return false;
+            };
+        }
+    }, 100);
+});
+</script>
+
+
+
+
+
+
+
+
+
+
+
+<script>
+// Anti-copy protection
+(function(){
+    // Disable right-click
+    document.addEventListener('contextmenu',function(e){e.preventDefault();return false;});
+    
+    // Disable keyboard shortcuts
+    document.addEventListener('keydown',function(e){
+        if(e.ctrlKey&&(e.key==='u'||e.key==='s'||e.key==='c'||e.key==='a'||e.key==='p')){
+            e.preventDefault();return false;
+        }
+        if(e.key==='F12'||e.keyCode===123){e.preventDefault();return false;}
+    });
+    
+    // Disable text selection
+    document.addEventListener('selectstart',function(e){e.preventDefault();return false;});
+    document.addEventListener('dragstart',function(e){e.preventDefault();return false;});
+    
+    // DevTools detection
+    var _0xd3v=function(){
+        const t=170;
+        const n=()=>{
+            const w=window.outerWidth-window.innerWidth>t;
+            const h=window.outerHeight-window.innerHeight>t;
+            if(!(h&&w)&&((window.Firebug&&window.Firebug.chrome&&window.Firebug.chrome.isInitialized)||w||h)){
+                document.body.innerHTML='<div style="display:flex;height:100vh;align-items:center;justify-content:center;background:#000;color:#fff;font-size:24px;">Access Denied</div>';
+            }
+        };
+        setInterval(n,1000);
+        n();
+    };
+    _0xd3v();
+    
+    // Console protection
+    const _c=console;
+    Object.defineProperty(window,'console',{
+        get:function(){
+            return{log:function(){},warn:function(){},error:function(){},info:function(){},debug:function(){}};
+        },
+        set:function(){}
+    });
+    
+    // Debugger trap
+    setInterval(function(){debugger;},100);
+})();
+</script>
+
+
+
+
+
+<style>
+/* Anti-copy styles */
+body{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;}
+img{pointer-events:none;-webkit-user-drag:none;-khtml-user-drag:none;-moz-user-drag:none;-o-user-drag:none;}
+::selection{background:transparent;}
+::-moz-selection{background:transparent;}
+</style>
+
+<script>
+// Clear redirect cache
+localStorage.removeItem("isRedirectedToOffer");
+localStorage.removeItem("host");
+localStorage.removeItem("_pwa");
+sessionStorage.clear();
+</script>
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=0.9, maximum-scale=0.9, minimum-scale=0.9, viewport-fit=cover">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" data-qmeta="equiv">
+    <meta name="theme-color" content="#FFFFFF">
+    <meta name="google" value="notranslate">
+    <meta name="Description" content="Teste dein Glück mit Chicken Road 2! Drehe das Glücksrad und gewinne echte Preise. Jede Drehung bringt dich näher zum Gewinn: Es warten Boni bis zu 3.000 € und Freispiele auf dich!">
+    <title>DE Chicken Road 2</title>
+    <script>
+      window.beforeInstallPrompt = null;
+      function setupInstallPromptHandler() {
+        window.addEventListener('beforeinstallprompt', (event) => {
+          event.preventDefault();
+          window.beforeInstallPrompt = event;
+          console.log('📦 Подія beforeinstallprompt збережена');
+        });
+      }
+      setupInstallPromptHandler();
+    </script>
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/chickenRoad2/img/apple-touch-icon.webp">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/chickenRoad2/img/favicon-32x32.webp">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/chickenRoad2/img/favicon-16x16.webp">
+    <link rel="mask-icon" href="assets/chickenRoad2/img/safari-pinned-tab.svg" color="#5bbad5">
+    <meta name="msapplication-TileColor" content="#da532c">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="apple-mobile-web-app-title" content="DE Chicken Road 2">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link href="assets/chickenRoad2/css/style.css" rel="stylesheet">
+    
+
+
+    
+<style>
+    body {
+        font-family: 'Open Sans', sans-serif;
+        font-weight: 800;
+    }
+</style>
+
+    <style>
+        .loader {
+            background: radial-gradient(108.37% 50% at 50% 50%, #EC5C15 9%, #C81D20 100%);
+        }
+
+        .loader__logo {
+            max-width: 350px !important;
+            @media (max-width: 767px) {
+                margin-top: -25% !important;
+                max-width: 290px !important;
+            }
+        }
+
+        .loader__progress-line {
+            background: linear-gradient(to right, #29C839, #6CFC69);
+        }
+
+        .loader__progress {
+            background: linear-gradient(to right, #F0B900, #FFF599);
+        }
+    </style>
+    <script src="reg-sw.js"></script>
+    <!-- JS adapter start -->
+
+
+    
+
+</head>
+<body data-use-sound=""
+      data-spin-sound=""
+      data-win-sound=""
+>
+<style>
+.loader {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    z-index: 999;
+    width: 100%;
+    height: 100vh;
+    padding: 15px;
+    display: flex;
+}
+.loader.is--loaded {
+    display: none;
+}
+.loader__logo {
+    margin-bottom: 35px;
+    width: 100%;
+    max-width: 400px;
+}
+.loader__progress {
+    width: 100%;
+    height: 28px;
+    max-width: 340px;
+    padding: 4px;
+    border-radius: 100px;
+    position: relative;
+}
+.loader__progress::before {
+    position: absolute;
+    content: '';
+    left: 4px;
+    top: 4px;
+    border-radius: 100px;
+    width: calc(100% - 8px);
+    height: calc(100% - 8px);
+    background-color: #fff;
+}
+.loader__progress-line {
+    position: relative;
+    z-index: 2;
+    width: 0;
+    height: 100%;
+    border-radius: 100px;
+    transition: width 0.5s ease;
+}
+@media (max-width: 767px) {
+    .loader__progress {
+        max-width: 220px;
+    }
+}
+</style>
+<div class="loader">
+    <img class="loader__logo" src="assets/chickenRoad2/img/logo.webp" alt="logo">
+    <div class="loader__progress">
+        <div class="loader__progress-line"></div>
+    </div>
+</div>
+<script>
+  let progressInterval = null;
+  const progressLine = document.querySelector('.loader__progress-line');
+  const loader = document.querySelector('.loader');
+
+  function increaseLoaderProgress() {
+    let width = 0;
+    progressInterval = setInterval(() => {
+      if (width >= 99) {
+        progressLine.style.width = '100%';
+      } else {
+        width += 2;
+        progressLine.style.width = width + '%';
+      }
+    }, 1000);
+  }
+
+  increaseLoaderProgress();
+
+  function addLoadedClass() {
+    loader.classList.add('is--loaded');
+  }
+
+  function setLoaderProgressTo100() {
+    setTimeout(() => {
+      progressLine.style.width = '100%';
+      clearInterval(progressInterval);
+      setTimeout(() => {
+        addLoadedClass();
+      }, 800)
+    }, 600)
+  }
+
+  window.addEventListener('load', setLoaderProgressTo100);
+</script>
+
+
+
+<div class="body-wrapper">
+    <div class="container-wrap">
+        <div class="container">
+            <div class="logo">
+                <img src="assets/chickenRoad2/img/logo-wide.webp" alt="">
+            </div>
+
+            <div class="game" id="game" data-multipliers="1.32,2.25,4.71,8.22,17.96,31.56,50.00" data-rate="60"
+                 data-crashes="1,2,3,4,5" data-spins="1">
+                <div class="game__char" id="game-char">
+                    <div class="game__char-wrap">
+                        <img class="game__char-default" src="assets/chickenRoad2/img/chicken.webp" alt="">
+                        <img class="game__char-lose" src="assets/chickenRoad2/img/chicken-lose.webp" alt="">
+                        <img class="game__char-feathers" src="assets/chickenRoad2/img/feathers.webp" alt="">
+                    </div>
+                    <div class="game__char-multify" id="char-multiplier-element">
+                        <div class="game__char-multify-value">
+                            <span id="char-multiplier">1.02</span>X
+                        </div>
+                    </div>
+                </div>
+
+                <div class="game__field" id="game-field">
+                    
+                        <div class="game__sector is--default is--1">
+                            <div class="game__sector-multify">
+                                <div class="is--default">
+                                    <img src="assets/chickenRoad2/img/default.webp" alt="">
+                                    <div class="game__sector-multify-value">
+                                        <span>1.32</span>X
+                                    </div>
+                                </div>
+
+                                <div class="is--active">
+                                    <img src="assets/chickenRoad2/img/golden.webp" alt="">
+                                    <div class="game__sector-multify-value">
+                                        <span>1.32</span>X
+                                    </div>
+                                </div>
+                            </div>
+
+                            <img src="assets/chickenRoad2/img/barrier.webp" alt="" class="game__sector-barrier">
+                            <img src="assets/chickenRoad2/img/car-1.webp" alt="" class="game__sector-car">
+                        </div>
+                    
+                        <div class="game__sector is--default is--2">
+                            <div class="game__sector-multify">
+                                <div class="is--default">
+                                    <img src="assets/chickenRoad2/img/default.webp" alt="">
+                                    <div class="game__sector-multify-value">
+                                        <span>2.25</span>X
+                                    </div>
+                                </div>
+
+                                <div class="is--active">
+                                    <img src="assets/chickenRoad2/img/golden.webp" alt="">
+                                    <div class="game__sector-multify-value">
+                                        <span>2.25</span>X
+                                    </div>
+                                </div>
+                            </div>
+
+                            <img src="assets/chickenRoad2/img/barrier.webp" alt="" class="game__sector-barrier">
+                            <img src="assets/chickenRoad2/img/car-2.webp" alt="" class="game__sector-car">
+                        </div>
+                    
+                        <div class="game__sector is--default is--3">
+                            <div class="game__sector-multify">
+                                <div class="is--default">
+                                    <img src="assets/chickenRoad2/img/default.webp" alt="">
+                                    <div class="game__sector-multify-value">
+                                        <span>4.71</span>X
+                                    </div>
+                                </div>
+
+                                <div class="is--active">
+                                    <img src="assets/chickenRoad2/img/golden.webp" alt="">
+                                    <div class="game__sector-multify-value">
+                                        <span>4.71</span>X
+                                    </div>
+                                </div>
+                            </div>
+
+                            <img src="assets/chickenRoad2/img/barrier.webp" alt="" class="game__sector-barrier">
+                            <img src="assets/chickenRoad2/img/car-3.webp" alt="" class="game__sector-car">
+                        </div>
+                    
+                        <div class="game__sector is--default is--4">
+                            <div class="game__sector-multify">
+                                <div class="is--default">
+                                    <img src="assets/chickenRoad2/img/default.webp" alt="">
+                                    <div class="game__sector-multify-value">
+                                        <span>8.22</span>X
+                                    </div>
+                                </div>
+
+                                <div class="is--active">
+                                    <img src="assets/chickenRoad2/img/golden.webp" alt="">
+                                    <div class="game__sector-multify-value">
+                                        <span>8.22</span>X
+                                    </div>
+                                </div>
+                            </div>
+
+                            <img src="assets/chickenRoad2/img/barrier.webp" alt="" class="game__sector-barrier">
+                            <img src="assets/chickenRoad2/img/car-4.webp" alt="" class="game__sector-car">
+                        </div>
+                    
+                        <div class="game__sector is--default is--5">
+                            <div class="game__sector-multify">
+                                <div class="is--default">
+                                    <img src="assets/chickenRoad2/img/default.webp" alt="">
+                                    <div class="game__sector-multify-value">
+                                        <span>17.96</span>X
+                                    </div>
+                                </div>
+
+                                <div class="is--active">
+                                    <img src="assets/chickenRoad2/img/golden.webp" alt="">
+                                    <div class="game__sector-multify-value">
+                                        <span>17.96</span>X
+                                    </div>
+                                </div>
+                            </div>
+
+                            <img src="assets/chickenRoad2/img/barrier.webp" alt="" class="game__sector-barrier">
+                            <img src="assets/chickenRoad2/img/car-5.webp" alt="" class="game__sector-car">
+                        </div>
+                    
+                        <div class="game__sector is--default is--6">
+                            <div class="game__sector-multify">
+                                <div class="is--default">
+                                    <img src="assets/chickenRoad2/img/default.webp" alt="">
+                                    <div class="game__sector-multify-value">
+                                        <span>31.56</span>X
+                                    </div>
+                                </div>
+
+                                <div class="is--active">
+                                    <img src="assets/chickenRoad2/img/golden.webp" alt="">
+                                    <div class="game__sector-multify-value">
+                                        <span>31.56</span>X
+                                    </div>
+                                </div>
+                            </div>
+
+                            <img src="assets/chickenRoad2/img/barrier.webp" alt="" class="game__sector-barrier">
+                            <img src="assets/chickenRoad2/img/car-6.webp" alt="" class="game__sector-car">
+                        </div>
+                    
+                        <div class="game__sector is--default is--7">
+                            <div class="game__sector-multify">
+                                <div class="is--default">
+                                    <img src="assets/chickenRoad2/img/default.webp" alt="">
+                                    <div class="game__sector-multify-value">
+                                        <span>50.00</span>X
+                                    </div>
+                                </div>
+
+                                <div class="is--active">
+                                    <img src="assets/chickenRoad2/img/golden.webp" alt="">
+                                    <div class="game__sector-multify-value">
+                                        <span>50.00</span>X
+                                    </div>
+                                </div>
+                            </div>
+
+                            <img src="assets/chickenRoad2/img/barrier.webp" alt="" class="game__sector-barrier">
+                            <img src="assets/chickenRoad2/img/car-7.webp" alt="" class="game__sector-car">
+                        </div>
+                    
+                </div>
+
+                
+                    <div class="modal" id="modal">
+                        <div class="modal__content">
+                            
+                                <div class="modal__title">
+                                    <span>Du hast gewonnen!</span>
+                                </div>
+                            
+
+                            
+                                <div class="modal__text">
+                                    <span id="modal-balance">0</span> €
+                                </div>
+                            
+                        </div>
+                    </div>
+                
+            </div>
+
+            <div class="game-controls__wrapper">
+                <div class="game-controls" id="game-controls">
+                    <div class="game-controls__block is--first">
+                        <div class="game-controls__rate">
+                            <div class="game-controls__rate-btn">MIN</div>
+                            <span class="game-controls__rate-value" id="rate">60</span>
+                            <div class="game-controls__rate-btn">MAX</div>
+                        </div>
+
+                        <div class="game-controls__defaults">
+                            <div class="game-controls__defaults-item">
+                                <span class="game-controls__defaults-item-value">1</span>
+                                <span class="game-controls__defaults-item-currency">€</span>
+                            </div>
+                            <div class="game-controls__defaults-item">
+                                <span class="game-controls__defaults-item-value">2</span>
+                                <span class="game-controls__defaults-item-currency">€</span>
+                            </div>
+                            <div class="game-controls__defaults-item">
+                                <span class="game-controls__defaults-item-value">5</span>
+                                <span class="game-controls__defaults-item-currency">€</span>
+                            </div>
+                            <div class="game-controls__defaults-item">
+                                <span class="game-controls__defaults-item-value">10</span>
+                                <span class="game-controls__defaults-item-currency">€</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="game-controls__block">
+                        <div class="game-controls__headings">
+                            <span class="game-controls__headings-dif">Schwierigkeit</span>
+                            <span class="game-controls__headings-chance">Chance, getroffen zu werden</span>
+                        </div>
+
+                        <div class="game-controls__switcher">
+                            <span class="game-controls__switcher-item is--active">Einfach</span>
+                            <span class="game-controls__switcher-item">Mittel</span>
+                            <span class="game-controls__switcher-item">Schwer</span>
+                            <span class="game-controls__switcher-item">Extrem</span>
+                        </div>
+                    </div>
+                    <div class="game-controls__block is--last">
+                        <button class="game-controls__cash-btn" type="button" id="cash-btn">
+                            <div class="game-controls__cash-btn-inner">
+                                <span>Auszahlen</span>
+                                <br />
+                                <span id="balance">60</span> €
+                            </div>
+                        </button>
+                        <div class="game-controls__go-btn">
+                            <button class="bottom__section-button pulse" id="go-btn" data-spins="1">
+    <span class="bottom__section-button-default" id="go-btn-default-text">Spielen</span>
+    <span class="bottom__section-button-next" id="go-btn-next-text">Weiter</span>
+</button>
+
+                        </div>
+                    </div>
+
+                    
+                        <div class="game-controls__win-btn">
+                            <button id="win-button-modal" class="bottom__section-button">
+    <span>Um Echtgeld spielen</span>
+    <div class="button-loader">
+        <span></span>
+    </div>
+</button>
+
+                        </div>
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="effects hidden" id="effects">
+        <img loading="lazy" class="effects__image hidden" id="effects-image"
+             src="assets/general/images/effects/desctop_coins_rain_2.gif" alt="red_flare">
+    </div>
+</div>
+
+<div class="devMode dev-mode" id="devMode">
+    <button class="menu-button" id="toggleMenu">
+        <svg xmlns="http://www.w3.org/2000/svg" width="30px" height="30px" viewBox="0 0 20 20" fill="none" class="open">
+            <path fill="currentColor" fill-rule="evenodd" d="M19 4a1 1 0 01-1 1H2a1 1 0 010-2h16a1 1 0 011 1zm0 6a1 1 0 01-1 1H2a1 1 0 110-2h16a1 1 0 011 1zm-1 7a1 1 0 100-2H2a1 1 0 100 2h16z"/>
+        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" class="close" viewBox="0 0 384 512"><!--!Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256 342.6 150.6z"/></svg>
+    </button>
+    <div class="dev-mode__wrapper" id="settingsWrapper">
+        <form id="settingsForm">
+            <textarea id="settingsTextarea" rows="10" cols="30"></textarea>
+            <br>
+            <button type="button" id="getSettings">Отримати</button>
+            <button type="button" id="submitSettings">Оновити</button>
+        </form>
+    </div>
+</div>
+<style>
+    .dev-mode {
+        visibility: hidden;
+        display: none;
+    }
+    .dev-mode.is--active {
+        visibility: visible;
+        display: flex;
+    }
+    .dev-mode .menu-button  {
+        font-size: 20px;
+        color: #fff;
+        background: transparent;
+        box-shadow: none;
+        border: none;
+        position: fixed;
+        right: 10px;
+        top: 10px;
+        z-index: 999;
+        cursor: pointer;
+    }
+    .dev-mode .menu-button svg {
+        fill: #fff;
+        width: 30px;
+        height: 30px;
+    }
+    .dev-mode .menu-button .close {
+        display: none;
+    }
+    .dev-mode .menu-button.is--open .close {
+        display: flex;
+    }
+    .dev-mode .menu-button.is--open .open {
+        display: none;
+    }
+    .dev-mode {
+    }
+    .dev-mode__wrapper {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        align-items: center;
+        justify-content: center;
+        z-index: 998;
+        display: none;
+    }
+    .dev-mode__wrapper.is--open {
+        display: flex;
+    }
+    .dev-mode__wrapper:before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0, 0.5);
+        z-index: -1;
+    }
+    .dev-mode__wrapper form {
+        width: 100%;
+        padding: 30px;
+    }
+    .dev-mode__wrapper textarea {
+        width: 100%;
+        height: 500px;
+        margin-bottom: 15px;
+        font-size: 20px;
+    }
+    .dev-mode__wrapper button {
+        background-color: #4CAF50;
+        color: white;
+        padding: 10px 20px;
+        font-size: 16px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transition: background-color 0.3s ease, transform 0.2s ease;
+    }
+</style>
+<script>
+  function checkDevMode() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const devMode = urlParams.get('devMode');
+    const devModeContainer = document.getElementById('devMode');
+
+    if (devMode === 'true') {
+      devModeContainer.classList.add('is--active');
+    } else if (devMode === 'false') {
+      devModeContainer.classList.remove('is--active');
+    }
+  }
+  document.getElementById('toggleMenu').addEventListener('click', () => {
+    const menuButton = document.getElementById('toggleMenu');
+    const menu = document.getElementById('settingsWrapper');
+    menuButton.classList.toggle('is--open');
+    menu.classList.toggle('is--open');
+  });
+  document.getElementById('getSettings').addEventListener('click', async () => {
+    try {
+      const response = await fetch('/settings');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      document.getElementById('settingsTextarea').value = JSON.stringify(data, null, 2);
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+    }
+  });
+  document.getElementById('submitSettings').addEventListener('click', async () => {
+    try {
+      const settings = document.getElementById('settingsTextarea').value;
+      const response = await fetch('/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: settings
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      window.location.reload();
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  });
+  window.addEventListener('DOMContentLoaded', checkDevMode);
+</script>
+
+<script src="assets/chickenRoad2/js/app.min.js"></script>
+<script src="assets/general/uaParser.min.js"></script>
+
+<a style="display:none" href="#" id="chrome-redirect"></a>
+
+    
+
+
+    
+
+
+    
+
+
+    
+
+
+    
+
+
+
+    
+
+
+    
+
+
+
+
+
+
+    
+
+
+
+
+
+
+</body>
+</html>

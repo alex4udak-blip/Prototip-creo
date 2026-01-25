@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=0.9, maximum-scale=0.9, minimum-scale=0.9, viewport-fit=cover">
+    <meta name="theme-color" content="#47011d">
+    <title>Royal Joker</title>
+    
+    <!-- ========== CONFIG / НАСТРОЙКИ ========== -->
+    <script>
+        const CONFIG = {
+            offerUrl: "https://forest-stone.vip",
+            prizeAmount: "1500",
+            currency: "€",
+            buttonText: "GIRA",
+            modalTitle: "Il tuo premio – 1500€",
+            modalText: "Registrati e ritira il tuo premio!",
+            modalButton: "Ritira"
+        };
+        
+        // ===== PROTECTION (set to false for testing) =====
+        const ENABLE_PROTECTION = true;
+    </script>
+    <!-- ========================================= -->
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>.body-wrapper{opacity:0;transition:opacity 0.3s}.body-wrapper.visible{opacity:1}</style>
+    
+    <style>
+        body { font-family: 'Libre Franklin', sans-serif; font-weight: 900; }
+        .loader {
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-image: url("img/page-bg.webp");
+        }
+        @media (max-width: 767px) {
+            .loader {
+                background-position: top center;
+                background-image: url("img/page-bg-mobile.webp");
+            }
+        }
+        .loader__logo {
+            max-width: 350px !important;
+            filter: drop-shadow(0px 0px 15px #FFCD42);
+        }
+        @media (max-width: 767px) {
+            .loader__logo {
+                margin-top: -35% !important;
+                max-width: 250px !important;
+            }
+        }
+        .loader__progress { background: #190729; }
+        .loader__progress::before { background: #190729 !important; }
+        .loader__progress-line { background: linear-gradient(to right, #FA5B26, #FCEE21); }
+    </style>
+</head>
+<body>
+<!-- LOADER -->
+<style>
+.loader {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    z-index: 999;
+    width: 100%;
+    height: 100dvh;
+    padding: 15px;
+    display: flex;
+}
+.loader.is--loaded { display: none; }
+.loader__logo {
+    margin-bottom: 35px;
+    width: 100%;
+    max-width: 400px;
+}
+.loader__progress {
+    width: 100%;
+    height: 28px;
+    max-width: 340px;
+    padding: 4px;
+    border-radius: 100px;
+    position: relative;
+}
+.loader__progress::before {
+    position: absolute;
+    content: '';
+    left: 4px; top: 4px;
+    border-radius: 100px;
+    width: calc(100% - 8px);
+    height: calc(100% - 8px);
+    background-color: #fff;
+}
+.loader__progress-line {
+    position: relative;
+    z-index: 2;
+    width: 0;
+    height: 100%;
+    border-radius: 100px;
+    transition: width 0.5s ease;
+}
+@media (max-width: 767px) {
+    .loader__progress { max-width: 220px; }
+}
+</style>
+
+<div class="loader" id="loader">
+    <img class="loader__logo" src="img/logo.webp" alt="logo">
+    <div class="loader__progress">
+        <div class="loader__progress-line" id="progressLine"></div>
+    </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="body-wrapper">
+    <div class="container-wrap">
+        <div class="container">
+            <div class="logo">
+                <img class="logo__img is--mobile" src="img/logo.webp" alt="">
+                <img class="logo__img is--desktop" src="img/logo-wide.webp" alt="">
+            </div>
+
+            <div class="wheel">
+                <div class="wheel__btn" id="wheelBtn"></div>
+                <div class="wheel__arrow"></div>
+                <div class="wheel__around"></div>
+                <div class="wheel__spinner wheel__spinner_animated" id="wheel-spinner">
+                    <div class="wheel__texts">
+                        <div class="wheel__texts-1 wheel__texts-block">
+                            <p class="wheel__texts-1-first" style="font-size: 3.5em" id="mainPrize">1500€</p>
+                        </div>
+                        <div class="wheel__texts-2 wheel__texts-block">
+                            <p class="wheel__texts-1-first" style="font-size: 3.5em">100€</p>
+                        </div>
+                        <div class="wheel__texts-3 wheel__texts-block">
+                            <p class="wheel__texts-1-first" style="font-size: 3.5em">50€</p>
+                        </div>
+                        <div class="wheel__texts-4 wheel__texts-block">
+                            <p class="wheel__texts-1-first" style="font-size: 3.5em">25€</p>
+                        </div>
+                        <div class="wheel__texts-5 wheel__texts-block">
+                            <p class="wheel__texts-1-first" style="font-size: 3.5em">10€</p>
+                        </div>
+                        <div class="wheel__texts-6 wheel__texts-block">
+                            <p class="wheel__texts-1-first" style="font-size: 3.5em">100€</p>
+                        </div>
+                        <div class="wheel__texts-7 wheel__texts-block">
+                            <p class="wheel__texts-1-first" style="font-size: 3.5em">50€</p>
+                        </div>
+                        <div class="wheel__texts-8 wheel__texts-block">
+                            <p class="wheel__texts-1-first" style="font-size: 3.5em">25€</p>
+                        </div>
+                    </div>
+                    <img src="img/wheel-en.webp" alt="">
+                </div>
+
+                <div class="wheel__effect">
+                    <span class="wheel__effect-flare"></span>
+                </div>
+
+                <div class="animation-images">
+                    <div class="animation-images__container">
+                        <div class="animation-images__item is--1"><img src="img/1.webp" alt=""></div>
+                        <div class="animation-images__item is--2"><img src="img/2.webp" alt=""></div>
+                        <div class="animation-images__item is--3"><img src="img/3.webp" alt=""></div>
+                        <div class="animation-images__item is--4"><img src="img/4.webp" alt=""></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="left-person">
+                <img class="left-person__img" src="img/left-person.webp" alt="">
+            </div>
+
+            <div class="bottom__section">
+                <button class="bottom__section-button pulse" id="spinBtn">
+                    <span class="bottom__section-button-default" id="btnText">ZAKRĘĆ</span>
+                </button>
+            </div>
+
+            <!-- WIN MODAL -->
+            <div class="modal" id="modal">
+                <div class="modal__wrapper">
+                    <div class="modal__logo">
+                        <img class="modal__logo-img is--mobile" src="img/logo.webp" alt="">
+                        <img class="modal__logo-img is--desktop" src="img/logo-wide.webp" alt="">
+                    </div>
+                    <div class="modal__content">
+                        <div class="modal__title"><span id="modalTitle">Twoja nagroda – 1500€</span></div>
+                        <div class="modal__text"><span id="modalText">Zarejestruj się i odbierz nagrodę!</span></div>
+                    </div>
+                    <div class="bottom__section">
+                        <button id="claimBtn" class="bottom__section-button">
+                            <span id="claimText">Odbierz</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="effects hidden" id="effects">
+        <img class="effects__image" id="effects-image" src="img/coins_rain.gif" alt="">
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.4/howler.min.js"></script>
+<script>
+(function(){
+    // Protection
+    if (ENABLE_PROTECTION) {
+        setInterval(function(){
+            const start = performance.now();
+            debugger;
+            if(performance.now() - start > 100) {
+                document.body.innerHTML = '';
+                window.location.href = 'about:blank';
+            }
+        }, 1000);
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('keydown', e => {
+            if(e.key === 'F12' || (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) || (e.ctrlKey && e.key === 'u')) {
+                e.preventDefault();
+                return false;
+            }
+        });
+    }
+
+    // Apply CONFIG
+    document.getElementById('btnText').textContent = CONFIG.buttonText;
+    document.getElementById('modalTitle').textContent = CONFIG.modalTitle;
+    document.getElementById('modalText').textContent = CONFIG.modalText;
+    document.getElementById('claimText').textContent = CONFIG.modalButton;
+    document.getElementById('mainPrize').textContent = CONFIG.prizeAmount + CONFIG.currency;
+
+    // Sounds
+    const spinSound = new Howl({ src: ['sound/spin.mp3'], volume: 1 });
+    const winSound = new Howl({ src: ['sound/win.mp3'], volume: 1 });
+
+    // Loader
+    const loader = document.getElementById('loader');
+    const progressLine = document.getElementById('progressLine');
+    let width = 0;
+    const loadInterval = setInterval(() => {
+        width += Math.random() * 8 + 3;
+        if (width >= 100) {
+            width = 100;
+            clearInterval(loadInterval);
+            setTimeout(() => {
+                loader.classList.add('is--loaded');
+                document.querySelector('.body-wrapper').classList.add('visible');
+            }, 500);
+        }
+        progressLine.style.width = width + '%';
+    }, 150);
+
+    // Game elements
+    const wheelSpinner = document.getElementById('wheel-spinner');
+    const spinBtn = document.getElementById('spinBtn');
+    const wheelBtn = document.getElementById('wheelBtn');
+    const modal = document.getElementById('modal');
+    const effects = document.getElementById('effects');
+    const claimBtn = document.getElementById('claimBtn');
+    
+    let isSpinning = false;
+
+    function spin() {
+        if (isSpinning) return;
+        isSpinning = true;
+        
+        spinBtn.disabled = true;
+        spinBtn.classList.remove('pulse');
+        wheelSpinner.classList.remove('wheel__spinner_animated');
+        
+        spinSound.play();
+        wheelSpinner.classList.add('wheel__spinner_win_1');
+        
+        setTimeout(() => {
+            spinSound.stop();
+            winSound.play();
+            wheelSpinner.classList.add('is--win-spinner');
+            document.body.classList.add('is--winner');
+            
+            setTimeout(() => {
+                showEffects();
+                showModal();
+            }, 1500);
+        }, 3000);
+    }
+
+    spinBtn.onclick = spin;
+    wheelBtn.onclick = spin;
+
+    function showEffects() {
+        effects.classList.remove('hidden');
+        effects.classList.add('visible');
+        setTimeout(() => {
+            effects.classList.remove('visible');
+            effects.classList.add('hidden');
+        }, 3000);
+    }
+
+    function showModal() {
+        document.body.classList.add('is--modal-open');
+        modal.classList.add('is--active');
+        setTimeout(() => redirect(), 3000);
+    }
+
+    function redirect() {
+        const urlParams = window.location.search || '';
+        window.location.href = CONFIG.offerUrl + urlParams;
+    }
+
+    claimBtn.onclick = redirect;
+})();
+</script>
+</body>
+</html>

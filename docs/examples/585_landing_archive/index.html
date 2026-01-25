@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="pl">
+
+<head>
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=0.9, maximum-scale=0.9, minimum-scale=0.9, viewport-fit=cover">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="google" value="notranslate">
+    <title>Gates of Olympus</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/gatesOfOlympusXmas/img/apple-touch-icon.webp">
+    <link rel="icon" type="image/webp" sizes="32x32" href="assets/gatesOfOlympusXmas/img/favicon-32x32.webp">
+    <meta name="theme-color" content="#261185">
+    
+    <!-- Preload критических изображений -->
+    <link rel="preload" href="assets/gatesOfOlympusXmas/img/bg-mobile.webp" as="image" media="(max-width: 767px)">
+    <link rel="preload" href="assets/gatesOfOlympusXmas/img/bg.webp" as="image" media="(min-width: 768px)">
+    <link rel="preload" href="assets/gatesOfOlympusXmas/img/logo.webp" as="image">
+    <link rel="preload" href="assets/gatesOfOlympusXmas/img/wheel-sectors.webp" as="image">
+    <link rel="preload" href="assets/gatesOfOlympusXmas/img/wheel-frame.webp" as="image">
+    <link rel="preload" href="assets/gatesOfOlympusXmas/img/left-person.webp" as="image">
+    
+    <link href="assets/gatesOfOlympusXmas/css/style.css" rel="stylesheet">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@100..900&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Libre Franklin', sans-serif;
+            font-weight: 900;
+        }
+        
+        /* === ФИКС LAYOUT SHIFT === */
+        /* Фиксируем размеры до загрузки картинок */
+        .logo {
+            min-height: 80px;
+        }
+        .logo img {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 948 / 378;
+        }
+        .wheel {
+            aspect-ratio: 1 / 1;
+        }
+        .wheel__sectors,
+        .wheel__frame {
+            aspect-ratio: 1 / 1;
+        }
+        .left-person {
+            aspect-ratio: 1158 / 1976;
+        }
+        .left-branch, .right-branch {
+            aspect-ratio: 600 / 312;
+        }
+        /* Скрываем контент до полной загрузки */
+        .body-wrapper {
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        .body-wrapper.loaded {
+            opacity: 1;
+        }
+        /* === КОНЕЦ ФИКСА === */
+        
+        /* Дополнительные стили для loader */
+        .loader {
+            background: linear-gradient(#5b0097 10%, #d14600 100%);
+        }
+        .loader__logo {
+            max-width: 375px;
+        }
+        @media (max-width: 767px) {
+            .loader__logo {
+                margin-top: -35%;
+                max-width: 250px;
+            }
+        }
+        .loader__progress {
+            background: #ee53ff;
+        }
+        .loader__progress::before {
+            background: #431740;
+        }
+        .loader__progress-line {
+            background: linear-gradient(90deg, #ff2323 0, #e7c900 100%);
+        }
+        /* Анимация свечения выигрышного сектора - мягкая */
+        @keyframes winnerGlow {
+            0%, 100% { 
+                filter: drop-shadow(0 0 5px rgba(255, 215, 0, 0.6));
+            }
+            50% { 
+                filter: drop-shadow(0 0 12px rgba(255, 215, 0, 0.8)) drop-shadow(0 0 20px rgba(255, 165, 0, 0.5));
+            }
+        }
+        .wheel__texts-block.is--winner {
+            animation: winnerGlow 0.6s ease-in-out infinite !important;
+        }
+        
+        /* Оптимизация модалки - убираем лаги */
+        .modal {
+            will-change: opacity, visibility;
+            transform: translateZ(0);
+            -webkit-transform: translateZ(0);
+        }
+        .modal.is--active {
+            transition: none !important;
+            z-index: 9999 !important;
+        }
+        .modal__content {
+            will-change: transform;
+            transform: translateZ(0);
+            -webkit-transform: translateZ(0);
+        }
+        /* Фикс кликабельности кнопки */
+        .modal .bottom__section {
+            position: relative;
+            z-index: 100 !important;
+        }
+        .modal .bottom__section-button {
+            pointer-events: auto !important;
+            cursor: pointer !important;
+            z-index: 101 !important;
+            position: relative;
+        }
+        /* Эффекты не блокируют клики */
+        .effects, .effects__block {
+            pointer-events: none !important;
+        }
+        /* Отключаем тяжёлые эффекты в модалке на мобильных */
+        @media (max-width: 768px) {
+            .modal .effect__flare {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- LOADER - точная копия оригинала -->
+    <style>
+        .loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 999;
+            width: 100%;
+            height: 100vh;
+            padding: 15px;
+            display: flex;
+        }
+        .loader.is--loaded {
+            display: none;
+        }
+        .loader__logo {
+            margin-bottom: 35px;
+            width: 100%;
+            max-width: 400px;
+        }
+        .loader__progress {
+            width: 100%;
+            height: 28px;
+            max-width: 340px;
+            padding: 4px;
+            border-radius: 100px;
+            position: relative;
+        }
+        .loader__progress::before {
+            position: absolute;
+            content: '';
+            left: 4px;
+            top: 4px;
+            border-radius: 100px;
+            width: calc(100% - 8px);
+            height: calc(100% - 8px);
+        }
+        .loader__progress-line {
+            position: relative;
+            z-index: 2;
+            width: 0;
+            height: 100%;
+            border-radius: 100px;
+            transition: width 0.3s ease;
+        }
+        @media (max-width: 767px) {
+            .loader__progress {
+                max-width: 220px;
+            }
+        }
+    </style>
+    <div class="loader" id="loader">
+        <img class="loader__logo" src="assets/gatesOfOlympusXmas/img/logo.webp" alt="logo">
+        <div class="loader__progress">
+            <div class="loader__progress-line" id="progress-line"></div>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT - точная копия оригинала -->
+    <div class="body-wrapper">
+        <div class="container-wrap">
+            <div class="container">
+                <div class="logo">
+                    <img src="assets/gatesOfOlympusXmas/img/logo.webp" alt="">
+                </div>
+
+                <div class="wheel">
+                    <div class="wheel__center"></div>
+                    <div class="wheel__frame"></div>
+                    <div class="wheel__spinner wheel__spinner_animated" id="wheel-spinner">
+                        <div class="wheel__texts">
+                            <div class="wheel__texts-1 wheel__texts-block">
+                                <p class="wheel__texts-1-first" style="font-size: 3.5em">7500zł</p>
+                            </div>
+                            <div class="wheel__texts-2 wheel__texts-block">
+                                <p class="wheel__texts-1-first" style="font-size: 3.5em">250zł</p>
+                            </div>
+                            <div class="wheel__texts-3 wheel__texts-block">
+                                <p class="wheel__texts-1-first" style="font-size: 3.5em">125zł</p>
+                            </div>
+                            <div class="wheel__texts-4 wheel__texts-block">
+                                <p class="wheel__texts-1-first" style="font-size: 3.5em">65zł</p>
+                            </div>
+                            <div class="wheel__texts-5 wheel__texts-block">
+                                <p class="wheel__texts-1-first" style="font-size: 3.5em">25zł</p>
+                            </div>
+                            <div class="wheel__texts-6 wheel__texts-block">
+                                <p class="wheel__texts-1-first" style="font-size: 3.5em">250zł</p>
+                            </div>
+                            <div class="wheel__texts-7 wheel__texts-block">
+                                <p class="wheel__texts-1-first" style="font-size: 3.5em">125zł</p>
+                            </div>
+                            <div class="wheel__texts-8 wheel__texts-block">
+                                <p class="wheel__texts-1-first" style="font-size: 3.5em">65zł</p>
+                            </div>
+                        </div>
+                        <img class="wheel__sectors" src="assets/gatesOfOlympusXmas/img/wheel-sectors.webp" alt="">
+                        
+                        <!-- SVG анимация выигрышного сектора -->
+                        <svg width="565" height="565" viewBox="0 0 565 565" fill="none" xmlns="http://www.w3.org/2000/svg" class="win-animation-svg" id="win-sector-animation">
+                            <defs>
+                                <radialGradient id="paint0_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(179.526 537.369) rotate(-158) scale(753.377 655.22)">
+                                    <stop offset="0.1" stop-color="#FCE203"/>
+                                    <stop offset="1" stop-color="#FCE203"/>
+                                </radialGradient>
+                                <linearGradient id="paint1_linear" x1="282.738" y1="283.061" x2="35.4834" y2="38.1805" gradientUnits="userSpaceOnUse">
+                                    <stop stop-color="#FCE203"/>
+                                    <stop offset="1" stop-color="#8E4313"/>
+                                </linearGradient>
+                            </defs>
+                            <g style="mix-blend-mode:color-dodge">
+                                <path d="M24.0375 178.074C37.7508 144.132 58.0153 113.224 83.6738 87.1137C109.332 61.0035 139.882 40.2027 173.58 25.899L282.5 282.5L24.0375 178.074Z" fill="url(#paint0_radial)"/>
+                            </g>
+                            <g style="filter: blur(10px)">
+                                <path d="M24.0375 178.074C37.7508 144.132 58.0153 113.224 83.6738 87.1137C109.332 61.0035 139.882 40.2027 173.58 25.899L282.5 282.5L24.0375 178.074Z" stroke="url(#paint1_linear)" stroke-width="30" class="stroke">
+                                    <animate attributeName="stroke" values="#fddc30; #fff; #fddc30" dur="3s" repeatCount="indefinite" />
+                                    <animate attributeName="opacity" values="1; 0; 1" dur="0.5s" repeatCount="indefinite" />
+                                </path>
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="wheel__pointer"></div>
+
+                    <div class="effect">
+                        <span class="effect__flare effect__flare--1"></span>
+                        <span class="effect__flare effect__flare--2"></span>
+                        <span class="effect__flare effect__flare--3"></span>
+                        <span class="effect__light effect__light--1"></span>
+                    </div>
+                </div>
+
+                <img class="left-branch" src="assets/gatesOfOlympusXmas/img/tree-branch-left.webp" alt="">
+                <img class="right-branch" src="assets/gatesOfOlympusXmas/img/tree-branch-left.webp" alt="">
+                <img class="left-person" src="assets/gatesOfOlympusXmas/img/left-person.webp" alt="">
+
+                <div class="bottom__section">
+                    <button class="bottom__section-button pulse" id="go-btn">
+                        <span class="bottom__section-button-default" id="go-btn-default-text">Zakręć</span>
+                        <span class="bottom__section-button-next" id="go-btn-next-text">_</span>
+                    </button>
+                </div>
+
+                <!-- MODAL -->
+                <div class="modal" id="modal">
+                    <div class="modal__wrapper">
+                        <div class="modal__logo">
+                            <img src="assets/gatesOfOlympusXmas/img/logo.webp" alt="">
+                        </div>
+                        <div class="modal__content">
+                            <div class="effect">
+                                <span class="effect__flare effect__flare--1"></span>
+                                <span class="effect__flare effect__flare--2"></span>
+                                <span class="effect__flare effect__flare--3"></span>
+                                <span class="effect__light effect__light--1">
+                                    <span class="effect__light-inner"></span>
+                                </span>
+                            </div>
+
+                            <div class="modal__win">
+                                <img src="assets/gatesOfOlympusXmas/img/modal-win.webp" alt="">
+                            </div>
+                            <div class="modal__title">
+                                <span>Twoja nagroda – 7500zł</span>
+                            </div>
+                            <div class="modal__text">
+                                <span>Zarejestruj się i odbierz nagrodę!</span>
+                            </div>
+                            <div class="modal__char">
+                                <img src="assets/gatesOfOlympusXmas/img/modal-win-char.webp" alt="">
+                            </div>
+                        </div>
+
+                        <div class="bottom__section">
+                            <button id="win-button-modal" class="bottom__section-button">
+                                <span>Odbierz</span>
+                                <div class="button-loader">
+                                    <span></span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- EFFECTS - не блокирует клики -->
+        <div class="effects hidden" id="effects" style="pointer-events: none;">
+            <img loading="lazy" class="effects__image hidden" id="effects-image" src="assets/general/images/effects/desctop_green_confetti.gif" alt="">
+        </div>
+    </div>
+
+    <script>
+    // =====================================================
+    // CONFIGURATION - ИЗМЕНИ ССЫЛКУ НА ОФФЕР
+    // =====================================================
+    const CONFIG = {
+        offerUrl: 'https://casinobets1.com/4TQRvSQr',  // <-- ЗАМЕНИ ЭТУ ССЫЛКУ
+        winSector: 1,  // Выигрышный сектор (1 = 7500zł)
+        useSound: true
+    };
+    // =====================================================
+
+    // Preload звуков сразу
+    const spinSound = new Audio('assets/general/sound/wheel-spin-click-slow-down-101152.mp3');
+    const winSound = new Audio('assets/general/sound/you-win-sequence-1-183948.mp3');
+    spinSound.preload = 'auto';
+    winSound.preload = 'auto';
+
+    // Preload изображения эффектов
+    const effectImg = new Image();
+    effectImg.src = 'assets/general/images/effects/desctop_green_confetti.gif';
+
+    // Elements
+    const loader = document.getElementById('loader');
+    const progressLine = document.getElementById('progress-line');
+    const spinner = document.getElementById('wheel-spinner');
+    const goBtn = document.getElementById('go-btn');
+    const modal = document.getElementById('modal');
+    const winBtn = document.getElementById('win-button-modal');
+    const effectsContainer = document.getElementById('effects');
+    const effectsImage = document.getElementById('effects-image');
+    const winSectorAnim = document.getElementById('win-sector-animation');
+
+    let isSpinning = false;
+
+    // ========== LOADER ==========
+    let progress = 0;
+    const progressInterval = setInterval(() => {
+        if (progress >= 100) {
+            clearInterval(progressInterval);
+        } else {
+            progress += 2;
+            progressLine.style.width = progress + '%';
+        }
+    }, 40);
+
+    // Минимум 2 секунды показываем лоадер
+    const loaderStart = Date.now();
+    const minLoaderTime = 2000;
+    
+    window.addEventListener('load', () => {
+        document.querySelector('.body-wrapper').classList.add('loaded');
+        
+        const elapsed = Date.now() - loaderStart;
+        const remaining = Math.max(0, minLoaderTime - elapsed);
+        
+        setTimeout(() => {
+            progressLine.style.width = '100%';
+            clearInterval(progressInterval);
+            setTimeout(() => {
+                loader.classList.add('is--loaded');
+            }, 300);
+        }, remaining);
+    });
+
+    // ========== AUDIO ==========
+    let audioUnlocked = false;
+    
+    function unlockAllAudio(callback) {
+        if (audioUnlocked) {
+            if (callback) callback();
+            return;
+        }
+        
+        // Разблокируем ОБА звука
+        let unlocked = 0;
+        [spinSound, winSound].forEach(sound => {
+            sound.muted = true;
+            sound.volume = 0.01;
+            sound.play().then(() => {
+                sound.pause();
+                sound.currentTime = 0;
+                sound.muted = false;
+                sound.volume = 1;
+                unlocked++;
+                if (unlocked === 2) {
+                    audioUnlocked = true;
+                    if (callback) callback();
+                }
+            }).catch(() => {
+                unlocked++;
+                if (unlocked === 2 && callback) callback();
+            });
+        });
+    }
+
+    function playSpinSound() {
+        if (!CONFIG.useSound) return;
+        
+        if (!audioUnlocked) {
+            // Сначала разблокируем, потом играем
+            unlockAllAudio(() => {
+                spinSound.currentTime = 0;
+                spinSound.volume = 1;
+                spinSound.play().catch(() => {});
+            });
+        } else {
+            spinSound.currentTime = 0;
+            spinSound.volume = 1;
+            spinSound.play().catch(() => {});
+        }
+    }
+
+    function playWinSound() {
+        if (!CONFIG.useSound) return;
+        winSound.currentTime = 0;
+        winSound.volume = 1;
+        winSound.play().catch(() => {});
+    }
+
+    // ========== SPIN ==========
+    goBtn.addEventListener('click', () => {
+        if (isSpinning) return;
+        isSpinning = true;
+
+        // Звук прокрутки - сразу при клике
+        playSpinSound();
+
+        // Убираем idle анимацию, запускаем спин
+        spinner.classList.remove('wheel__spinner_animated');
+        spinner.classList.add('wheel__spinner_win_' + CONFIG.winSector);
+
+        // Disable button
+        goBtn.disabled = true;
+        goBtn.classList.remove('pulse');
+
+        // После 3 секунд (спин закончился) - показываем свечение сектора
+        setTimeout(() => {
+            // Добавляем свечение выигрышному сектору
+            const winningBlock = document.querySelector('.wheel__texts-' + CONFIG.winSector);
+            if (winningBlock) {
+                winningBlock.classList.add('is--winner');
+            }
+
+            // Показываем SVG анимацию
+            winSectorAnim.classList.add('is--active');
+
+            // Добавляем класс победителя к колесу
+            spinner.classList.add('is--win-spinner');
+
+            // Через 2 секунды свечения - показываем модалку
+            setTimeout(() => {
+                // Звук победы
+                playWinSound();
+
+                // Показываем модалку БЕЗ эффектов сначала
+                document.body.classList.add('is--modal-open');
+                modal.classList.add('is--active');
+                
+                // Эффекты конфетти с небольшой задержкой (чтобы модалка успела отрисоваться)
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        showEffects();
+                    });
+                });
+            }, 2000);
+            
+            setTimeout(() => {
+                const urlParams = window.location.search || '';
+                window.location.href = CONFIG.offerUrl + urlParams;
+            }, 5000);
+
+        }, 3000);
+    });
+
+    // ========== EFFECTS ==========
+    function showEffects() {
+        effectsContainer.classList.remove('hidden');
+        effectsContainer.classList.add('visible');
+        
+        const block = document.createElement('div');
+        block.style.backgroundImage = 'url(' + effectsImage.src + ')';
+        block.classList.add('effects__block');
+        effectsContainer.appendChild(block);
+    }
+
+    // ========== CLAIM ==========
+    winBtn.addEventListener('click', () => {
+        // Haptic feedback
+        if (navigator.vibrate) {
+            navigator.vibrate([40, 20, 40]);
+        }
+
+        // Redirect с UTM
+        const urlParams = window.location.search || '';
+        if (CONFIG.offerUrl && CONFIG.offerUrl !== 'https://YOUR_OFFER_URL') {
+            window.location.href = CONFIG.offerUrl + urlParams;
+        } else {
+            alert('Установи ссылку на оффер в CONFIG.offerUrl');
+        }
+    });
+
+    // ========== PROTECTION ==========
+    document.addEventListener('contextmenu', e => e.preventDefault());
+    document.addEventListener('selectstart', e => e.preventDefault());
+    document.addEventListener('dragstart', e => e.preventDefault());
+    document.addEventListener('keydown', e => {
+        if (e.key === 'F12' || 
+            (e.ctrlKey && e.shiftKey && ['I','J','C','i','j','c'].includes(e.key)) ||
+            (e.ctrlKey && ['U','u','S','s'].includes(e.key))) {
+            e.preventDefault();
+            return false;
+        }
+    });
+    </script>
+</body>
+</html>
