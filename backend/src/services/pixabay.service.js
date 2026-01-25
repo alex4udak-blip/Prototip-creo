@@ -128,9 +128,9 @@ export async function downloadSound(soundUrl) {
 
 /**
  * Получить fallback звуки (локальные) - АБСОЛЮТНЫЕ пути
- * @returns {Object} пути к локальным звукам
+ * @returns {Promise<Object>} пути к локальным звукам
  */
-export function getFallbackSounds() {
+export async function getFallbackSounds() {
   const path = await import('path');
   const basePath = path.join(process.cwd(), 'assets', 'sounds');
   return {

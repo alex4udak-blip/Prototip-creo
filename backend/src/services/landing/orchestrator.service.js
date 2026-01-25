@@ -408,7 +408,7 @@ export async function generateLanding(session, request) {
     // STEP 5.5: Fetch sounds dynamically from Pixabay (FULL API USAGE)
     // ============================================
     session.setState(STATES.GENERATING_ASSETS, {
-      progress: 57,
+      progress: 65,  // FIXED: Must be > 60 (REMOVING_BACKGROUNDS progress)
       message: 'Ищу звуковые эффекты...'
     });
 
@@ -432,7 +432,7 @@ export async function generateLanding(session, request) {
           paths: Object.values(sounds)
         });
         session.setState(STATES.GENERATING_ASSETS, {
-          progress: 58,
+          progress: 68,  // FIXED: Progress must increase monotonically
           message: `Звуки готовы: ${Object.keys(sounds).join(', ')}`
         });
       } else {

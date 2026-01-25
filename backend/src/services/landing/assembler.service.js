@@ -195,9 +195,16 @@ export async function assembleLanding(params) {
 
   // Process HTML - replace asset placeholders
   let processedHtml = html;
-  for (const [key, assetPath] of Object.entries(assetPaths)) {
+
+  // CRITICAL: Sort assets by key length (longest first) to avoid collision
+  // e.g., "wheelFrame" must be processed before "wheel" to prevent
+  // "assets/wheelFrame.png" from being replaced by wheel's assetPath
+  const sortedAssets = Object.entries(assetPaths)
+    .sort((a, b) => b[0].length - a[0].length);
+
+  for (const [key, assetPath] of sortedAssets) {
     // Replace various placeholder formats for asset paths
-    // 1. Simple: assets/background.png
+    // 1. Exact matches first (most specific)
     processedHtml = processedHtml
       .replace(new RegExp(`assets/${key}\\.png`, 'g'), assetPath)
       .replace(new RegExp(`assets/${key}\\.webp`, 'g'), assetPath)
@@ -208,11 +215,12 @@ export async function assembleLanding(params) {
       .replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), assetPath)
       .replace(new RegExp(`\\$\\{assets\\.${key}\\}`, 'g'), assetPath);
 
-    // 3. Case-insensitive partial matches for camelCase/PascalCase
-    // e.g., wheelFrame.png, boxClosed.png
+    // 3. Word-boundary match for camelCase (safer than greedy partial match)
+    // Match only if key appears as a word boundary (not inside another word)
+    // e.g., matches "wheel.png" but NOT "wheelFrame.png" when key="wheel"
     const keyLower = key.toLowerCase();
     processedHtml = processedHtml
-      .replace(new RegExp(`assets/[^"']*${keyLower}[^"']*\\.(png|webp|jpg)`, 'gi'), assetPath);
+      .replace(new RegExp(`assets/${keyLower}\\.(png|webp|jpg)`, 'gi'), assetPath);
   }
 
   // Replace sound paths in HTML
@@ -231,12 +239,17 @@ export async function assembleLanding(params) {
   }
 
   // 2. Replace new Audio() paths directly
-  for (const [key, soundPath] of Object.entries(soundPaths)) {
+  // Sort by key length to avoid collision (same as assets)
+  const sortedSounds = Object.entries(soundPaths)
+    .sort((a, b) => b[0].length - a[0].length);
+
+  for (const [key, soundPath] of sortedSounds) {
     // Match patterns like: new Audio('assets/sounds/spin.mp3') or new Audio('sounds/spin.mp3')
+    // Use exact matches to avoid collision between e.g., "spin" and "spinwheel"
     const patterns = [
       new RegExp(`new Audio\\(['"]assets/sounds/${key}\\.mp3['"]\\)`, 'g'),
       new RegExp(`new Audio\\(['"]sounds/${key}\\.mp3['"]\\)`, 'g'),
-      new RegExp(`new Audio\\(['"]assets/[^'"]*${key}[^'"]*\\.mp3['"]\\)`, 'g')
+      new RegExp(`new Audio\\(['"]\\.?/?${key}\\.mp3['"]\\)`, 'g')
     ];
 
     for (const pattern of patterns) {
@@ -299,44 +312,62 @@ export async function assembleLanding(params) {
  * @param {string[]} includes - Files/folders to include
  */
 async function createZipArchive(sourceDir, zipPath, includes) {
-  return new Promise(async (resolve, reject) => {
-    const output = createWriteStream(zipPath);
-    const archive = archiver('zip', {
-      zlib: { level: 9 }
-    });
+  // Collect items to add BEFORE creating the promise
+  const itemsToAdd = [];
+  for (const item of includes) {
+    const itemPath = path.join(sourceDir, item);
+    try {
+      const stats = await fs.stat(itemPath);
+      itemsToAdd.push({ itemPath, item, isDirectory: stats.isDirectory() });
+    } catch {
+      log.debug('Archive item not found, skipping', { item });
+    }
+  }
 
-    output.on('close', () => {
-      log.info('Archive created', {
-        path: zipPath,
-        size: archive.pointer()
+  return new Promise((resolve, reject) => {
+    try {
+      const output = createWriteStream(zipPath);
+      const archive = archiver('zip', {
+        zlib: { level: 9 }
       });
-      resolve();
-    });
 
-    archive.on('error', reject);
-    archive.pipe(output);
+      output.on('close', () => {
+        log.info('Archive created', {
+          path: zipPath,
+          size: archive.pointer()
+        });
+        resolve();
+      });
 
-    // Add items synchronously before finalize
-    for (const item of includes) {
-      const itemPath = path.join(sourceDir, item);
+      // CRITICAL: Handle output stream errors (disk full, permission denied)
+      output.on('error', (err) => {
+        log.error('Archive output stream error', { error: err.message });
+        reject(err);
+      });
 
-      try {
-        const stats = await fs.stat(itemPath);
-        if (stats.isDirectory()) {
+      archive.on('error', (err) => {
+        log.error('Archive error', { error: err.message });
+        reject(err);
+      });
+
+      archive.pipe(output);
+
+      // Add all items (collected before Promise)
+      for (const { itemPath, item, isDirectory } of itemsToAdd) {
+        if (isDirectory) {
           archive.directory(itemPath, item);
           log.debug('Added directory to archive', { item });
         } else {
           archive.file(itemPath, { name: item });
           log.debug('Added file to archive', { item });
         }
-      } catch {
-        // Item doesn't exist, skip
-        log.debug('Archive item not found, skipping', { item });
       }
-    }
 
-    // Finalize after all items are added
-    archive.finalize();
+      // Finalize after all items are added
+      archive.finalize();
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 

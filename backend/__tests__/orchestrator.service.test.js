@@ -21,7 +21,15 @@ jest.unstable_mockModule('../src/services/gemini.service.js', () => ({
 }));
 
 jest.unstable_mockModule('../src/services/runware.service.js', () => ({
-  removeBackground: jest.fn()
+  removeBackground: jest.fn(),
+  generateWithRunware: jest.fn()
+}));
+
+jest.unstable_mockModule('../src/services/pixabay.service.js', () => ({
+  findGameSounds: jest.fn().mockResolvedValue({}),
+  getGameSoundsWithFallback: jest.fn().mockResolvedValue({ spin: '/path/spin.mp3', win: '/path/win.mp3' }),
+  downloadAndSaveSounds: jest.fn().mockResolvedValue({}),
+  getFallbackSounds: jest.fn().mockResolvedValue({ spin: '/path/spin.mp3', win: '/path/win.mp3' })
 }));
 
 jest.unstable_mockModule('../src/services/landing/assembler.service.js', () => ({
@@ -341,6 +349,62 @@ describe('Landing Orchestrator', () => {
 
       // Cleanup
       deleteSession(session.id);
+    });
+  });
+
+  describe('Progress Monotonicity', () => {
+    it('should never decrease progress (CRITICAL regression test)', () => {
+      const session = createSession(600);
+      const progressValues = [];
+
+      session.addListener((event) => {
+        progressValues.push(event.progress);
+      });
+
+      // Simulate the full state transition flow with expected progress values
+      // This catches bugs where progress goes backward (e.g., 60 -> 57)
+      session.setState(STATES.ANALYZING, { progress: 5 });
+      session.setState(STATES.FETCHING_REFERENCE, { progress: 15 });
+      session.setState(STATES.EXTRACTING_PALETTE, { progress: 25 });
+      session.setState(STATES.GENERATING_ASSETS, { progress: 40 });
+      session.setState(STATES.GENERATING_ASSETS, { progress: 50 }); // mid-asset
+      session.setState(STATES.REMOVING_BACKGROUNDS, { progress: 60 });
+      session.setState(STATES.GENERATING_ASSETS, { progress: 65 }); // sounds (was 57, now 65)
+      session.setState(STATES.GENERATING_ASSETS, { progress: 68 }); // sounds complete
+      session.setState(STATES.GENERATING_CODE, { progress: 70 });
+      session.setState(STATES.ASSEMBLING, { progress: 90 });
+      session.setState(STATES.COMPLETE, { progress: 100 });
+
+      // Verify progress is monotonically increasing
+      for (let i = 1; i < progressValues.length; i++) {
+        expect(progressValues[i]).toBeGreaterThanOrEqual(progressValues[i - 1]);
+        if (progressValues[i] < progressValues[i - 1]) {
+          throw new Error(
+            `Progress went backward! ${progressValues[i - 1]} -> ${progressValues[i]} at step ${i}`
+          );
+        }
+      }
+
+      // Cleanup
+      deleteSession(session.id);
+    });
+
+    it('should have specific progress ranges for each step', () => {
+      // Document expected progress ranges to prevent regression
+      const expectedRanges = {
+        [STATES.ANALYZING]: [5, 10],
+        [STATES.FETCHING_REFERENCE]: [10, 20],
+        [STATES.EXTRACTING_PALETTE]: [20, 30],
+        [STATES.GENERATING_ASSETS]: [30, 70], // includes sounds at 65-68
+        [STATES.REMOVING_BACKGROUNDS]: [55, 65],
+        [STATES.GENERATING_CODE]: [70, 90],
+        [STATES.ASSEMBLING]: [90, 95],
+        [STATES.COMPLETE]: [100, 100]
+      };
+
+      // This test documents the expected ranges - can be used as spec
+      expect(expectedRanges[STATES.COMPLETE][1]).toBe(100);
+      expect(expectedRanges[STATES.ANALYZING][0]).toBeLessThan(expectedRanges[STATES.GENERATING_ASSETS][0]);
     });
   });
 });

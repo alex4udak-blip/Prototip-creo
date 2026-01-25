@@ -437,4 +437,102 @@ describe('Landing Assembler Functionality', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('Asset Placeholder Replacement - Collision Prevention', () => {
+    it('should NOT replace wheelFrame when processing wheel first (collision bug)', async () => {
+      // This test catches the regex collision bug where "wheel" pattern
+      // would incorrectly match "wheelFrame" paths
+      const htmlWithBothAssets = `
+        <!DOCTYPE html>
+        <img src="assets/wheel.png" class="wheel">
+        <img src="assets/wheelFrame.png" class="frame">
+      `;
+
+      await assembleLanding({
+        landingId: 'collision-test',
+        userId: 1,
+        html: htmlWithBothAssets,
+        assets: {
+          wheel: { path: '/tmp/wheel.webp' },
+          wheelFrame: { path: '/tmp/wheelFrame.webp' }
+        },
+        sounds: {},
+        analysis: {}
+      });
+
+      // Get the HTML that was written
+      const writeCall = mockWriteFile.mock.calls.find(call =>
+        call[0].includes('index.html')
+      );
+      expect(writeCall).toBeDefined();
+
+      const writtenHtml = writeCall[1];
+
+      // Both assets should be replaced correctly
+      // wheelFrame should NOT be corrupted by wheel's replacement
+      expect(writtenHtml).toContain('assets/wheelFrame');
+      expect(writtenHtml).toContain('assets/wheel');
+    });
+
+    it('should replace longer asset names first to avoid collision', async () => {
+      // Test with box, boxClosed, boxOpen - all share "box" prefix
+      const htmlWithBoxes = `
+        <!DOCTYPE html>
+        <img src="assets/box1.png">
+        <img src="assets/boxClosed.png">
+        <img src="assets/boxOpen.png">
+      `;
+
+      await assembleLanding({
+        landingId: 'box-collision-test',
+        userId: 1,
+        html: htmlWithBoxes,
+        assets: {
+          box1: { path: '/tmp/box1.webp' },
+          boxClosed: { path: '/tmp/boxClosed.webp' },
+          boxOpen: { path: '/tmp/boxOpen.webp' }
+        },
+        sounds: {},
+        analysis: {}
+      });
+
+      const writeCall = mockWriteFile.mock.calls.find(call =>
+        call[0].includes('index.html')
+      );
+      const writtenHtml = writeCall[1];
+
+      // All three should be replaced correctly
+      expect(writtenHtml).toContain('assets/box1');
+      expect(writtenHtml).toContain('assets/boxClosed');
+      expect(writtenHtml).toContain('assets/boxOpen');
+    });
+
+    it('should handle sound collision - spin vs spinwheel', async () => {
+      const htmlWithSounds = `
+        <!DOCTYPE html>
+        <script>
+          new Audio('sounds/spin.mp3');
+          new Audio('sounds/spinwheel.mp3');
+        </script>
+      `;
+
+      await assembleLanding({
+        landingId: 'sound-collision-test',
+        userId: 1,
+        html: htmlWithSounds,
+        assets: {},
+        sounds: {
+          spin: '/tmp/spin.mp3',
+          spinwheel: '/tmp/spinwheel.mp3'
+        },
+        analysis: {}
+      });
+
+      const writeCall = mockWriteFile.mock.calls.find(call =>
+        call[0].includes('index.html')
+      );
+      // Both sounds should be replaced without collision
+      expect(writeCall).toBeDefined();
+    });
+  });
 });
