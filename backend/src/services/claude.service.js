@@ -140,6 +140,160 @@ Respond in JSON format when analyzing/planning.
 Respond with complete HTML when generating code.`;
 
 /**
+ * Extended system prompt with examples for high-quality landing generation
+ * Based on production-proven landing page templates
+ */
+const LANDING_CODE_SYSTEM_PROMPT = `You are an expert landing page generator for gambling/casino affiliate marketing.
+
+## YOUR TASK
+Generate a COMPLETE, PRODUCTION-READY HTML file with inline CSS and JavaScript.
+
+## CRITICAL QUALITY REQUIREMENTS (MUST FOLLOW):
+
+### 1. RESPONSIVE DESIGN
+Use relative units (em, rem, %, vh, vw) NOT fixed pixels:
+\`\`\`css
+html { font-size: min(4.5px + 5.5*(100vw - 375px)/1545, 10px); }
+@media(min-width: 1024px) { html { font-size: clamp(5px, 0.85vh, 10px) !important; } }
+body { font-size: 80%; }
+@media(max-width: 1023px) { body { font-size: 110%; } }
+\`\`\`
+
+### 2. VIEWPORT META (EXACT)
+\`\`\`html
+<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=0.9, maximum-scale=0.9, minimum-scale=0.9, viewport-fit=cover">
+\`\`\`
+
+### 3. LOADER WITH PROGRESS BAR
+Always include a loader with animated progress bar:
+\`\`\`html
+<div class="loader" id="loader">
+    <img class="loader__logo" src="assets/logo.png" alt="logo">
+    <div class="loader__progress">
+        <div class="loader__progress-line" id="progressLine"></div>
+    </div>
+</div>
+\`\`\`
+
+### 4. CONFIG OBJECT (ALWAYS AT TOP OF SCRIPT)
+\`\`\`javascript
+const CONFIG = {
+    winSector: 1,  // Which sector wins
+    prizes: ['1500€', '100€', '50€', '25€', '10€', '100€', '50€', '25€'],
+    offerUrl: '{{OFFER_URL}}',  // Will be replaced
+    useSound: true
+};
+\`\`\`
+
+### 5. SOUND INTEGRATION
+\`\`\`javascript
+const sounds = {
+    spin: new Audio('sounds/spin.mp3'),
+    win: new Audio('sounds/win.mp3')
+};
+function playSound(name) {
+    if (!CONFIG.useSound) return;
+    try { sounds[name].currentTime = 0; sounds[name].play().catch(() => {}); } catch(e) {}
+}
+\`\`\`
+
+### 6. WIN MODAL WITH REDIRECT
+After win animation, show modal then redirect:
+\`\`\`javascript
+function showModal() {
+    modal.classList.add('is--active');
+    document.body.classList.add('is--modal-open');
+    // Auto-redirect after 3 seconds
+    setTimeout(() => {
+        const urlParams = window.location.search || '';
+        window.location.href = CONFIG.offerUrl + urlParams;
+    }, 3000);
+}
+\`\`\`
+
+### 7. PROTECTION CODE (ALWAYS INCLUDE)
+\`\`\`javascript
+// Block right-click, selection, DevTools
+document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('selectstart', e => e.preventDefault());
+document.addEventListener('keydown', e => {
+    if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && ['I','J','C'].includes(e.key)) || (e.ctrlKey && e.key === 'u')) {
+        e.preventDefault();
+    }
+});
+\`\`\`
+
+### 8. CSS STRUCTURE (FOLLOW THIS PATTERN)
+\`\`\`css
+/* Reset */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; scroll-behavior: smooth; }
+
+/* Body wrapper with background */
+.body-wrapper {
+    position: relative;
+    display: flex;
+    min-height: 100vh;
+    overflow: hidden;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+    background-image: url('assets/background.png');
+}
+
+/* Container with flex centering */
+.container-wrap { display: flex; flex: 1 1 auto; flex-direction: column; justify-content: center; width: 100%; }
+.container { position: relative; display: flex; flex: 1 1 auto; flex-direction: column; justify-content: center; width: 100%; padding: 0 16px; overflow: hidden; }
+
+/* Logo animation */
+.logo { position: relative; z-index: 7; display: block; width: 90em; margin: 0 auto; animation: 2s scaleLogo ease-in-out infinite; }
+@keyframes scaleLogo { 0%, 100% { transform: scale(0.9); } 50% { transform: scale(1); } }
+
+/* Button with pulse */
+.button {
+    display: flex; align-items: center; justify-content: center;
+    padding: 1em 3em; border: none; border-radius: 1em;
+    font-weight: 900; font-size: 4em; text-transform: uppercase;
+    cursor: pointer; animation: 2s pulseButton ease-in-out infinite;
+}
+@keyframes pulseButton { 0%, 65%, 100% { transform: rotate(-4deg); } 15%, 50% { transform: rotate(4deg); } }
+\`\`\`
+
+### 9. WHEEL GAME SPECIFIC
+For wheel games, use this structure:
+- 8 sectors with configurable prizes
+- CSS keyframe animations for each winning sector (spinTo1-spinTo8)
+- Wheel frame image overlaying wheel
+- Pointer/arrow at top
+- Central spin button
+
+### 10. CRASH/CHICKEN ROAD GAME SPECIFIC
+For crash games:
+- Grid of cells (e.g., 5 columns, 5 rows)
+- Character that advances row by row
+- Each row shows safe/danger cells after selection
+- Player always wins (predetermined safe path)
+- Multiplier display that increases with each successful step
+
+## QUALITY CHECKLIST:
+✓ All CSS inline in <style> tag
+✓ All JS inline in <script> tag
+✓ Responsive (em units, media queries)
+✓ Loader with progress
+✓ CONFIG object with offerUrl
+✓ Sound integration
+✓ Win modal with auto-redirect
+✓ Protection code
+✓ Mobile-first design
+✓ Smooth animations
+✓ Touch events for mobile
+✓ No console errors
+✓ Background image fills screen
+✓ All assets used from provided paths
+
+Return ONLY the HTML code, no explanations or markdown code blocks.`;
+
+/**
  * Analyze user request and extract structured data
  * @param {string} prompt - User's natural language request
  * @param {string} [screenshotBase64] - Optional screenshot for analysis
@@ -243,19 +397,7 @@ export async function generateLandingCode(spec, assets, colors) {
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      system: `${LANDING_SYSTEM_PROMPT}
-
-Generate a COMPLETE, production-ready HTML file with inline CSS and JS.
-The code must:
-1. Be mobile responsive
-2. Include all animations
-3. Have the player ALWAYS win
-4. Redirect to offer URL after win
-5. Include sound effects
-6. Have proper meta tags
-7. Include 18+ disclaimer
-
-Return ONLY the HTML code, no explanations.`,
+      system: LANDING_CODE_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: prompt }]
     });
 
@@ -296,10 +438,7 @@ export async function generateLandingCodeStream(spec, assets, colors, onChunk) {
     const stream = await client.messages.stream({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      system: `${LANDING_SYSTEM_PROMPT}
-
-Generate a COMPLETE, production-ready HTML file with inline CSS and JS.
-Return ONLY the HTML code, no explanations or markdown.`,
+      system: LANDING_CODE_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: prompt }]
     });
 
@@ -399,43 +538,87 @@ function buildAnalysisContent(prompt, screenshotBase64) {
  * Build prompt for code generation
  */
 function buildCodeGenerationPrompt(spec, assets, colors) {
-  return `Generate a complete ${spec.mechanicType} landing page.
+  // Build asset paths with correct format
+  const assetPaths = Object.entries(assets || {}).map(([key, asset]) => {
+    // Extract just the filename for the asset path
+    const assetPath = typeof asset === 'string' ? asset : (asset.url || asset.path || `assets/${key}.png`);
+    // Normalize to assets/ folder for the final HTML
+    const normalizedPath = assetPath.includes('assets/') ? assetPath : `assets/${key}.png`;
+    return `- ${key}: "${normalizedPath}" (use this EXACT path in HTML)`;
+  }).join('\n');
 
-## Slot/Brand: ${spec.slotName || 'Custom Casino'}
+  const mechanicPrompts = {
+    wheel: `
+## WHEEL GAME REQUIREMENTS:
+- 8 sectors wheel with configurable prizes
+- Wheel spins and stops on winning sector (sector 1 = main prize)
+- Use CSS keyframe animations: @keyframes spinTo1, spinTo2, etc.
+- Include wheel frame overlay for visual depth
+- Pointer/arrow at top pointing to winning sector
+- Central "SPIN" button
+- Prize text visible on sectors
+- Vibrate on mobile when spinning (if supported)`,
+    crash: `
+## CRASH/CHICKEN ROAD GAME REQUIREMENTS:
+- Grid layout: 5 columns x 5 rows of cells
+- Character starts at bottom, advances up row by row
+- Player clicks on a cell in each row to advance
+- After clicking, reveal safe/danger cells (player always picks safe)
+- Multiplier increases: x1.2 → x1.5 → x2 → x3 → x5
+- Character animation when moving
+- Show "WIN" modal after completing all rows
+- Use cell images for default/active/danger states`,
+    boxes: `
+## GIFT BOX GAME REQUIREMENTS:
+- 3-5 gift boxes displayed
+- Player selects one box
+- Box opens with animation
+- Prize revealed
+- Other boxes show "empty" or smaller prizes
+- Win celebration effect (confetti/coins)`,
+    loader: `
+## LOADER/PRELANDER REQUIREMENTS:
+- Progress bar filling to 100%
+- "Checking bonus..." or similar text
+- Auto-redirect after completion
+- Logo and branding visible`
+  };
 
-## Prizes: ${JSON.stringify(spec.prizes || ['€500', '€200', '100 FS'])}
+  return `Generate a complete ${spec.mechanicType.toUpperCase()} landing page.
 
-## Language: ${spec.language || 'en'}
+## BRAND/SLOT: "${spec.slotName || 'Fortune Casino'}"
 
-## Offer URL: ${spec.offerUrl || '{{OFFER_URL}}'}
+## PRIZES TO SHOW: ${JSON.stringify(spec.prizes || ['€1500', '€500', '€200', '€100', '€50', '100 FS', '50 FS', '25 FS'])}
 
-## Color Palette:
-- Primary: ${colors?.primary || '#FFD700'}
-- Secondary: ${colors?.secondary || '#1E3A5F'}
-- Accent: ${colors?.accent || '#FF6B6B'}
+## LANGUAGE: ${spec.language || 'en'} (use this language for ALL text)
+
+## OFFER URL: "${spec.offerUrl || '{{OFFER_URL}}'}" (redirect here after win)
+
+## COLOR PALETTE (USE THESE COLORS):
+- Primary (gold/accent): ${colors?.primary || '#FFD700'}
+- Secondary (text/elements): ${colors?.secondary || '#1E3A5F'}
+- Accent (buttons/highlights): ${colors?.accent || '#FF6B6B'}
 - Background: ${colors?.background || '#0D1117'}
 
-## Assets Available:
-${Object.entries(assets || {}).map(([key, path]) => `- ${key}: ${path}`).join('\n')}
+## ASSETS PROVIDED (USE EXACT PATHS):
+${assetPaths || '- background: "assets/background.png"\n- logo: "assets/logo.png"'}
 
-## Sounds Available:
-- sounds/spin.mp3
-- sounds/win.mp3
-- sounds/click.mp3
+## SOUNDS (INCLUDE IN CONFIG):
+- sounds/spin.mp3 (for spinning/action)
+- sounds/win.mp3 (for win celebration)
+${mechanicPrompts[spec.mechanicType] || mechanicPrompts.wheel}
 
-## Theme: ${spec.theme || 'casino'}
-## Style: ${spec.style || 'modern'}
-
-Generate the complete HTML file with:
-1. All CSS inline in <style>
-2. All JS inline in <script>
-3. Proper viewport meta
-4. 18+ disclaimer
-5. Mobile responsive design
-6. Smooth animations
-7. Sound effects integration
-8. Win logic (player always wins)
-9. Redirect after win`;
+## IMPORTANT REMINDERS:
+1. Use em/rem units, NOT px for sizes (responsive!)
+2. Include loader with progress bar at start
+3. CONFIG object with offerUrl at top of script
+4. Player ALWAYS wins (rigged)
+5. Auto-redirect 3s after showing win modal
+6. Add protection code (block right-click, F12)
+7. Background image should cover full screen
+8. Include all animations inline
+9. Mobile-first responsive design
+10. Use provided asset paths EXACTLY`;
 }
 
 /**

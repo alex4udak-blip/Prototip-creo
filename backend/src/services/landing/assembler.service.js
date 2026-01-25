@@ -120,12 +120,20 @@ export async function assembleLanding(params) {
   for (const [key, asset] of Object.entries(assets || {})) {
     if (asset.path) {
       try {
-        const ext = path.extname(asset.path) || '.png';
+        // Resolve the source path - it might be URL like /uploads/xxx.png
+        let sourcePath = asset.path;
+        if (sourcePath.startsWith('/uploads/')) {
+          sourcePath = path.join(config.storagePath, sourcePath.replace('/uploads/', ''));
+        } else if (!path.isAbsolute(sourcePath)) {
+          sourcePath = path.join(config.storagePath, sourcePath);
+        }
+
+        const ext = path.extname(sourcePath) || '.png';
         const fileName = `${key}${ext}`;
         const destPath = path.join(assetsDir, fileName);
 
-        log.debug('Copying asset', { key, sourcePath: asset.path, destPath });
-        await fs.copyFile(asset.path, destPath);
+        log.debug('Copying asset', { key, originalPath: asset.path, sourcePath, destPath });
+        await fs.copyFile(sourcePath, destPath);
         assetPaths[key] = `assets/${fileName}`;
 
         log.info('Asset copied', { key, destPath });
