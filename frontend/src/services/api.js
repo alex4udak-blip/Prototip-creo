@@ -321,7 +321,31 @@ export const wsManager = new WebSocketManager();
 
 export const apiClient = {
   async get(endpoint, options = {}) {
-    const data = await fetchAPI(endpoint, { method: 'GET', ...options });
+    const { responseType, ...restOptions } = options;
+
+    // If responseType is 'text', use raw fetch without JSON parsing
+    if (responseType === 'text') {
+      const token = getToken();
+      const headers = { ...restOptions.headers };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'GET',
+        headers,
+        ...restOptions
+      });
+
+      if (!response.ok) {
+        throw new Error(`Request failed: ${response.status}`);
+      }
+
+      const data = await response.text();
+      return { data };
+    }
+
+    const data = await fetchAPI(endpoint, { method: 'GET', ...restOptions });
     return { data };
   },
 

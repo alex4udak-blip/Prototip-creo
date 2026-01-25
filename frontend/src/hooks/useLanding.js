@@ -246,8 +246,31 @@ export const useLandingStore = create(
 
     try {
       const response = await apiClient.get('/landing/v2/list');
+      // Combine database landings + file-based landings
+      const dbLandings = response.data.landings || [];
+      const fileLandings = (response.data.fileLandings || []).map(fl => ({
+        ...fl,
+        landing_id: fl.landingId,
+        slot_name: fl.analysis?.slotName,
+        type: fl.analysis?.mechanicType,
+        language: fl.analysis?.language,
+        prizes: fl.analysis?.prizes,
+        created_at: fl.createdAt
+      }));
+
+      // Merge and dedupe by landing_id
+      const allLandings = [...dbLandings];
+      for (const fl of fileLandings) {
+        if (!allLandings.find(l => l.landing_id === fl.landing_id)) {
+          allLandings.push(fl);
+        }
+      }
+
+      // Sort by date
+      allLandings.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
       set({
-        landings: response.data.landings || [],
+        landings: allLandings,
         isLoadingHistory: false
       });
     } catch (error) {

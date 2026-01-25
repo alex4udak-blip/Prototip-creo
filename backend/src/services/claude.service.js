@@ -98,22 +98,40 @@ const THINKING_BUDGET = config.claude?.thinkingBudget || 2048;
 /**
  * System prompt for landing page generation
  * Claude acts as the "brain" - understanding, planning, generating code
+ *
+ * IMPORTANT: This system is ADAPTIVE - it can handle ANY game type,
+ * not just predefined mechanics. Claude should understand the user's
+ * intent and create appropriate game logic.
  */
 const LANDING_SYSTEM_PROMPT = `You are an expert landing page generator for gambling/casino affiliate marketing.
 
 Your role:
 1. UNDERSTAND user requests (slot names, game types, prizes, languages)
-2. PLAN asset requirements and game mechanics
-3. GENERATE production-ready HTML/CSS/JS code
+2. ANALYZE what kind of interactive element they want
+3. PLAN asset requirements and game mechanics
+4. GENERATE production-ready HTML/CSS/JS code
 
-## Game Types You Support:
-- wheel: Fortune wheel with sectors and prizes
-- boxes: Gift box selection game
-- crash: Character advances avoiding obstacles (Chicken Road style)
-- board: Board game with dice and moves
-- scratch: Scratch card reveal
-- loader: Progress bar prelander
-- slot: Mini slot machine simulation
+## ADAPTIVE GAME UNDERSTANDING:
+You can create ANY type of interactive landing page game. Common patterns include:
+- Fortune wheels (spin to win)
+- Gift box selection (pick to reveal)
+- Grid/crash games (step by step progression)
+- Scratch cards (reveal prizes)
+- Slot machines (spin reels)
+- Progress loaders (loading bar preland)
+- Board games (dice/moves)
+- Memory games (flip cards)
+- Mini-games based on popular games (Aviator, Chicken Road, Plinko, etc.)
+
+But you're NOT LIMITED to these! If the user describes a custom mechanic, understand and implement it.
+The key principle: PLAYER ALWAYS WINS (games are rigged for marketing conversion).
+
+## WHEN ANALYZING A REQUEST:
+1. Identify the BRAND/SLOT name (can be real casino game or fictional)
+2. Determine the game MECHANIC (interaction type)
+3. Extract PRIZES and LANGUAGE
+4. Understand the VISUAL STYLE they want
+5. List what ASSETS would be needed
 
 ## Critical Requirements:
 - Player ALWAYS wins (rigged games)
@@ -124,7 +142,7 @@ Your role:
 - NO external dependencies (inline CSS/JS)
 
 ## Asset Paths Convention:
-- Background: assets/bg.webp
+- Background: assets/background.png
 - Logo: assets/logo.png
 - Game elements: assets/{element}.png
 - Sounds: sounds/{sound}.mp3
@@ -324,20 +342,30 @@ export async function analyzeRequest(prompt, screenshotBase64 = null) {
 
 For this request, analyze and return a JSON object with:
 {
-  "slotName": "extracted or inferred slot name",
-  "isRealSlot": true/false (if it's a known slot game),
-  "mechanicType": "wheel|boxes|crash|board|scratch|loader|slot",
-  "prizes": ["prize1", "prize2", ...],
+  "slotName": "extracted or inferred slot/brand name",
+  "isRealSlot": true/false (if it's a known casino/slot game),
+  "mechanicType": "descriptive type - can be standard (wheel, boxes, crash, slot) OR custom description based on what user wants",
+  "mechanicDescription": "detailed description of how the game should work",
+  "prizes": ["prize1", "prize2", ...] (extract from request or generate appropriate ones),
   "language": "detected language code (en, de, es, ru, etc.)",
-  "theme": "visual theme description",
-  "style": "art style (cartoon, realistic, neon, etc.)",
+  "theme": "visual theme description (colors, mood, style)",
+  "style": "art style (cartoon, realistic, neon, dark, bright, etc.)",
   "offerUrl": "extracted URL or null",
   "assetsNeeded": [
-    { "type": "background|character|element|logo", "description": "what to generate" }
+    { "type": "background|character|element|logo", "description": "detailed description of what to generate" }
   ],
   "soundsNeeded": ["spin", "win", "click"],
   "confidence": 0-100
-}`,
+}
+
+IMPORTANT: For mechanicType, don't limit yourself to predefined types!
+- If user asks for "wheel" or "колесо фортуны" → mechanicType: "wheel"
+- If user asks for "Chicken Road" or "crash game" → mechanicType: "crash"
+- If user asks for "Aviator style" → mechanicType: "aviator"
+- If user asks for "plinko" → mechanicType: "plinko"
+- If user describes something custom → mechanicType: brief descriptive name
+
+The mechanicDescription field should contain a clear explanation of how the game works, so code generation can implement it correctly.`,
       messages
     });
 
@@ -536,6 +564,8 @@ function buildAnalysisContent(prompt, screenshotBase64) {
 
 /**
  * Build prompt for code generation
+ * This function creates ADAPTIVE prompts based on the mechanic type
+ * and user's original description, NOT hardcoded examples
  */
 function buildCodeGenerationPrompt(spec, assets, colors) {
   // Build asset paths with correct format
@@ -547,46 +577,18 @@ function buildCodeGenerationPrompt(spec, assets, colors) {
     return `- ${key}: "${normalizedPath}" (use this EXACT path in HTML)`;
   }).join('\n');
 
-  const mechanicPrompts = {
-    wheel: `
-## WHEEL GAME REQUIREMENTS:
-- 8 sectors wheel with configurable prizes
-- Wheel spins and stops on winning sector (sector 1 = main prize)
-- Use CSS keyframe animations: @keyframes spinTo1, spinTo2, etc.
-- Include wheel frame overlay for visual depth
-- Pointer/arrow at top pointing to winning sector
-- Central "SPIN" button
-- Prize text visible on sectors
-- Vibrate on mobile when spinning (if supported)`,
-    crash: `
-## CRASH/CHICKEN ROAD GAME REQUIREMENTS:
-- Grid layout: 5 columns x 5 rows of cells
-- Character starts at bottom, advances up row by row
-- Player clicks on a cell in each row to advance
-- After clicking, reveal safe/danger cells (player always picks safe)
-- Multiplier increases: x1.2 → x1.5 → x2 → x3 → x5
-- Character animation when moving
-- Show "WIN" modal after completing all rows
-- Use cell images for default/active/danger states`,
-    boxes: `
-## GIFT BOX GAME REQUIREMENTS:
-- 3-5 gift boxes displayed
-- Player selects one box
-- Box opens with animation
-- Prize revealed
-- Other boxes show "empty" or smaller prizes
-- Win celebration effect (confetti/coins)`,
-    loader: `
-## LOADER/PRELANDER REQUIREMENTS:
-- Progress bar filling to 100%
-- "Checking bonus..." or similar text
-- Auto-redirect after completion
-- Logo and branding visible`
-  };
+  // Use mechanicDescription from analysis if available, otherwise build adaptive prompt
+  const mechanicDescription = spec.mechanicDescription
+    ? `## GAME MECHANIC REQUIREMENTS:\n${spec.mechanicDescription}`
+    : buildAdaptiveMechanicPrompt(spec);
 
-  return `Generate a complete ${spec.mechanicType.toUpperCase()} landing page.
+  return `Generate a complete landing page for this game:
 
 ## BRAND/SLOT: "${spec.slotName || 'Fortune Casino'}"
+
+## GAME TYPE: ${spec.mechanicType}
+${spec.theme ? `## THEME: ${spec.theme}` : ''}
+${spec.style ? `## STYLE: ${spec.style}` : ''}
 
 ## PRIZES TO SHOW: ${JSON.stringify(spec.prizes || ['€1500', '€500', '€200', '€100', '€50', '100 FS', '50 FS', '25 FS'])}
 
@@ -606,7 +608,8 @@ ${assetPaths || '- background: "assets/background.png"\n- logo: "assets/logo.png
 ## SOUNDS (INCLUDE IN CONFIG):
 - sounds/spin.mp3 (for spinning/action)
 - sounds/win.mp3 (for win celebration)
-${mechanicPrompts[spec.mechanicType] || mechanicPrompts.wheel}
+
+${mechanicDescription}
 
 ## IMPORTANT REMINDERS:
 1. Use em/rem units, NOT px for sizes (responsive!)
@@ -619,6 +622,181 @@ ${mechanicPrompts[spec.mechanicType] || mechanicPrompts.wheel}
 8. Include all animations inline
 9. Mobile-first responsive design
 10. Use provided asset paths EXACTLY`;
+}
+
+/**
+ * Build adaptive mechanic prompt based on the game type
+ * This function generates INTELLIGENT descriptions for ANY mechanic,
+ * not just predefined ones
+ */
+function buildAdaptiveMechanicPrompt(spec) {
+  const mechanicType = (spec.mechanicType || '').toLowerCase();
+  const theme = spec.theme || '';
+  const style = spec.style || '';
+
+  // Core game patterns - adaptable templates
+  const corePatterns = {
+    // Spinning/rotation based games
+    spinBased: ['wheel', 'fortune', 'roulette', 'spinner', 'spin'],
+    // Selection/picking games
+    selectionBased: ['box', 'gift', 'pick', 'choose', 'card', 'chest', 'treasure'],
+    // Grid/progression games
+    gridBased: ['crash', 'chicken', 'road', 'mines', 'minefield', 'grid', 'step', 'climb', 'tower'],
+    // Reveal games
+    revealBased: ['scratch', 'reveal', 'scratchcard', 'lottery'],
+    // Slot/reel games
+    slotBased: ['slot', 'machine', 'reel', 'jackpot', 'fruit'],
+    // Progress/loading games
+    progressBased: ['loader', 'loading', 'progress', 'preland', 'check'],
+    // Board/dice games
+    boardBased: ['board', 'dice', 'monopoly', 'path', 'journey'],
+    // Aviation/crash betting style
+    aviatorBased: ['aviator', 'plane', 'fly', 'rocket', 'crash-bet', 'multiplier'],
+    // Plinko/ball drop
+    plinkoBased: ['plinko', 'pachinko', 'ball', 'drop', 'bounce'],
+    // Memory games
+    memoryBased: ['memory', 'match', 'flip', 'pairs']
+  };
+
+  // Detect which pattern matches
+  const matchPattern = (patterns) => {
+    return patterns.some(p => mechanicType.includes(p) || theme.toLowerCase().includes(p));
+  };
+
+  // Generate adaptive instructions
+  let instructions = `## GAME MECHANIC REQUIREMENTS:\n`;
+
+  if (matchPattern(corePatterns.spinBased)) {
+    instructions += `
+This is a SPINNING game (wheel/fortune style):
+- Create a circular wheel divided into sectors (6-12 sectors work best)
+- Each sector shows a prize from the prizes list
+- Wheel spins with CSS animation and stops on the winning sector
+- Include a pointer/arrow indicating the winning position
+- Add a prominent SPIN button
+- Use rotation animations with easing for realistic feel
+- The main prize should be in the designated winning sector
+- Vibrate device on spin (if supported)
+- Play spin sound during rotation, win sound on stop`;
+  } else if (matchPattern(corePatterns.selectionBased)) {
+    instructions += `
+This is a SELECTION game (gift box/card pick style):
+- Display 3-5 selectable items (boxes, cards, chests, etc.)
+- Each item has closed/open states
+- Player taps one item to select
+- Selected item opens with animation to reveal the main prize
+- Other items reveal smaller/no prizes
+- Add celebration effect (confetti, sparkles, coins)
+- Include "YOU WON!" celebration screen
+- Play click sound on selection, win sound on reveal`;
+  } else if (matchPattern(corePatterns.gridBased)) {
+    instructions += `
+This is a GRID/PROGRESSION game (chicken road/mines style):
+- Create a grid of cells (typically 5x5 or similar)
+- Character/player starts at one edge
+- Player advances by selecting cells in each row/column
+- After selection, reveal safe/danger cells (player ALWAYS picks safe)
+- Show multiplier increasing with each successful step (x1.2 → x1.5 → x2 → x3 → x5+)
+- Character moves with animation
+- Complete game shows final multiplier and win modal
+- Play step sound on each move, win sound on completion`;
+  } else if (matchPattern(corePatterns.aviatorBased)) {
+    instructions += `
+This is an AVIATOR/MULTIPLIER game (crash betting style):
+- Show a flying object (plane, rocket) that rises up
+- Multiplier counter increases as object rises (1.00x → 2.00x → 5.00x → etc.)
+- Player has a "CASH OUT" button
+- Object eventually "crashes" but player always cashes out before crash
+- Create tension with increasing speed
+- Show win amount based on multiplier × bet
+- Use smooth animations for flight path
+- Play engine/rise sound during flight, win sound on cashout`;
+  } else if (matchPattern(corePatterns.plinkoBased)) {
+    instructions += `
+This is a PLINKO/DROP game:
+- Show a triangular field with pegs/obstacles
+- Ball drops from top and bounces through pegs
+- Bottom has prize slots with different values
+- Ball always lands in the highest prize slot
+- Use physics-like animation for ball bouncing
+- Show prize amounts at bottom slots
+- Celebrate when ball lands in winner slot
+- Play bounce sounds, win sound on landing`;
+  } else if (matchPattern(corePatterns.revealBased)) {
+    instructions += `
+This is a SCRATCH/REVEAL game:
+- Create scratchable areas covering prizes
+- Use canvas or CSS for scratch effect
+- Player scratches to reveal symbols/prizes
+- Matching symbols = WIN (always happens)
+- Show celebration when winning combination revealed
+- Include progress indicator for scratch completion
+- Play scratch sound during interaction, win sound on reveal`;
+  } else if (matchPattern(corePatterns.slotBased)) {
+    instructions += `
+This is a SLOT MACHINE game:
+- Show 3 or more reels with symbols
+- Each reel spins independently with staggered stops
+- Reels stop to show winning combination
+- Highlight winning line with animation
+- Include lever or SPIN button
+- Add jackpot celebration effect
+- Play reel spin sound, win sound on jackpot`;
+  } else if (matchPattern(corePatterns.progressBased)) {
+    instructions += `
+This is a LOADER/PRELANDER:
+- Show progress bar filling from 0% to 100%
+- Include loading messages (checking bonus, verifying, etc.)
+- Display logo and brand elements prominently
+- Auto-redirect to offer after completion
+- Add subtle animations during loading
+- Optional: show "bonus found" message at end`;
+  } else if (matchPattern(corePatterns.boardBased)) {
+    instructions += `
+This is a BOARD/DICE game:
+- Create a path/board with numbered positions
+- Player has token that moves along path
+- Dice roll determines movement
+- Landing spots show prizes or actions
+- Player always lands on winning spot eventually
+- Include animated dice roll
+- Show celebration at finish/prize`;
+  } else if (matchPattern(corePatterns.memoryBased)) {
+    instructions += `
+This is a MEMORY/MATCH game:
+- Grid of face-down cards/tiles
+- Player flips two cards at a time
+- Matching pairs stay revealed
+- Game is rigged so matches are easy/guaranteed
+- Reveal bonus prize after completing matches
+- Include flip animations
+- Play flip sound, match sound, win sound`;
+  } else {
+    // FULLY ADAPTIVE - describe based on available information
+    instructions += `
+Create a "${mechanicType}" game based on these characteristics:
+${theme ? `- Theme/Style: ${theme}` : ''}
+${style ? `- Visual approach: ${style}` : ''}
+
+General requirements for ANY game mechanic:
+- Clear call-to-action button to start game
+- Interactive element that player engages with
+- Visual feedback for player actions
+- Progress/completion indicator
+- Guaranteed win state (game is rigged for marketing)
+- Celebration/win screen with prize display
+- Smooth animations throughout
+- Sound effects for actions and win
+
+Design the game logic so that:
+1. Player interaction is intuitive
+2. There's visual excitement/anticipation
+3. The win feels rewarding
+4. Mobile touch events are handled
+5. The game completes within 5-15 seconds typically`;
+  }
+
+  return instructions;
 }
 
 /**
