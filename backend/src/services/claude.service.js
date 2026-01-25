@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
+import { buildExampleBasedPrompt, getExampleForMechanic } from './landing-examples.js';
 
 // Lazy initialization
 let anthropic = null;
@@ -406,6 +407,7 @@ The mechanicDescription field should contain a clear explanation of how the game
 
 /**
  * Generate complete HTML/CSS/JS for a landing page
+ * Uses example-based prompting for higher quality output
  * @param {Object} spec - Game specification from analysis
  * @param {Object} assets - Generated asset paths
  * @param {Object} colors - Color palette
@@ -414,18 +416,21 @@ The mechanicDescription field should contain a clear explanation of how the game
 export async function generateLandingCode(spec, assets, colors) {
   const client = getClient();
 
+  // Build example-based system prompt for this mechanic type
+  const systemPrompt = buildExampleBasedPrompt(spec.mechanicType);
   const prompt = buildCodeGenerationPrompt(spec, assets, colors);
 
-  log.info('Claude: Generating landing code', {
+  log.info('Claude: Generating landing code with examples', {
     mechanicType: spec.mechanicType,
-    slotName: spec.slotName
+    slotName: spec.slotName,
+    exampleType: getExampleForMechanic(spec.mechanicType).type
   });
 
   try {
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      system: LANDING_CODE_SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: [{ role: 'user', content: prompt }]
     });
 
@@ -445,6 +450,7 @@ export async function generateLandingCode(spec, assets, colors) {
 
 /**
  * Stream code generation for real-time updates
+ * Uses example-based prompting for higher quality output
  * @param {Object} spec - Game specification
  * @param {Object} assets - Asset paths
  * @param {Object} colors - Color palette
@@ -454,10 +460,13 @@ export async function generateLandingCode(spec, assets, colors) {
 export async function generateLandingCodeStream(spec, assets, colors, onChunk) {
   const client = getClient();
 
+  // Build example-based system prompt for this mechanic type
+  const systemPrompt = buildExampleBasedPrompt(spec.mechanicType);
   const prompt = buildCodeGenerationPrompt(spec, assets, colors);
 
-  log.info('Claude: Starting streaming code generation', {
-    mechanicType: spec.mechanicType
+  log.info('Claude: Starting streaming code generation with examples', {
+    mechanicType: spec.mechanicType,
+    exampleType: getExampleForMechanic(spec.mechanicType).type
   });
 
   let html = '';
@@ -466,7 +475,7 @@ export async function generateLandingCodeStream(spec, assets, colors, onChunk) {
     const stream = await client.messages.stream({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      system: LANDING_CODE_SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: [{ role: 'user', content: prompt }]
     });
 
