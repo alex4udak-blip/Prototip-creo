@@ -106,8 +106,9 @@ export const useLandingStore = create(
       existingWs.close();
     }
 
-    // Use existing WebSocket or create new one
-    const wsUrl = `${API_BASE_URL.replace('http', 'ws')}/ws?token=${token}`;
+    // Build WebSocket URL - remove /api prefix since WS is at /ws not /api/ws
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws?token=${token}`;
 
     const ws = new WebSocket(wsUrl);
 
