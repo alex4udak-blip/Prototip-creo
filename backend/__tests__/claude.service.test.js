@@ -58,23 +58,30 @@ describe('Claude Service', () => {
   describe('analyzeRequest', () => {
     it('should analyze a simple prompt', async () => {
       mockCreate.mockResolvedValueOnce({
-        content: [{
-          text: JSON.stringify({
-            slotName: 'Gates of Olympus',
-            isRealSlot: true,
-            mechanicType: 'wheel',
-            prizes: ['€500', '€200', '100 FS'],
-            language: 'en',
-            theme: 'greek mythology',
-            style: 'vibrant',
-            offerUrl: null,
-            assetsNeeded: [
-              { type: 'background', description: 'Greek temple background' }
-            ],
-            soundsNeeded: ['spin', 'win'],
-            confidence: 85
-          })
-        }]
+        content: [
+          {
+            type: 'thinking',
+            thinking: 'Analyzing the request for Gates of Olympus...'
+          },
+          {
+            type: 'text',
+            text: JSON.stringify({
+              slotName: 'Gates of Olympus',
+              isRealSlot: true,
+              mechanicType: 'wheel',
+              prizes: ['€500', '€200', '100 FS'],
+              language: 'en',
+              theme: 'greek mythology',
+              style: 'vibrant',
+              offerUrl: null,
+              assetsNeeded: [
+                { type: 'background', description: 'Greek temple background' }
+              ],
+              soundsNeeded: ['spin', 'win'],
+              confidence: 85
+            })
+          }
+        ]
       });
 
       const result = await analyzeRequest('Gates of Olympus wheel landing');
@@ -83,22 +90,26 @@ describe('Claude Service', () => {
       expect(result.mechanicType).toBe('wheel');
       expect(result.isRealSlot).toBe(true);
       expect(result.confidence).toBeGreaterThan(0);
+      expect(result._thinking).toBeDefined();
       expect(mockCreate).toHaveBeenCalledTimes(1);
     });
 
     it('should handle crash game requests', async () => {
       mockCreate.mockResolvedValueOnce({
-        content: [{
-          text: JSON.stringify({
-            slotName: 'Chicken Road',
-            mechanicType: 'crash',
-            isRealSlot: false,
-            prizes: ['x5', 'x10', 'x50'],
-            language: 'en',
-            theme: 'chicken road',
-            confidence: 90
-          })
-        }]
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              slotName: 'Chicken Road',
+              mechanicType: 'crash',
+              isRealSlot: false,
+              prizes: ['x5', 'x10', 'x50'],
+              language: 'en',
+              theme: 'chicken road',
+              confidence: 90
+            })
+          }
+        ]
       });
 
       const result = await analyzeRequest('Chicken crash game landing');
@@ -108,13 +119,16 @@ describe('Claude Service', () => {
 
     it('should handle screenshot input', async () => {
       mockCreate.mockResolvedValueOnce({
-        content: [{
-          text: JSON.stringify({
-            slotName: 'Sweet Bonanza',
-            mechanicType: 'boxes',
-            confidence: 75
-          })
-        }]
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              slotName: 'Sweet Bonanza',
+              mechanicType: 'boxes',
+              confidence: 75
+            })
+          }
+        ]
       });
 
       const base64Screenshot = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';

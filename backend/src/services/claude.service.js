@@ -123,12 +123,17 @@ export async function analyzeRequest(prompt, screenshotBase64 = null) {
     }
   ];
 
-  log.info('Claude: Analyzing request', { promptLength: prompt.length, hasScreenshot: !!screenshotBase64 });
+  log.info('Claude: Analyzing request with Extended Thinking', { promptLength: prompt.length, hasScreenshot: !!screenshotBase64 });
 
   try {
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
+      // Enable Extended Thinking for better analysis
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 2048  // Let Claude think up to 2K tokens
+      },
       system: `${LANDING_SYSTEM_PROMPT}
 
 For this request, analyze and return a JSON object with:
@@ -150,15 +155,30 @@ For this request, analyze and return a JSON object with:
       messages
     });
 
-    const text = response.content[0]?.text || '';
+    // Extract thinking and response
+    let thinkingContent = null;
+    let textContent = null;
+
+    for (const block of response.content) {
+      if (block.type === 'thinking') {
+        thinkingContent = block.thinking;
+        log.info('Claude: Thinking process', { thinkingLength: thinkingContent?.length });
+      } else if (block.type === 'text') {
+        textContent = block.text;
+      }
+    }
 
     // Extract JSON from response - find balanced braces
-    const analysis = extractJSON(text);
+    const analysis = extractJSON(textContent || '');
     if (analysis) {
+      // Add thinking to analysis for frontend display
+      analysis._thinking = thinkingContent;
+
       log.info('Claude: Analysis complete', {
         slotName: analysis.slotName,
         mechanicType: analysis.mechanicType,
-        confidence: analysis.confidence
+        confidence: analysis.confidence,
+        hadThinking: !!thinkingContent
       });
       return analysis;
     }

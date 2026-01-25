@@ -213,13 +213,22 @@ export async function generateLanding(session, request) {
     log.info('Analysis complete', {
       landingId: session.id,
       slotName: analysis.slotName,
-      mechanicType: analysis.mechanicType
+      mechanicType: analysis.mechanicType,
+      hadThinking: !!analysis._thinking
     });
+
+    // Send thinking first if available
+    if (analysis._thinking) {
+      session.setState(STATES.ANALYZING, {
+        progress: 8,
+        message: `🧠 Claude думает: ${analysis._thinking.slice(0, 150)}...`
+      });
+    }
 
     // Send analysis update to frontend
     session.setState(STATES.ANALYZING, {
       progress: 10,
-      message: `Анализ завершён: ${analysis.slotName || 'Custom'} → ${analysis.mechanicType}`
+      message: `✅ Анализ завершён: ${analysis.slotName || 'Custom'} → ${analysis.mechanicType}`
     });
 
     // ============================================
