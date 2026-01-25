@@ -1,6 +1,49 @@
-import { useState, useRef } from 'react';
-import { ArrowUp, Image, Loader2, X, Globe, Gift, Link2, Settings } from 'lucide-react';
+import { useState, useRef, useMemo } from 'react';
+import { ArrowUp, Image, Loader2, X, Globe, Gift, Link2, Settings, TrendingUp } from 'lucide-react';
 import { useLandingStore } from '../../hooks/useLanding';
+
+/**
+ * Mechanic types that use multipliers instead of prizes
+ */
+const MULTIPLIER_MECHANICS = ['crash', 'aviator', 'mines', 'plinko'];
+
+/**
+ * Detect mechanic type from prompt
+ */
+function detectMechanic(prompt) {
+  const lowerPrompt = prompt.toLowerCase();
+
+  // Crash-like games
+  if (lowerPrompt.includes('crash') || lowerPrompt.includes('краш') ||
+      lowerPrompt.includes('chicken') || lowerPrompt.includes('курица') || lowerPrompt.includes('чикен') ||
+      lowerPrompt.includes('aviator') || lowerPrompt.includes('авиатор') ||
+      lowerPrompt.includes('mines') || lowerPrompt.includes('мины') ||
+      lowerPrompt.includes('plinko') || lowerPrompt.includes('плинко') ||
+      lowerPrompt.includes('road') || lowerPrompt.includes('роуд')) {
+    return 'crash';
+  }
+
+  // Wheel games
+  if (lowerPrompt.includes('wheel') || lowerPrompt.includes('колес') ||
+      lowerPrompt.includes('fortun') || lowerPrompt.includes('фортун') ||
+      lowerPrompt.includes('spin') || lowerPrompt.includes('спин')) {
+    return 'wheel';
+  }
+
+  // Box games
+  if (lowerPrompt.includes('box') || lowerPrompt.includes('коробк') ||
+      lowerPrompt.includes('chest') || lowerPrompt.includes('сундук')) {
+    return 'boxes';
+  }
+
+  // Scratch cards
+  if (lowerPrompt.includes('scratch') || lowerPrompt.includes('скретч') ||
+      lowerPrompt.includes('скрэтч') || lowerPrompt.includes('карт')) {
+    return 'scratch';
+  }
+
+  return 'wheel'; // default
+}
 
 /**
  * Landing Input Area - Claude.ai Style
@@ -14,9 +57,14 @@ export function LandingInput({ onGenerate }) {
   const [showOptions, setShowOptions] = useState(false);
   const [options, setOptions] = useState({
     prizes: ['€500', '€200', '100 FS'],
+    multipliers: ['x2', 'x5', 'x10', 'x50'],
     offerUrl: '',
     language: 'en'
   });
+
+  // Detect mechanic type from prompt to show relevant options
+  const detectedMechanic = useMemo(() => detectMechanic(prompt), [prompt]);
+  const useMultipliers = MULTIPLIER_MECHANICS.includes(detectedMechanic);
 
   const fileInputRef = useRef(null);
   const isGenerating = generationState === 'generating';
@@ -26,10 +74,15 @@ export function LandingInput({ onGenerate }) {
     if (!prompt.trim() || isGenerating) return;
 
     try {
+      // Use multipliers for crash-like games, prizes for wheel/boxes
+      const rewardValues = useMultipliers
+        ? options.multipliers.filter(m => m.trim())
+        : options.prizes.filter(p => p.trim());
+
       await generateLanding({
         prompt: prompt.trim(),
         screenshot,
-        prizes: options.prizes.filter(p => p.trim()),
+        prizes: rewardValues, // backend will handle both prizes and multipliers
         offerUrl: options.offerUrl,
         language: options.language
       });
@@ -80,6 +133,28 @@ export function LandingInput({ onGenerate }) {
     }
   };
 
+  // Multiplier handlers for crash-like games
+  const updateMultiplier = (index, value) => {
+    const newMultipliers = [...options.multipliers];
+    newMultipliers[index] = value;
+    setOptions({ ...options, multipliers: newMultipliers });
+  };
+
+  const addMultiplier = () => {
+    if (options.multipliers.length < 8) {
+      setOptions({ ...options, multipliers: [...options.multipliers, ''] });
+    }
+  };
+
+  const removeMultiplier = (index) => {
+    if (options.multipliers.length > 1) {
+      setOptions({
+        ...options,
+        multipliers: options.multipliers.filter((_, i) => i !== index)
+      });
+    }
+  };
+
   return (
     <div className="border-t border-[var(--border)] bg-[var(--bg-primary)] p-4">
       {/* Screenshot preview */}
@@ -105,45 +180,92 @@ export function LandingInput({ onGenerate }) {
       {showOptions && (
         <div className="mb-4 p-4 bg-[var(--bg-secondary)] rounded-2xl
           border border-[var(--border)] space-y-4">
-          {/* Prizes */}
+          {/* Prizes or Multipliers based on mechanic */}
           <div>
-            <label className="flex items-center gap-2 text-sm font-sans font-medium
-              text-[var(--text-secondary)] mb-2">
-              <Gift className="w-4 h-4" />
-              Призы (на колесе/коробках)
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {options.prizes.map((prize, i) => (
-                <div key={i} className="flex items-center gap-1">
-                  <input
-                    type="text"
-                    value={prize}
-                    onChange={(e) => updatePrize(i, e.target.value)}
-                    placeholder={`Приз ${i + 1}`}
-                    className="w-24 px-2 py-1.5 text-sm font-sans bg-[var(--bg-primary)]
-                      border border-[var(--border)] rounded-lg
-                      focus:border-[var(--accent)] focus:outline-none"
-                  />
-                  {options.prizes.length > 1 && (
+            {useMultipliers ? (
+              <>
+                <label className="flex items-center gap-2 text-sm font-sans font-medium
+                  text-[var(--text-secondary)] mb-2">
+                  <TrendingUp className="w-4 h-4" />
+                  Множители (для crash/aviator/mines)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {options.multipliers.map((mult, i) => (
+                    <div key={i} className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={mult}
+                        onChange={(e) => updateMultiplier(i, e.target.value)}
+                        placeholder={`x${(i + 1) * 5}`}
+                        className="w-20 px-2 py-1.5 text-sm font-sans bg-[var(--bg-primary)]
+                          border border-[var(--border)] rounded-lg
+                          focus:border-[var(--accent)] focus:outline-none"
+                      />
+                      {options.multipliers.length > 1 && (
+                        <button
+                          onClick={() => removeMultiplier(i)}
+                          className="p-1 text-[var(--text-muted)] hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {options.multipliers.length < 8 && (
                     <button
-                      onClick={() => removePrize(i)}
-                      className="p-1 text-[var(--text-muted)] hover:text-red-500 transition-colors"
+                      onClick={addMultiplier}
+                      className="px-2 py-1.5 text-sm font-sans text-[var(--accent)]
+                        hover:bg-[var(--accent-light)] rounded-lg transition-colors"
                     >
-                      <X className="w-3 h-3" />
+                      + Добавить
                     </button>
                   )}
                 </div>
-              ))}
-              {options.prizes.length < 8 && (
-                <button
-                  onClick={addPrize}
-                  className="px-2 py-1.5 text-sm font-sans text-[var(--accent)]
-                    hover:bg-[var(--accent-light)] rounded-lg transition-colors"
-                >
-                  + Добавить
-                </button>
-              )}
-            </div>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                  💡 Обнаружена crash-механика. Укажите множители выигрыша.
+                </p>
+              </>
+            ) : (
+              <>
+                <label className="flex items-center gap-2 text-sm font-sans font-medium
+                  text-[var(--text-secondary)] mb-2">
+                  <Gift className="w-4 h-4" />
+                  Призы (на колесе/коробках)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {options.prizes.map((prize, i) => (
+                    <div key={i} className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={prize}
+                        onChange={(e) => updatePrize(i, e.target.value)}
+                        placeholder={`Приз ${i + 1}`}
+                        className="w-24 px-2 py-1.5 text-sm font-sans bg-[var(--bg-primary)]
+                          border border-[var(--border)] rounded-lg
+                          focus:border-[var(--accent)] focus:outline-none"
+                      />
+                      {options.prizes.length > 1 && (
+                        <button
+                          onClick={() => removePrize(i)}
+                          className="p-1 text-[var(--text-muted)] hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {options.prizes.length < 8 && (
+                    <button
+                      onClick={addPrize}
+                      className="px-2 py-1.5 text-sm font-sans text-[var(--accent)]
+                        hover:bg-[var(--accent-light)] rounded-lg transition-colors"
+                    >
+                      + Добавить
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Offer URL */}
