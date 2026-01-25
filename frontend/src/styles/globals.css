@@ -106,11 +106,16 @@ body {
 }
 
 /* ═══════════════════════════════════════════════
-   SELECTION
+   SELECTION - visible on both themes
    ═══════════════════════════════════════════════ */
 ::selection {
-  background: var(--accent-light);
-  color: var(--text-primary);
+  background: var(--accent);
+  color: white;
+}
+
+::-moz-selection {
+  background: var(--accent);
+  color: white;
 }
 
 /* ═══════════════════════════════════════════════

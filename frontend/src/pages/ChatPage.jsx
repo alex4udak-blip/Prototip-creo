@@ -117,16 +117,16 @@ export function ChatPage() {
           <div className="flex-1 flex overflow-hidden">
             {/* Left Panel: History + Progress */}
             <div className="w-80 flex-shrink-0 border-r border-border bg-bg-primary flex flex-col overflow-hidden">
-              {/* Progress (if generating) */}
+              {/* Progress (if generating) - scrollable with max height */}
               {generationState !== 'idle' && (
-                <div className="border-b border-border">
+                <div className="border-b border-border max-h-[60vh] overflow-y-auto flex-shrink-0">
                   <LandingProgress />
                 </div>
               )}
 
-              {/* History */}
-              <div className="flex-1 overflow-y-auto">
-                <div className="px-4 py-3 border-b border-border">
+              {/* History - scrollable, takes remaining space */}
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <div className="px-4 py-3 border-b border-border sticky top-0 bg-bg-primary z-10">
                   <h3 className="text-sm font-medium text-text-secondary">История</h3>
                 </div>
                 <LandingHistory />

@@ -330,6 +330,9 @@ export function broadcastToLanding(landingId, data) {
 export function sendLandingUpdate(userId, landingId, data) {
   if (!wss) return;
 
+  // Ensure userId is compared correctly (may be string or number)
+  const numericUserId = Number(userId);
+
   const message = JSON.stringify({
     type: 'landing_update',
     landingId,
@@ -340,7 +343,8 @@ export function sendLandingUpdate(userId, landingId, data) {
   let sent = 0;
 
   wss.clients.forEach(ws => {
-    if (ws.userId === userId && ws.readyState === ws.OPEN) {
+    // Compare as numbers to avoid type mismatch
+    if (Number(ws.userId) === numericUserId && ws.readyState === ws.OPEN) {
       ws.send(message);
       sent++;
     }
@@ -366,6 +370,9 @@ export function sendHtmlChunk(userId, landingId, chunk, isComplete = false) {
     return;
   }
 
+  // Ensure userId is compared correctly (may be string or number)
+  const numericUserId = Number(userId);
+
   const message = JSON.stringify({
     type: 'html_chunk',
     landingId,
@@ -379,7 +386,8 @@ export function sendHtmlChunk(userId, landingId, chunk, isComplete = false) {
 
   // Send to user's connections
   wss.clients.forEach(ws => {
-    if (ws.userId === userId && ws.readyState === ws.OPEN && !sentWsSet.has(ws)) {
+    // Compare as numbers to avoid type mismatch
+    if (Number(ws.userId) === numericUserId && ws.readyState === ws.OPEN && !sentWsSet.has(ws)) {
       try {
         ws.send(message);
         sentWsSet.add(ws);
@@ -394,8 +402,8 @@ export function sendHtmlChunk(userId, landingId, chunk, isComplete = false) {
   const landingConns = landingConnections.get(landingId);
   if (landingConns) {
     for (const ws of landingConns) {
-      // Security: Only send to the owner user
-      if (ws.readyState === ws.OPEN && ws.userId === userId && !sentWsSet.has(ws)) {
+      // Security: Only send to the owner user (compare as numbers)
+      if (ws.readyState === ws.OPEN && Number(ws.userId) === numericUserId && !sentWsSet.has(ws)) {
         try {
           ws.send(message);
           sentWsSet.add(ws);
