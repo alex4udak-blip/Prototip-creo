@@ -1,48 +1,72 @@
 import { useState, useRef, useMemo } from 'react';
-import { ArrowUp, Image, Loader2, X, Globe, Gift, Link2, Settings, TrendingUp } from 'lucide-react';
+import { ArrowUp, Image, Loader2, X, Globe, Gift, Link2, Settings, TrendingUp, Zap } from 'lucide-react';
 import { useLandingStore } from '../../hooks/useLanding';
 
 /**
- * Mechanic types that use multipliers instead of prizes
- */
-const MULTIPLIER_MECHANICS = ['crash', 'aviator', 'mines', 'plinko'];
-
-/**
- * Detect mechanic type from prompt
+ * Detect mechanic type from prompt to show appropriate reward hints
+ * Returns: 'crash' | 'wheel' | 'boxes' | 'scratch' | 'loader' | 'slot'
  */
 function detectMechanic(prompt) {
   const lowerPrompt = prompt.toLowerCase();
 
-  // Crash-like games
+  // Crash-like games (use multipliers: x2, x5, x10)
   if (lowerPrompt.includes('crash') || lowerPrompt.includes('краш') ||
       lowerPrompt.includes('chicken') || lowerPrompt.includes('курица') || lowerPrompt.includes('чикен') ||
       lowerPrompt.includes('aviator') || lowerPrompt.includes('авиатор') ||
       lowerPrompt.includes('mines') || lowerPrompt.includes('мины') ||
       lowerPrompt.includes('plinko') || lowerPrompt.includes('плинко') ||
-      lowerPrompt.includes('road') || lowerPrompt.includes('роуд')) {
+      lowerPrompt.includes('road') || lowerPrompt.includes('роуд') ||
+      lowerPrompt.includes('tower') || lowerPrompt.includes('башн')) {
     return 'crash';
   }
 
-  // Wheel games
+  // Wheel games (use prizes: €500, 100 FS)
   if (lowerPrompt.includes('wheel') || lowerPrompt.includes('колес') ||
       lowerPrompt.includes('fortun') || lowerPrompt.includes('фортун') ||
       lowerPrompt.includes('spin') || lowerPrompt.includes('спин')) {
     return 'wheel';
   }
 
-  // Box games
+  // Box games (use prizes)
   if (lowerPrompt.includes('box') || lowerPrompt.includes('коробк') ||
       lowerPrompt.includes('chest') || lowerPrompt.includes('сундук')) {
     return 'boxes';
   }
 
-  // Scratch cards
+  // Scratch cards (use prizes)
   if (lowerPrompt.includes('scratch') || lowerPrompt.includes('скретч') ||
       lowerPrompt.includes('скрэтч') || lowerPrompt.includes('карт')) {
     return 'scratch';
   }
 
-  return 'wheel'; // default
+  // Slot games
+  if (lowerPrompt.includes('slot') || lowerPrompt.includes('слот') ||
+      lowerPrompt.includes('gates') || lowerPrompt.includes('bonanz') ||
+      lowerPrompt.includes('olymp') || lowerPrompt.includes('sugar') ||
+      lowerPrompt.includes('dog') || lowerPrompt.includes('book')) {
+    return 'slot';
+  }
+
+  return 'auto'; // Let Claude decide
+}
+
+/**
+ * Get reward type hint based on mechanic
+ */
+function getRewardHint(mechanic) {
+  switch (mechanic) {
+    case 'crash':
+      return { type: 'multipliers', hint: '💡 Crash-игра: укажите множители (x2, x5, x10)', placeholder: 'x5' };
+    case 'wheel':
+    case 'boxes':
+      return { type: 'prizes', hint: '💡 Колесо/коробки: укажите призы (€500, 100 FS)', placeholder: '€500' };
+    case 'scratch':
+      return { type: 'prizes', hint: '💡 Скретч-карта: укажите призы', placeholder: '€1000' };
+    case 'slot':
+      return { type: 'prizes', hint: '💡 Слот: укажите призы или фриспины', placeholder: '500 FS' };
+    default:
+      return { type: 'rewards', hint: '💡 Награды: €, FS, x-множители', placeholder: '€500' };
+  }
 }
 
 /**
@@ -55,16 +79,16 @@ export function LandingInput({ onGenerate }) {
   const [prompt, setPrompt] = useState('');
   const [screenshot, setScreenshot] = useState(null);
   const [showOptions, setShowOptions] = useState(false);
+  // Universal rewards - can be prizes (€500) or multipliers (x5)
   const [options, setOptions] = useState({
-    prizes: ['€500', '€200', '100 FS'],
-    multipliers: ['x2', 'x5', 'x10', 'x50'],
+    rewards: ['€500', '€200', '100 FS'],
     offerUrl: '',
     language: 'en'
   });
 
-  // Detect mechanic type from prompt to show relevant options
+  // Detect mechanic type from prompt for hints
   const detectedMechanic = useMemo(() => detectMechanic(prompt), [prompt]);
-  const useMultipliers = MULTIPLIER_MECHANICS.includes(detectedMechanic);
+  const rewardHint = useMemo(() => getRewardHint(detectedMechanic), [detectedMechanic]);
 
   const fileInputRef = useRef(null);
   const isGenerating = generationState === 'generating';
@@ -74,15 +98,10 @@ export function LandingInput({ onGenerate }) {
     if (!prompt.trim() || isGenerating) return;
 
     try {
-      // Use multipliers for crash-like games, prizes for wheel/boxes
-      const rewardValues = useMultipliers
-        ? options.multipliers.filter(m => m.trim())
-        : options.prizes.filter(p => p.trim());
-
       await generateLanding({
         prompt: prompt.trim(),
         screenshot,
-        prizes: rewardValues, // backend will handle both prizes and multipliers
+        prizes: options.rewards.filter(r => r.trim()), // Universal rewards
         offerUrl: options.offerUrl,
         language: options.language
       });
@@ -112,46 +131,34 @@ export function LandingInput({ onGenerate }) {
     }
   };
 
-  const updatePrize = (index, value) => {
-    const newPrizes = [...options.prizes];
-    newPrizes[index] = value;
-    setOptions({ ...options, prizes: newPrizes });
+  // Universal reward handlers
+  const updateReward = (index, value) => {
+    const newRewards = [...options.rewards];
+    newRewards[index] = value;
+    setOptions({ ...options, rewards: newRewards });
   };
 
-  const addPrize = () => {
-    if (options.prizes.length < 8) {
-      setOptions({ ...options, prizes: [...options.prizes, ''] });
+  const addReward = () => {
+    if (options.rewards.length < 8) {
+      setOptions({ ...options, rewards: [...options.rewards, ''] });
     }
   };
 
-  const removePrize = (index) => {
-    if (options.prizes.length > 1) {
+  const removeReward = (index) => {
+    if (options.rewards.length > 1) {
       setOptions({
         ...options,
-        prizes: options.prizes.filter((_, i) => i !== index)
+        rewards: options.rewards.filter((_, i) => i !== index)
       });
     }
   };
 
-  // Multiplier handlers for crash-like games
-  const updateMultiplier = (index, value) => {
-    const newMultipliers = [...options.multipliers];
-    newMultipliers[index] = value;
-    setOptions({ ...options, multipliers: newMultipliers });
-  };
-
-  const addMultiplier = () => {
-    if (options.multipliers.length < 8) {
-      setOptions({ ...options, multipliers: [...options.multipliers, ''] });
-    }
-  };
-
-  const removeMultiplier = (index) => {
-    if (options.multipliers.length > 1) {
-      setOptions({
-        ...options,
-        multipliers: options.multipliers.filter((_, i) => i !== index)
-      });
+  // Auto-update rewards when mechanic changes
+  const setDefaultRewards = (mechanic) => {
+    if (mechanic === 'crash') {
+      setOptions(prev => ({ ...prev, rewards: ['x2', 'x5', 'x10', 'x50'] }));
+    } else if (['wheel', 'boxes', 'scratch'].includes(mechanic)) {
+      setOptions(prev => ({ ...prev, rewards: ['€500', '€200', '100 FS'] }));
     }
   };
 
@@ -180,91 +187,53 @@ export function LandingInput({ onGenerate }) {
       {showOptions && (
         <div className="mb-4 p-4 bg-[var(--bg-secondary)] rounded-2xl
           border border-[var(--border)] space-y-4">
-          {/* Prizes or Multipliers based on mechanic */}
+          {/* Universal Rewards - works for all mechanics */}
           <div>
-            {useMultipliers ? (
-              <>
-                <label className="flex items-center gap-2 text-sm font-sans font-medium
-                  text-[var(--text-secondary)] mb-2">
-                  <TrendingUp className="w-4 h-4" />
-                  Множители (для crash/aviator/mines)
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {options.multipliers.map((mult, i) => (
-                    <div key={i} className="flex items-center gap-1">
-                      <input
-                        type="text"
-                        value={mult}
-                        onChange={(e) => updateMultiplier(i, e.target.value)}
-                        placeholder={`x${(i + 1) * 5}`}
-                        className="w-20 px-2 py-1.5 text-sm font-sans bg-[var(--bg-primary)]
-                          border border-[var(--border)] rounded-lg
-                          focus:border-[var(--accent)] focus:outline-none"
-                      />
-                      {options.multipliers.length > 1 && (
-                        <button
-                          onClick={() => removeMultiplier(i)}
-                          className="p-1 text-[var(--text-muted)] hover:text-red-500 transition-colors"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  {options.multipliers.length < 8 && (
+            <label className="flex items-center gap-2 text-sm font-sans font-medium
+              text-[var(--text-secondary)] mb-2">
+              {detectedMechanic === 'crash' ? (
+                <TrendingUp className="w-4 h-4" />
+              ) : (
+                <Gift className="w-4 h-4" />
+              )}
+              Награды
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {options.rewards.map((reward, i) => (
+                <div key={i} className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={reward}
+                    onChange={(e) => updateReward(i, e.target.value)}
+                    placeholder={rewardHint.placeholder}
+                    className="w-24 px-2 py-1.5 text-sm font-sans bg-[var(--bg-primary)]
+                      border border-[var(--border)] rounded-lg
+                      focus:border-[var(--accent)] focus:outline-none"
+                  />
+                  {options.rewards.length > 1 && (
                     <button
-                      onClick={addMultiplier}
-                      className="px-2 py-1.5 text-sm font-sans text-[var(--accent)]
-                        hover:bg-[var(--accent-light)] rounded-lg transition-colors"
+                      onClick={() => removeReward(i)}
+                      className="p-1 text-[var(--text-muted)] hover:text-red-500 transition-colors"
                     >
-                      + Добавить
+                      <X className="w-3 h-3" />
                     </button>
                   )}
                 </div>
-                <p className="mt-1 text-xs text-[var(--text-muted)]">
-                  💡 Обнаружена crash-механика. Укажите множители выигрыша.
-                </p>
-              </>
-            ) : (
-              <>
-                <label className="flex items-center gap-2 text-sm font-sans font-medium
-                  text-[var(--text-secondary)] mb-2">
-                  <Gift className="w-4 h-4" />
-                  Призы (на колесе/коробках)
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {options.prizes.map((prize, i) => (
-                    <div key={i} className="flex items-center gap-1">
-                      <input
-                        type="text"
-                        value={prize}
-                        onChange={(e) => updatePrize(i, e.target.value)}
-                        placeholder={`Приз ${i + 1}`}
-                        className="w-24 px-2 py-1.5 text-sm font-sans bg-[var(--bg-primary)]
-                          border border-[var(--border)] rounded-lg
-                          focus:border-[var(--accent)] focus:outline-none"
-                      />
-                      {options.prizes.length > 1 && (
-                        <button
-                          onClick={() => removePrize(i)}
-                          className="p-1 text-[var(--text-muted)] hover:text-red-500 transition-colors"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  {options.prizes.length < 8 && (
-                    <button
-                      onClick={addPrize}
-                      className="px-2 py-1.5 text-sm font-sans text-[var(--accent)]
-                        hover:bg-[var(--accent-light)] rounded-lg transition-colors"
-                    >
-                      + Добавить
-                    </button>
-                  )}
-                </div>
-              </>
+              ))}
+              {options.rewards.length < 8 && (
+                <button
+                  onClick={addReward}
+                  className="px-2 py-1.5 text-sm font-sans text-[var(--accent)]
+                    hover:bg-[var(--accent-light)] rounded-lg transition-colors"
+                >
+                  + Добавить
+                </button>
+              )}
+            </div>
+            {prompt.trim() && (
+              <p className="mt-1.5 text-xs text-[var(--text-muted)]">
+                {rewardHint.hint}
+              </p>
             )}
           </div>
 
