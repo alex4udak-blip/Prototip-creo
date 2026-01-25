@@ -6,11 +6,15 @@ import { log } from '../utils/logger.js';
 let anthropic = null;
 
 /**
- * Extract JSON from text - handles nested objects correctly
+ * Extract JSON from text - handles nested objects and strings with special chars correctly
  * @param {string} text - Text potentially containing JSON
  * @returns {Object|null} Parsed JSON or null
  */
 function extractJSON(text) {
+  if (!text || typeof text !== 'string') {
+    return null;
+  }
+
   // Try to parse directly first
   try {
     return JSON.parse(text.trim());
@@ -18,28 +22,55 @@ function extractJSON(text) {
     // Continue to extraction
   }
 
-  // Find first { and match balanced braces
+  // Find first { and match balanced braces, accounting for strings
   const start = text.indexOf('{');
   if (start === -1) return null;
 
   let depth = 0;
   let end = -1;
+  let inString = false;
+  let escaped = false;
 
   for (let i = start; i < text.length; i++) {
-    if (text[i] === '{') depth++;
-    if (text[i] === '}') depth--;
-    if (depth === 0) {
-      end = i;
-      break;
+    const char = text[i];
+
+    // Handle escape sequences
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\' && inString) {
+      escaped = true;
+      continue;
+    }
+
+    // Handle string boundaries
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    // Only count braces outside of strings
+    if (!inString) {
+      if (char === '{') depth++;
+      if (char === '}') depth--;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
     }
   }
 
-  if (end === -1) return null;
+  if (end === -1) {
+    log.warn('JSON extraction failed - unbalanced braces', { start, textLength: text.length });
+    return null;
+  }
 
   try {
     return JSON.parse(text.slice(start, end + 1));
   } catch (e) {
-    log.error('JSON extraction failed', { error: e.message, substring: text.slice(start, start + 100) });
+    log.error('JSON extraction failed', { error: e.message, substring: text.slice(start, Math.min(start + 100, end + 1)) });
     return null;
   }
 }
@@ -57,11 +88,12 @@ function getClient() {
 }
 
 /**
- * Claude model configuration
+ * Claude model configuration from env
  * Using Claude Sonnet 4.5 - recommended for production
  */
-const MODEL = 'claude-sonnet-4-5-20250929';
-const MAX_TOKENS = 8192;
+const MODEL = config.claude?.model || 'claude-sonnet-4-5-20250929';
+const MAX_TOKENS = config.claude?.maxTokens || 8192;
+const THINKING_BUDGET = config.claude?.thinkingBudget || 2048;
 
 /**
  * System prompt for landing page generation
@@ -132,7 +164,7 @@ export async function analyzeRequest(prompt, screenshotBase64 = null) {
       // Enable Extended Thinking for better analysis
       thinking: {
         type: 'enabled',
-        budget_tokens: 2048  // Let Claude think up to 2K tokens
+        budget_tokens: THINKING_BUDGET
       },
       system: `${LANDING_SYSTEM_PROMPT}
 

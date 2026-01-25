@@ -25,7 +25,12 @@ jest.unstable_mockModule('@anthropic-ai/sdk', () => ({
 // Mock config
 jest.unstable_mockModule('../src/config/env.js', () => ({
   config: {
-    anthropicApiKey: 'test-api-key'
+    anthropicApiKey: 'test-api-key',
+    claude: {
+      model: 'claude-sonnet-4-5-20250929',
+      maxTokens: 8192,
+      thinkingBudget: 2048
+    }
   }
 }));
 
@@ -40,7 +45,7 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
 }));
 
 // Import after mocking
-const { analyzeRequest, generateLandingCode, checkHealth } = await import('../src/services/claude.service.js');
+const { analyzeRequest, generateLandingCode, generateLandingCodeStream, checkHealth } = await import('../src/services/claude.service.js');
 
 describe('Claude Service', () => {
   beforeEach(() => {
@@ -207,6 +212,149 @@ describe('Claude Service', () => {
 
       expect(html).not.toContain('```');
       expect(html).toContain('<!DOCTYPE html>');
+    });
+  });
+
+  describe('generateLandingCodeStream', () => {
+    it('should stream HTML chunks', async () => {
+      // Create an async generator that yields events
+      async function* mockStreamGenerator() {
+        yield { type: 'content_block_delta', delta: { text: '<!DOCTYPE html>' } };
+        yield { type: 'content_block_delta', delta: { text: '<html>' } };
+        yield { type: 'content_block_delta', delta: { text: '</html>' } };
+      }
+
+      mockStream.mockResolvedValueOnce(mockStreamGenerator());
+
+      const chunks = [];
+      const html = await generateLandingCodeStream({}, {}, {}, (chunk) => {
+        chunks.push(chunk);
+      });
+
+      expect(chunks.length).toBe(3);
+      expect(chunks[0]).toBe('<!DOCTYPE html>');
+      expect(html).toContain('<!DOCTYPE html>');
+      expect(html).toContain('<html>');
+    });
+
+    it('should clean markdown from streamed result', async () => {
+      async function* mockStreamGenerator() {
+        yield { type: 'content_block_delta', delta: { text: '```html\n' } };
+        yield { type: 'content_block_delta', delta: { text: '<!DOCTYPE html>' } };
+        yield { type: 'content_block_delta', delta: { text: '\n```' } };
+      }
+
+      mockStream.mockResolvedValueOnce(mockStreamGenerator());
+
+      const html = await generateLandingCodeStream({}, {}, {}, () => {});
+
+      expect(html).not.toContain('```');
+      expect(html).toContain('<!DOCTYPE html>');
+    });
+
+    it('should handle stream errors gracefully', async () => {
+      async function* mockStreamGenerator() {
+        yield { type: 'content_block_delta', delta: { text: '<html>' } };
+        throw new Error('Stream interrupted');
+      }
+
+      mockStream.mockResolvedValueOnce(mockStreamGenerator());
+
+      await expect(generateLandingCodeStream({}, {}, {}, () => {}))
+        .rejects
+        .toThrow('Stream interrupted');
+    });
+  });
+
+  describe('JSON extraction edge cases', () => {
+    it('should handle JSON with special characters in strings', async () => {
+      const jsonWithSpecialChars = JSON.stringify({
+        slotName: 'Test "Slot" Name',
+        description: 'Has {braces} and "quotes"',
+        mechanicType: 'wheel',
+        confidence: 80
+      });
+
+      mockCreate.mockResolvedValueOnce({
+        content: [
+          { type: 'text', text: `Some text before ${jsonWithSpecialChars} and after` }
+        ]
+      });
+
+      const result = await analyzeRequest('test prompt');
+
+      expect(result.slotName).toBe('Test "Slot" Name');
+      expect(result.description).toBe('Has {braces} and "quotes"');
+    });
+
+    it('should handle JSON with escaped backslashes', async () => {
+      const jsonWithEscapes = JSON.stringify({
+        slotName: 'Test\\Path',
+        path: 'C:\\Users\\test',
+        mechanicType: 'wheel',
+        confidence: 80
+      });
+
+      mockCreate.mockResolvedValueOnce({
+        content: [
+          { type: 'text', text: jsonWithEscapes }
+        ]
+      });
+
+      const result = await analyzeRequest('test prompt');
+
+      expect(result.slotName).toBe('Test\\Path');
+    });
+
+    it('should handle deeply nested JSON', async () => {
+      const nestedJson = JSON.stringify({
+        slotName: 'Nested Test',
+        mechanicType: 'wheel',
+        nested: {
+          level1: {
+            level2: {
+              value: 'deep'
+            }
+          }
+        },
+        confidence: 90
+      });
+
+      mockCreate.mockResolvedValueOnce({
+        content: [
+          { type: 'text', text: `\`\`\`json\n${nestedJson}\n\`\`\`` }
+        ]
+      });
+
+      const result = await analyzeRequest('test prompt');
+
+      expect(result.nested.level1.level2.value).toBe('deep');
+    });
+
+    it('should handle empty thinking block', async () => {
+      mockCreate.mockResolvedValueOnce({
+        content: [
+          { type: 'thinking', thinking: '' },
+          { type: 'text', text: JSON.stringify({ slotName: 'Test', confidence: 80 }) }
+        ]
+      });
+
+      const result = await analyzeRequest('test prompt');
+
+      expect(result.slotName).toBe('Test');
+      expect(result._thinking).toBe('');
+    });
+
+    it('should handle response with only thinking block', async () => {
+      mockCreate.mockResolvedValueOnce({
+        content: [
+          { type: 'thinking', thinking: 'Thinking...' }
+        ]
+      });
+
+      await expect(analyzeRequest('test prompt'))
+        .rejects
+        .toThrow();
     });
   });
 });

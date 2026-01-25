@@ -36,6 +36,25 @@ export const config = {
   // Anthropic Claude API (Landing generator brain)
   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
 
+  // Claude Model Settings
+  claude: {
+    model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-5-20250929',
+    maxTokens: parseInt(process.env.CLAUDE_MAX_TOKENS || '8192'),
+    thinkingBudget: parseInt(process.env.CLAUDE_THINKING_BUDGET || '2048')
+  },
+
+  // Landing Generator Settings
+  landing: {
+    sessionTtl: parseInt(process.env.LANDING_SESSION_TTL || String(2 * 60 * 60 * 1000)), // 2 hours
+    maxSessionsPerUser: parseInt(process.env.LANDING_MAX_SESSIONS_PER_USER || '10'),
+    defaultPalette: {
+      primary: process.env.LANDING_DEFAULT_PRIMARY || '#FFD700',
+      secondary: process.env.LANDING_DEFAULT_SECONDARY || '#1E3A5F',
+      accent: process.env.LANDING_DEFAULT_ACCENT || '#FF6B6B',
+      background: process.env.LANDING_DEFAULT_BACKGROUND || '#0D1117'
+    }
+  },
+
   // Serper.dev API (Image search for slot references)
   serperApiKey: process.env.SERPER_API_KEY,
 

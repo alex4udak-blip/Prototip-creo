@@ -33,14 +33,25 @@ jest.unstable_mockModule('../src/services/landing/palette.service.js', () => ({
 }));
 
 jest.unstable_mockModule('../src/websocket/handler.js', () => ({
-  sendLandingUpdate: jest.fn()
+  sendLandingUpdate: jest.fn(),
+  sendHtmlChunk: jest.fn()
 }));
 
 jest.unstable_mockModule('../src/config/env.js', () => ({
   config: {
     anthropicApiKey: 'test-key',
     serperApiKey: 'test-key',
-    googleApiKey: 'test-key'
+    googleApiKey: 'test-key',
+    landing: {
+      sessionTtl: 2 * 60 * 60 * 1000,
+      maxSessionsPerUser: 10,
+      defaultPalette: {
+        primary: '#FFD700',
+        secondary: '#1E3A5F',
+        accent: '#FF6B6B',
+        background: '#0D1117'
+      }
+    }
   }
 }));
 
@@ -182,6 +193,154 @@ describe('Landing Orchestrator', () => {
       expect(health).toHaveProperty('claudeConfigured');
       expect(health).toHaveProperty('serperConfigured');
       expect(health).toHaveProperty('geminiConfigured');
+    });
+  });
+
+  describe('Session Limits', () => {
+    it('should track session count in health check', () => {
+      // Create several sessions
+      const sessions = [];
+      for (let i = 0; i < 5; i++) {
+        sessions.push(createSession(200));
+      }
+
+      const health = checkHealth();
+      expect(health.activeSessions).toBeGreaterThanOrEqual(5);
+
+      // Cleanup
+      sessions.forEach(s => deleteSession(s.id));
+    });
+
+    it('should generate unique session IDs', () => {
+      const session1 = createSession(300);
+      const session2 = createSession(300);
+
+      expect(session1.id).not.toBe(session2.id);
+      expect(session1.id).toMatch(/^[a-f0-9-]{36}$/); // UUID format
+
+      // Cleanup
+      deleteSession(session1.id);
+      deleteSession(session2.id);
+    });
+  });
+
+  describe('State Transitions', () => {
+    it('should handle complete state transition sequence', () => {
+      const session = createSession(400);
+      const states = [];
+
+      session.addListener((event) => {
+        states.push(event.state);
+      });
+
+      // Simulate full generation flow
+      session.setState(STATES.ANALYZING, { progress: 5 });
+      session.setState(STATES.FETCHING_REFERENCE, { progress: 15 });
+      session.setState(STATES.EXTRACTING_PALETTE, { progress: 25 });
+      session.setState(STATES.GENERATING_ASSETS, { progress: 40 });
+      session.setState(STATES.REMOVING_BACKGROUNDS, { progress: 60 });
+      session.setState(STATES.GENERATING_CODE, { progress: 75 });
+      session.setState(STATES.ASSEMBLING, { progress: 90 });
+      session.setState(STATES.COMPLETE, { progress: 100 });
+
+      expect(states).toEqual([
+        STATES.ANALYZING,
+        STATES.FETCHING_REFERENCE,
+        STATES.EXTRACTING_PALETTE,
+        STATES.GENERATING_ASSETS,
+        STATES.REMOVING_BACKGROUNDS,
+        STATES.GENERATING_CODE,
+        STATES.ASSEMBLING,
+        STATES.COMPLETE
+      ]);
+
+      expect(session.progress).toBe(100);
+
+      // Cleanup
+      deleteSession(session.id);
+    });
+
+    it('should handle error state', () => {
+      const session = createSession(401);
+
+      session.setState(STATES.ANALYZING, { progress: 5 });
+      session.setState(STATES.ERROR, { error: 'Something went wrong' });
+
+      expect(session.state).toBe(STATES.ERROR);
+      expect(session.error).toBe('Something went wrong');
+      expect(session.getStateMessage()).toContain('Something went wrong');
+
+      // Cleanup
+      deleteSession(session.id);
+    });
+  });
+
+  describe('Session Data', () => {
+    it('should store analysis results', () => {
+      const session = createSession(500);
+
+      session.analysis = {
+        slotName: 'Test Slot',
+        mechanicType: 'wheel',
+        prizes: ['€100', '€200']
+      };
+
+      expect(session.analysis.slotName).toBe('Test Slot');
+      expect(session.analysis.mechanicType).toBe('wheel');
+
+      // Cleanup
+      deleteSession(session.id);
+    });
+
+    it('should store palette', () => {
+      const session = createSession(501);
+
+      session.palette = {
+        primary: '#FF0000',
+        secondary: '#00FF00'
+      };
+
+      expect(session.palette.primary).toBe('#FF0000');
+
+      // Cleanup
+      deleteSession(session.id);
+    });
+
+    it('should store generated assets', () => {
+      const session = createSession(502);
+
+      session.assets = {
+        background: { path: '/path/to/bg.png', url: '/uploads/bg.png' },
+        wheel: { path: '/path/to/wheel.png', url: '/uploads/wheel.png' }
+      };
+
+      expect(Object.keys(session.assets)).toHaveLength(2);
+      expect(session.assets.background.path).toBeDefined();
+
+      // Cleanup
+      deleteSession(session.id);
+    });
+
+    it('should include analysis in state events', () => {
+      const session = createSession(503);
+      let receivedEvent = null;
+
+      session.addListener((event) => {
+        receivedEvent = event;
+      });
+
+      session.analysis = {
+        slotName: 'Event Test',
+        mechanicType: 'boxes'
+      };
+
+      session.setState(STATES.ANALYZING, { progress: 10 });
+
+      expect(receivedEvent.analysis).toBeDefined();
+      expect(receivedEvent.analysis.slotName).toBe('Event Test');
+
+      // Cleanup
+      deleteSession(session.id);
     });
   });
 });

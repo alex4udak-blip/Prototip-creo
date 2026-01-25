@@ -20,6 +20,56 @@ const DEFAULT_SOUNDS = {
 };
 
 /**
+ * Validate and sanitize path to prevent path traversal attacks
+ * @param {string} basePath - Base directory path
+ * @param {string} userPath - User-provided path segment
+ * @returns {string|null} Safe path or null if invalid
+ */
+function sanitizePath(basePath, userPath) {
+  if (!userPath || typeof userPath !== 'string') {
+    return null;
+  }
+
+  // Remove any null bytes
+  const cleanPath = userPath.replace(/\0/g, '');
+
+  // Resolve the full path
+  const resolvedPath = path.resolve(basePath, cleanPath);
+
+  // Ensure the resolved path is within the base path
+  const normalizedBase = path.resolve(basePath);
+  if (!resolvedPath.startsWith(normalizedBase + path.sep) && resolvedPath !== normalizedBase) {
+    log.warn('Path traversal attempt detected', { basePath, userPath, resolvedPath });
+    return null;
+  }
+
+  return resolvedPath;
+}
+
+/**
+ * Validate landingId format (UUID or alphanumeric)
+ * @param {string} landingId - Landing ID to validate
+ * @returns {boolean} Whether the ID is valid
+ */
+function isValidLandingId(landingId) {
+  if (!landingId || typeof landingId !== 'string') {
+    return false;
+  }
+  // Allow UUIDs and alphanumeric strings up to 64 chars
+  return /^[a-zA-Z0-9-_]{1,64}$/.test(landingId);
+}
+
+/**
+ * Validate userId format
+ * @param {number|string} userId - User ID to validate
+ * @returns {boolean} Whether the ID is valid
+ */
+function isValidUserId(userId) {
+  const id = Number(userId);
+  return Number.isInteger(id) && id > 0 && id < Number.MAX_SAFE_INTEGER;
+}
+
+/**
  * Assemble landing page into ZIP archive
  * @param {Object} params
  * @param {string} params.landingId - Unique landing ID
@@ -33,8 +83,29 @@ const DEFAULT_SOUNDS = {
 export async function assembleLanding(params) {
   const { landingId, userId, html, assets, sounds, analysis } = params;
 
-  // Create landing directory
-  const landingDir = path.join(config.storagePath, 'landings', String(userId), landingId);
+  // Validate inputs
+  if (!isValidLandingId(landingId)) {
+    throw new Error('Invalid landingId format');
+  }
+  if (!isValidUserId(userId)) {
+    throw new Error('Invalid userId format');
+  }
+  if (!html || typeof html !== 'string') {
+    throw new Error('Invalid HTML content');
+  }
+
+  // Create landing directory with validated path
+  const baseLandingsDir = path.join(config.storagePath, 'landings');
+  const userDir = sanitizePath(baseLandingsDir, String(userId));
+  if (!userDir) {
+    throw new Error('Invalid user directory path');
+  }
+
+  const landingDir = sanitizePath(userDir, landingId);
+  if (!landingDir) {
+    throw new Error('Invalid landing directory path');
+  }
+
   await fs.mkdir(landingDir, { recursive: true });
 
   const assetsDir = path.join(landingDir, 'assets');
@@ -219,7 +290,17 @@ async function createZipArchive(sourceDir, zipPath, includes) {
  * @returns {Promise<Object|null>} Landing data
  */
 export async function getLanding(landingId, userId) {
-  const landingDir = path.join(config.storagePath, 'landings', String(userId), landingId);
+  // Validate inputs
+  if (!isValidLandingId(landingId) || !isValidUserId(userId)) {
+    return null;
+  }
+
+  const baseLandingsDir = path.join(config.storagePath, 'landings');
+  const userDir = sanitizePath(baseLandingsDir, String(userId));
+  if (!userDir) return null;
+
+  const landingDir = sanitizePath(userDir, landingId);
+  if (!landingDir) return null;
 
   try {
     const metadataPath = path.join(landingDir, 'metadata.json');
@@ -250,7 +331,14 @@ export async function getLanding(landingId, userId) {
  * @returns {Promise<Object[]>} List of landings
  */
 export async function listLandings(userId) {
-  const userDir = path.join(config.storagePath, 'landings', String(userId));
+  // Validate input
+  if (!isValidUserId(userId)) {
+    return [];
+  }
+
+  const baseLandingsDir = path.join(config.storagePath, 'landings');
+  const userDir = sanitizePath(baseLandingsDir, String(userId));
+  if (!userDir) return [];
 
   try {
     const entries = await fs.readdir(userDir, { withFileTypes: true });
@@ -282,7 +370,17 @@ export async function listLandings(userId) {
  * @param {number} userId - User ID
  */
 export async function deleteLanding(landingId, userId) {
-  const landingDir = path.join(config.storagePath, 'landings', String(userId), landingId);
+  // Validate inputs
+  if (!isValidLandingId(landingId) || !isValidUserId(userId)) {
+    return false;
+  }
+
+  const baseLandingsDir = path.join(config.storagePath, 'landings');
+  const userDir = sanitizePath(baseLandingsDir, String(userId));
+  if (!userDir) return false;
+
+  const landingDir = sanitizePath(userDir, landingId);
+  if (!landingDir) return false;
 
   try {
     await fs.rm(landingDir, { recursive: true, force: true });
@@ -301,13 +399,19 @@ export async function deleteLanding(landingId, userId) {
  * @returns {Promise<string|null>}
  */
 export async function getLandingHtml(landingId, userId) {
-  const htmlPath = path.join(
-    config.storagePath,
-    'landings',
-    String(userId),
-    landingId,
-    'index.html'
-  );
+  // Validate inputs
+  if (!isValidLandingId(landingId) || !isValidUserId(userId)) {
+    return null;
+  }
+
+  const baseLandingsDir = path.join(config.storagePath, 'landings');
+  const userDir = sanitizePath(baseLandingsDir, String(userId));
+  if (!userDir) return null;
+
+  const landingDir = sanitizePath(userDir, landingId);
+  if (!landingDir) return null;
+
+  const htmlPath = path.join(landingDir, 'index.html');
 
   try {
     return await fs.readFile(htmlPath, 'utf-8');
@@ -323,13 +427,19 @@ export async function getLandingHtml(landingId, userId) {
  * @returns {Promise<fs.ReadStream|null>}
  */
 export async function getLandingZipStream(landingId, userId) {
-  const zipPath = path.join(
-    config.storagePath,
-    'landings',
-    String(userId),
-    landingId,
-    `${landingId}.zip`
-  );
+  // Validate inputs
+  if (!isValidLandingId(landingId) || !isValidUserId(userId)) {
+    return null;
+  }
+
+  const baseLandingsDir = path.join(config.storagePath, 'landings');
+  const userDir = sanitizePath(baseLandingsDir, String(userId));
+  if (!userDir) return null;
+
+  const landingDir = sanitizePath(userDir, landingId);
+  if (!landingDir) return null;
+
+  const zipPath = path.join(landingDir, `${landingId}.zip`);
 
   try {
     await fs.access(zipPath);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Download, ExternalLink, Smartphone, Monitor, RefreshCw, Copy, Check, Loader2 } from 'lucide-react';
 import { useLandingStore } from '../../hooks/useLanding';
 
@@ -12,6 +12,7 @@ export function LandingPreview() {
   const [viewMode, setViewMode] = useState('desktop');
   const [copied, setCopied] = useState(false);
   const iframeRef = useRef(null);
+  const blobUrlRef = useRef(null); // Track blob URL for cleanup
 
   const iframeWidth = viewMode === 'mobile' ? 390 : '100%';
   const iframeHeight = viewMode === 'mobile' ? 844 : '100%';
@@ -39,14 +40,35 @@ export function LandingPreview() {
     }
   };
 
-  const handleOpenInNewTab = () => {
+  const handleOpenInNewTab = useCallback(() => {
     const htmlToOpen = previewHtml || streamingHtml;
     if (htmlToOpen) {
+      // Clean up previous blob URL
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+      }
       const blob = new Blob([htmlToOpen], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
+      blobUrlRef.current = url;
       window.open(url, '_blank');
+      // Cleanup after a delay to allow tab to load
+      setTimeout(() => {
+        if (blobUrlRef.current === url) {
+          URL.revokeObjectURL(url);
+          blobUrlRef.current = null;
+        }
+      }, 5000);
     }
-  };
+  }, [previewHtml, streamingHtml]);
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+      }
+    };
+  }, []);
 
   const handleCopyHtml = async () => {
     const htmlToCopy = previewHtml || streamingHtml;

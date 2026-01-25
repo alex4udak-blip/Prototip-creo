@@ -81,13 +81,21 @@ function handleConnection(ws, req) {
 
   // Обработчик закрытия
   ws.on('close', () => {
+    // Cleanup chat connections
     if (ws.chatId && connections.has(ws.chatId)) {
       connections.get(ws.chatId).delete(ws);
       if (connections.get(ws.chatId).size === 0) {
         connections.delete(ws.chatId);
       }
     }
-    log.debug('WebSocket disconnected', { userId: ws.userId, chatId: ws.chatId });
+    // Cleanup landing connections
+    if (ws.landingId && landingConnections.has(ws.landingId)) {
+      landingConnections.get(ws.landingId).delete(ws);
+      if (landingConnections.get(ws.landingId).size === 0) {
+        landingConnections.delete(ws.landingId);
+      }
+    }
+    log.debug('WebSocket disconnected', { userId: ws.userId, chatId: ws.chatId, landingId: ws.landingId });
   });
 
   // Обработчик ошибок
@@ -347,9 +355,16 @@ export function sendLandingUpdate(userId, landingId, data) {
 /**
  * Send HTML chunk for real-time preview (like Deepseek Artifacts)
  * Streams partial HTML to the frontend for live preview
+ * Only sends to the owner user to prevent data leakage
  */
 export function sendHtmlChunk(userId, landingId, chunk, isComplete = false) {
   if (!wss) return;
+
+  // Validate inputs
+  if (!userId || !landingId) {
+    log.warn('sendHtmlChunk called with invalid params', { userId, landingId });
+    return;
+  }
 
   const message = JSON.stringify({
     type: 'html_chunk',
@@ -360,22 +375,40 @@ export function sendHtmlChunk(userId, landingId, chunk, isComplete = false) {
   });
 
   let sent = 0;
+  const sentWsSet = new Set(); // Track sent connections to avoid duplicates
 
+  // Send to user's connections
   wss.clients.forEach(ws => {
-    if (ws.userId === userId && ws.readyState === ws.OPEN) {
-      ws.send(message);
-      sent++;
+    if (ws.userId === userId && ws.readyState === ws.OPEN && !sentWsSet.has(ws)) {
+      try {
+        ws.send(message);
+        sentWsSet.add(ws);
+        sent++;
+      } catch (error) {
+        log.warn('Failed to send HTML chunk', { error: error.message, userId });
+      }
     }
   });
 
-  // Also broadcast to landing-specific subscriptions
+  // Also broadcast to landing-specific subscriptions (only for same user - security)
   const landingConns = landingConnections.get(landingId);
   if (landingConns) {
     for (const ws of landingConns) {
-      if (ws.readyState === ws.OPEN && ws.userId !== userId) {
-        ws.send(message);
+      // Security: Only send to the owner user
+      if (ws.readyState === ws.OPEN && ws.userId === userId && !sentWsSet.has(ws)) {
+        try {
+          ws.send(message);
+          sentWsSet.add(ws);
+          sent++;
+        } catch (error) {
+          log.warn('Failed to send HTML chunk to landing subscriber', { error: error.message });
+        }
       }
     }
+  }
+
+  if (sent > 0 && !isComplete) {
+    log.debug('HTML chunk sent', { landingId, chunkLength: chunk?.length || 0, recipients: sent });
   }
 }
 

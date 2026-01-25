@@ -45,6 +45,53 @@ export const MECHANICS = {
 const sessions = new Map();
 
 /**
+ * Session TTL from config (default: 2 hours)
+ */
+const SESSION_TTL = config.landing?.sessionTtl || 2 * 60 * 60 * 1000;
+
+/**
+ * Maximum sessions per user from config (default: 10)
+ */
+const MAX_SESSIONS_PER_USER = config.landing?.maxSessionsPerUser || 10;
+
+/**
+ * Cleanup interval
+ */
+setInterval(() => {
+  cleanupSessions();
+}, 5 * 60 * 1000); // Run every 5 minutes
+
+/**
+ * Cleanup old and completed sessions to prevent memory leaks
+ */
+function cleanupSessions() {
+  const now = Date.now();
+  let cleaned = 0;
+
+  for (const [id, session] of sessions.entries()) {
+    const age = now - session.createdAt.getTime();
+
+    // Remove sessions older than TTL
+    if (age > SESSION_TTL) {
+      sessions.delete(id);
+      cleaned++;
+      continue;
+    }
+
+    // Remove completed/error sessions after 30 minutes
+    if ((session.state === STATES.COMPLETE || session.state === STATES.ERROR) &&
+        (now - session.updatedAt.getTime() > 30 * 60 * 1000)) {
+      sessions.delete(id);
+      cleaned++;
+    }
+  }
+
+  if (cleaned > 0) {
+    log.info('Session cleanup', { cleaned, remaining: sessions.size });
+  }
+}
+
+/**
  * Landing generation session
  */
 class LandingSession {
@@ -156,11 +203,27 @@ class LandingSession {
  * @returns {LandingSession}
  */
 export function createSession(userId) {
+  // Check user session limit
+  const userSessions = Array.from(sessions.values()).filter(s => s.userId === userId);
+  if (userSessions.length >= MAX_SESSIONS_PER_USER) {
+    // Remove oldest completed session for this user
+    const oldestCompleted = userSessions
+      .filter(s => s.state === STATES.COMPLETE || s.state === STATES.ERROR)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
+
+    if (oldestCompleted) {
+      sessions.delete(oldestCompleted.id);
+      log.info('Removed old session to make room', { removed: oldestCompleted.id, userId });
+    } else {
+      log.warn('User has too many active sessions', { userId, count: userSessions.length });
+    }
+  }
+
   const id = uuidv4();
   const session = new LandingSession(id, userId);
   sessions.set(id, session);
 
-  log.info('Created landing session', { landingId: id, userId });
+  log.info('Created landing session', { landingId: id, userId, totalSessions: sessions.size });
 
   return session;
 }
@@ -273,7 +336,7 @@ export async function generateLanding(session, request) {
       message: 'Извлекаю цветовую палитру...'
     });
 
-    let palette = {
+    let palette = config.landing?.defaultPalette || {
       primary: '#FFD700',
       secondary: '#1E3A5F',
       accent: '#FF6B6B',

@@ -91,6 +91,12 @@ export const useLandingStore = create((set, get) => ({
     const token = localStorage.getItem('mstcreo_token');
     if (!token) return;
 
+    // Close existing WebSocket to prevent memory leak
+    const existingWs = get().ws;
+    if (existingWs) {
+      existingWs.close();
+    }
+
     // Use existing WebSocket or create new one
     const wsUrl = `${API_BASE_URL.replace('http', 'ws')}/ws?token=${token}`;
 
