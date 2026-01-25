@@ -6,7 +6,7 @@ import * as serperService from '../serper.service.js';
 import * as geminiService from '../gemini.service.js';
 import * as pixabayService from '../pixabay.service.js';
 import * as ratingService from '../rating.service.js';
-import { removeBackground } from '../runware.service.js';
+import { removeBackground, generateWithRunware } from '../runware.service.js';
 import { assembleLanding } from './assembler.service.js';
 import { extractPalette } from './palette.service.js';
 import { sendLandingUpdate, sendHtmlChunk } from '../../websocket/handler.js';
@@ -346,9 +346,10 @@ export async function generateLanding(session, request) {
     };
 
     if (session.referenceImage) {
+      // CASE 1: Real slot with reference image - extract colors from image
       try {
         palette = await extractPalette(session.referenceImage.buffer);
-        log.info('Palette extracted', { palette });
+        log.info('Palette extracted from reference', { palette });
         session.setState(STATES.EXTRACTING_PALETTE, {
           progress: 30,
           message: `Палитра: ${palette.primary}, ${palette.accent}`
@@ -356,6 +357,23 @@ export async function generateLanding(session, request) {
       } catch (e) {
         log.warn('Palette extraction failed, using defaults', { error: e.message });
       }
+    } else if (analysis.colorSuggestion) {
+      // CASE 2: Unknown brand - use Claude's semantic color suggestion
+      palette = {
+        primary: analysis.colorSuggestion.primary || palette.primary,
+        secondary: analysis.colorSuggestion.secondary || palette.secondary,
+        accent: analysis.colorSuggestion.accent || palette.accent,
+        background: analysis.colorSuggestion.background || palette.background
+      };
+      log.info('Using Claude semantic color suggestion for unknown brand', {
+        slotName: analysis.slotName,
+        themeSuggestion: analysis.themeSuggestion,
+        palette
+      });
+      session.setState(STATES.EXTRACTING_PALETTE, {
+        progress: 30,
+        message: `Тема "${analysis.themeSuggestion || analysis.slotName}": ${palette.primary}`
+      });
     }
 
     session.palette = palette;
@@ -628,33 +646,46 @@ async function generateAssets(session, analysis, palette) {
         });
       }
     } catch (error) {
-      log.warn('Asset generation failed, retrying...', { asset: asset.key, attempt: 1, error: error.message });
+      log.warn('Gemini asset generation failed, trying Runware fallback...', { asset: asset.key, error: error.message });
 
-      // Retry once with simplified prompt but KEEP reference images for style consistency
+      // FALLBACK: Use Runware if Gemini fails (e.g., content blocked, rate limit)
       try {
-        const retryPrompt = `Generate a simple ${asset.name} image for a casino landing page. Style: ${analysis.style || 'modern casino'}. Colors: ${palette?.primary || 'gold'}, ${palette?.secondary || 'dark blue'}.`;
-        const retryResult = await geminiService.sendMessageStream(
-          chatId,
-          retryPrompt,
-          referenceImages, // Keep reference images for style consistency on retry
-          { expectedImages: 1, width: asset.width, height: asset.height }
+        session.setState(STATES.GENERATING_ASSETS, {
+          progress,
+          message: `Runware fallback: ${asset.name}...`
+        });
+
+        const runwarePrompt = `${asset.name} for "${analysis.slotName || 'casino'}" slot game. Style: ${analysis.style || 'modern casino luxury'}. Theme: ${analysis.themeSuggestion || analysis.theme || 'gold and dark'}. High quality, professional casino game asset.`;
+
+        const runwareResult = await generateWithRunware(
+          runwarePrompt,
+          {
+            referenceImages: referenceImages,
+            width: asset.width || 1024,
+            height: asset.height || 1024,
+            count: 1
+          }
         );
 
-        if (retryResult.images && retryResult.images.length > 0) {
+        if (runwareResult && runwareResult.length > 0 && runwareResult[0].path) {
           assets[asset.key] = {
-            path: retryResult.images[0].path,
-            url: retryResult.images[0].url,
+            path: runwareResult[0].path,
+            url: runwareResult[0].url,
             needsTransparency: asset.needsTransparency,
             width: asset.width,
             height: asset.height,
-            retried: true
+            source: 'runware_fallback'
           };
-          log.info('Asset generated on retry', { asset: asset.key });
+          log.info('Asset generated via Runware fallback', { asset: asset.key, path: runwareResult[0].path });
         } else {
-          log.error('Asset generation failed after retry', { asset: asset.key });
+          log.error('Runware fallback also failed', { asset: asset.key });
         }
-      } catch (retryError) {
-        log.error('Asset generation failed permanently', { asset: asset.key, error: retryError.message });
+      } catch (runwareError) {
+        log.error('Asset generation failed on both Gemini and Runware', {
+          asset: asset.key,
+          geminiError: error.message,
+          runwareError: runwareError.message
+        });
       }
     }
   }
@@ -751,10 +782,20 @@ function buildAssetPrompt(asset, analysis, palette) {
   const theme = analysis.theme || 'casino luxury';
   const style = analysis.style || 'modern vibrant';
 
+  // For unknown brands, use semantic theme suggestion from Claude analysis
+  const themeDescription = analysis.isRealSlot
+    ? theme
+    : `${analysis.themeSuggestion || theme} (original casino brand "${slotName}")`;
+
   const basePrompt = `Create a ${asset.name} for "${slotName}" slot game landing page.
-Theme: ${theme}
+Theme: ${themeDescription}
 Style: ${style}
-Colors: primary ${palette.primary}, secondary ${palette.secondary}`;
+Colors: primary ${palette.primary}, secondary ${palette.secondary}, accent ${palette.accent || '#FF6B6B'}`;
+
+  // Add extra context for unknown brands
+  const brandContext = !analysis.isRealSlot && analysis.themeSuggestion
+    ? `\nDesign inspiration: ${analysis.themeSuggestion}. Make it look like a professional casino game, not a generic template.`
+    : '';
 
   const transparencyInstruction = asset.needsTransparency
     ? '\nIMPORTANT: Generate on SOLID WHITE BACKGROUND (#FFFFFF) for easy background removal. No shadows on background.'
@@ -762,7 +803,7 @@ Colors: primary ${palette.primary}, secondary ${palette.secondary}`;
 
   const sizeInstruction = `\nDimensions: ${asset.width}x${asset.height} pixels`;
 
-  return basePrompt + transparencyInstruction + sizeInstruction;
+  return basePrompt + brandContext + transparencyInstruction + sizeInstruction;
 }
 
 /**
