@@ -416,8 +416,8 @@ export async function removeBackground(imageBuffer) {
     const base64Data = imageBuffer.toString('base64');
     const dataUri = `data:image/png;base64,${base64Data}`;
 
-    // Use Runware's background removal
-    const result = await client.imageBackgroundRemoval({
+    // Use Runware's background removal - method is removeBackground, not imageBackgroundRemoval
+    const result = await client.removeBackground({
       inputImage: dataUri,
       outputFormat: 'PNG',
       rgba: [0, 0, 0, 0],  // Transparent
@@ -429,17 +429,26 @@ export async function removeBackground(imageBuffer) {
       alphaMattingErodeSize: 10
     });
 
-    if (!result || !result[0]?.imageURL) {
+    // Result can be single object or array
+    const resultItem = Array.isArray(result) ? result[0] : result;
+
+    if (!resultItem || (!resultItem.imageURL && !resultItem.imageBase64Data)) {
       throw new Error('No result from background removal');
     }
 
-    // Download the processed image
-    const response = await fetch(result[0].imageURL);
-    if (!response.ok) {
-      throw new Error(`Failed to download processed image: ${response.status}`);
-    }
+    let processedBuffer;
 
-    const processedBuffer = Buffer.from(await response.arrayBuffer());
+    if (resultItem.imageBase64Data) {
+      // Use base64 data directly if available
+      processedBuffer = Buffer.from(resultItem.imageBase64Data, 'base64');
+    } else {
+      // Download the processed image from URL
+      const response = await fetch(resultItem.imageURL);
+      if (!response.ok) {
+        throw new Error(`Failed to download processed image: ${response.status}`);
+      }
+      processedBuffer = Buffer.from(await response.arrayBuffer());
+    }
 
     log.info('Runware: Background removed', {
       originalSizeKB: Math.round(imageBuffer.length / 1024),
