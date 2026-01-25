@@ -23,6 +23,7 @@ function getAI() {
 const chatSessions = new Map();
 const SESSION_TTL = 2 * 60 * 60 * 1000; // 2 hours
 const MAX_SESSIONS = 100; // Maximum sessions to keep
+const STREAM_TIMEOUT = 120000; // 2 minutes timeout for streaming
 
 // Cleanup old sessions periodically
 setInterval(() => {
@@ -220,10 +221,28 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
     usage: null // Token usage info
   };
 
-  // Обрабатываем stream
+  // Обрабатываем stream with timeout
   try {
     let chunkCount = 0;
-    for await (const chunk of stream) {
+    let lastChunkTime = Date.now();
+
+    // Create a timeout wrapper for the stream
+    const timeoutStream = async function* () {
+      for await (const chunk of stream) {
+        lastChunkTime = Date.now();
+        yield chunk;
+      }
+    };
+
+    // Start timeout checker
+    const timeoutChecker = setInterval(() => {
+      if (Date.now() - lastChunkTime > STREAM_TIMEOUT) {
+        log.error('Gemini stream timeout', { chatId, lastChunkAgo: Date.now() - lastChunkTime });
+      }
+    }, 10000);
+
+    try {
+      for await (const chunk of timeoutStream()) {
       chunkCount++;
       const candidate = chunk.candidates?.[0];
       const parts = candidate?.content?.parts || [];
@@ -276,6 +295,9 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
           }
         }
       }
+    }
+    } finally {
+      clearInterval(timeoutChecker);
     }
   } catch (error) {
     log.error('Gemini streaming failed', {

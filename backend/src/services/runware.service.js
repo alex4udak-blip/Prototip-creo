@@ -9,6 +9,8 @@ import { fetchWithTimeout } from '../utils/fetchWithTimeout.js';
 import { extractTextFromPrompt, overlayPngText, detectTextStyle } from './textOverlay.service.js';
 
 const DOWNLOAD_TIMEOUT = 30000; // 30 seconds for image downloads
+const MAX_RETRIES = 3; // Maximum retries for image generation
+const INITIAL_RETRY_DELAY = 1000; // 1 second initial retry delay
 
 // Ленивый импорт для избежания циклической зависимости
 let generateStyledTextPng = null;
@@ -194,8 +196,40 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
       inferenceParams.CFGScale = 3.0;
     }
 
-    // Генерируем изображения
-    const images = await client.imageInference(inferenceParams);
+    // Генерируем изображения with retry logic
+    let images;
+    let lastError;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        images = await client.imageInference(inferenceParams);
+        break; // Success, exit retry loop
+      } catch (err) {
+        lastError = err;
+        log.warn('Runware generation attempt failed', {
+          attempt,
+          maxRetries: MAX_RETRIES,
+          error: err.message
+        });
+
+        if (attempt < MAX_RETRIES) {
+          // Exponential backoff: 1s, 2s, 4s
+          const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
+          await new Promise(resolve => setTimeout(resolve, delay));
+
+          if (onProgress) {
+            onProgress({
+              status: 'runware_retrying',
+              message: `Повторная попытка ${attempt + 1}/${MAX_RETRIES}...`
+            });
+          }
+        }
+      }
+    }
+
+    if (!images) {
+      throw lastError || new Error('Runware generation failed after retries');
+    }
 
     log.info('Runware generation response', {
       imagesCount: images?.length || 0,

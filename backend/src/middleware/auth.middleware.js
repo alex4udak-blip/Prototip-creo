@@ -5,8 +5,9 @@ import { log } from '../utils/logger.js';
 
 /**
  * Middleware для проверки JWT токена
+ * CRITICAL: Also verifies user still exists in database (handles deleted users)
  */
-export function authMiddleware(req, res, next) {
+export async function authMiddleware(req, res, next) {
   try {
     // Получаем токен из заголовка
     const authHeader = req.headers.authorization;
@@ -19,10 +20,18 @@ export function authMiddleware(req, res, next) {
     // Верифицируем токен
     const decoded = jwt.verify(token, config.jwtSecret);
 
+    // CRITICAL: Verify user still exists in database
+    // Prevents deleted users from using valid tokens
+    const user = await db.getOne('SELECT id, name FROM users WHERE id = $1', [decoded.userId]);
+    if (!user) {
+      log.warn('Auth failed: user no longer exists', { userId: decoded.userId });
+      return res.status(401).json({ error: 'Пользователь не найден' });
+    }
+
     // Добавляем данные пользователя в request
     req.user = {
-      id: decoded.userId,
-      name: decoded.name
+      id: user.id,
+      name: user.name
     };
 
     next();

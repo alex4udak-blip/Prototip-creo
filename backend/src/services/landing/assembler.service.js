@@ -10,6 +10,9 @@ import { log } from '../../utils/logger.js';
  * Creates ZIP archive with all landing page assets
  */
 
+// Track in-progress assemblies to prevent concurrent writes
+const assemblyLocks = new Map();
+
 /**
  * Get default sound files with absolute paths
  * @returns {Object} Default sound paths
@@ -96,6 +99,29 @@ export async function assembleLanding(params) {
   if (!html || typeof html !== 'string') {
     throw new Error('Invalid HTML content');
   }
+
+  // CRITICAL: Prevent concurrent writes to same landing
+  const lockKey = `${userId}:${landingId}`;
+  if (assemblyLocks.has(lockKey)) {
+    log.warn('Concurrent assembly attempt blocked', { userId, landingId });
+    throw new Error('Assembly already in progress for this landing');
+  }
+
+  assemblyLocks.set(lockKey, Date.now());
+
+  try {
+    return await _doAssembleLanding(params);
+  } finally {
+    // Always release lock
+    assemblyLocks.delete(lockKey);
+  }
+}
+
+/**
+ * Internal assembly function
+ */
+async function _doAssembleLanding(params) {
+  const { landingId, userId, html, assets, sounds, analysis } = params;
 
   // Create landing directory with validated path
   const baseLandingsDir = path.join(config.storagePath, 'landings');
