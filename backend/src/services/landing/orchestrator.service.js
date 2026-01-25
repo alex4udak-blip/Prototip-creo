@@ -7,7 +7,7 @@ import * as geminiService from '../gemini.service.js';
 import { removeBackground } from '../runware.service.js';
 import { assembleLanding } from './assembler.service.js';
 import { extractPalette } from './palette.service.js';
-import { sendLandingUpdate } from '../../websocket/handler.js';
+import { sendLandingUpdate, sendHtmlChunk } from '../../websocket/handler.js';
 
 /**
  * Landing Generation States
@@ -322,19 +322,38 @@ export async function generateLanding(session, request) {
     await processTransparentAssets(session.assets);
 
     // ============================================
-    // STEP 6: Generate HTML/CSS/JS with Claude
+    // STEP 6: Generate HTML/CSS/JS with Claude (STREAMING)
     // ============================================
     session.setState(STATES.GENERATING_CODE, {
       progress: 70,
-      message: 'Claude генерирует код лендинга...'
+      message: 'Claude генерирует код лендинга (стриминг)...'
     });
 
-    const html = await claudeService.generateLandingCode(
+    // Stream HTML chunks to frontend for real-time preview (like Deepseek Artifacts)
+    let chunkCount = 0;
+    const html = await claudeService.generateLandingCodeStream(
       analysis,
       session.assets,
-      palette
+      palette,
+      (chunk) => {
+        chunkCount++;
+        // Send HTML chunk via WebSocket for real-time preview
+        sendHtmlChunk(session.userId, session.id, chunk, false);
+
+        // Update progress based on content generation
+        const currentProgress = 70 + Math.min(15, chunkCount * 0.5);
+        if (chunkCount % 20 === 0) {
+          session.setState(STATES.GENERATING_CODE, {
+            progress: Math.floor(currentProgress),
+            message: `Генерирую HTML... (${chunkCount} чанков)`
+          });
+        }
+      }
     );
     session.html = html;
+
+    // Signal completion of HTML streaming
+    sendHtmlChunk(session.userId, session.id, '', true);
 
     session.setState(STATES.GENERATING_CODE, {
       progress: 85,

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Download, ExternalLink, Smartphone, Monitor, RefreshCw, Copy, Check } from 'lucide-react';
+import { Download, ExternalLink, Smartphone, Monitor, RefreshCw, Copy, Check, Loader2 } from 'lucide-react';
 import { useLandingStore } from '../../hooks/useLanding';
 
 /**
@@ -7,7 +7,7 @@ import { useLandingStore } from '../../hooks/useLanding';
  * Shows live preview in iframe with device switching
  */
 export function LandingPreview() {
-  const { previewHtml, zipUrl, generationState, analysis, palette } = useLandingStore();
+  const { previewHtml, streamingHtml, isStreaming, zipUrl, generationState, analysis, palette } = useLandingStore();
 
   const [viewMode, setViewMode] = useState('desktop');
   const [copied, setCopied] = useState(false);
@@ -16,19 +16,22 @@ export function LandingPreview() {
   const iframeWidth = viewMode === 'mobile' ? 390 : '100%';
   const iframeHeight = viewMode === 'mobile' ? 844 : '100%';
 
-  // Update iframe content
+  // Content to display: streaming HTML during generation, or final HTML when complete
+  const displayHtml = streamingHtml || previewHtml;
+
+  // Update iframe content (real-time streaming like Deepseek Artifacts)
   useEffect(() => {
-    if (iframeRef.current && previewHtml) {
+    if (iframeRef.current && displayHtml) {
       const iframe = iframeRef.current;
       const doc = iframe.contentDocument || iframe.contentWindow?.document;
 
       if (doc) {
         doc.open();
-        doc.write(previewHtml);
+        doc.write(displayHtml);
         doc.close();
       }
     }
-  }, [previewHtml]);
+  }, [displayHtml]);
 
   const handleDownload = () => {
     if (zipUrl) {
@@ -37,36 +40,38 @@ export function LandingPreview() {
   };
 
   const handleOpenInNewTab = () => {
-    if (previewHtml) {
-      const blob = new Blob([previewHtml], { type: 'text/html' });
+    const htmlToOpen = previewHtml || streamingHtml;
+    if (htmlToOpen) {
+      const blob = new Blob([htmlToOpen], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
     }
   };
 
   const handleCopyHtml = async () => {
-    if (previewHtml) {
-      await navigator.clipboard.writeText(previewHtml);
+    const htmlToCopy = previewHtml || streamingHtml;
+    if (htmlToCopy) {
+      await navigator.clipboard.writeText(htmlToCopy);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
   };
 
   const refreshPreview = () => {
-    if (iframeRef.current && previewHtml) {
+    if (iframeRef.current && displayHtml) {
       const iframe = iframeRef.current;
       const doc = iframe.contentDocument || iframe.contentWindow?.document;
 
       if (doc) {
         doc.open();
-        doc.write(previewHtml);
+        doc.write(displayHtml);
         doc.close();
       }
     }
   };
 
-  // Empty state
-  if (!previewHtml && generationState !== 'complete') {
+  // Empty state (but show streaming HTML even during generation)
+  if (!displayHtml && generationState !== 'complete') {
     return (
       <div className="h-full flex items-center justify-center bg-[var(--bg-primary)]">
         <div className="text-center text-[var(--text-muted)] max-w-sm px-4">
@@ -116,21 +121,25 @@ export function LandingPreview() {
           </button>
         </div>
 
-        {/* Analysis info */}
-        {analysis && (
-          <div className="hidden md:flex items-center gap-2 text-xs font-sans text-[var(--text-muted)]">
-            {analysis.slotName && (
-              <span className="px-2 py-1 bg-[var(--bg-primary)] rounded-lg">
-                {analysis.slotName}
-              </span>
-            )}
-            {analysis.mechanicType && (
-              <span className="px-2 py-1 bg-[var(--bg-primary)] rounded-lg capitalize">
-                {analysis.mechanicType}
-              </span>
-            )}
-          </div>
-        )}
+        {/* Analysis info + Streaming indicator */}
+        <div className="hidden md:flex items-center gap-2 text-xs font-sans text-[var(--text-muted)]">
+          {isStreaming && (
+            <span className="flex items-center gap-1.5 px-2 py-1 bg-[var(--accent-light)] text-[var(--accent)] rounded-lg">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Стриминг HTML...
+            </span>
+          )}
+          {analysis?.slotName && (
+            <span className="px-2 py-1 bg-[var(--bg-primary)] rounded-lg">
+              {analysis.slotName}
+            </span>
+          )}
+          {analysis?.mechanicType && (
+            <span className="px-2 py-1 bg-[var(--bg-primary)] rounded-lg capitalize">
+              {analysis.mechanicType}
+            </span>
+          )}
+        </div>
 
         {/* Actions */}
         <div className="flex items-center gap-1">

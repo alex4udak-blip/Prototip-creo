@@ -345,6 +345,41 @@ export function sendLandingUpdate(userId, landingId, data) {
 }
 
 /**
+ * Send HTML chunk for real-time preview (like Deepseek Artifacts)
+ * Streams partial HTML to the frontend for live preview
+ */
+export function sendHtmlChunk(userId, landingId, chunk, isComplete = false) {
+  if (!wss) return;
+
+  const message = JSON.stringify({
+    type: 'html_chunk',
+    landingId,
+    chunk,
+    isComplete,
+    timestamp: new Date().toISOString()
+  });
+
+  let sent = 0;
+
+  wss.clients.forEach(ws => {
+    if (ws.userId === userId && ws.readyState === ws.OPEN) {
+      ws.send(message);
+      sent++;
+    }
+  });
+
+  // Also broadcast to landing-specific subscriptions
+  const landingConns = landingConnections.get(landingId);
+  if (landingConns) {
+    for (const ws of landingConns) {
+      if (ws.readyState === ws.OPEN && ws.userId !== userId) {
+        ws.send(message);
+      }
+    }
+  }
+}
+
+/**
  * Получить статистику соединений
  */
 export function getConnectionStats() {

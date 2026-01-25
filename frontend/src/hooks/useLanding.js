@@ -25,6 +25,8 @@ export const useLandingStore = create((set, get) => ({
 
   // Generated content
   previewHtml: null,
+  streamingHtml: '', // Real-time HTML chunks (like Deepseek Artifacts)
+  isStreaming: false,
   zipUrl: null,
 
   // History
@@ -49,6 +51,8 @@ export const useLandingStore = create((set, get) => ({
       progressMessage: 'Запускаю генерацию...',
       error: null,
       previewHtml: null,
+      streamingHtml: '', // Reset streaming HTML for new generation
+      isStreaming: false,
       zipUrl: null,
       currentPrompt: prompt,
       thinkingLog: [{ time: new Date(), message: `Отправляю запрос: "${prompt.slice(0, 100)}${prompt.length > 100 ? '...' : ''}"` }]
@@ -102,6 +106,22 @@ export const useLandingStore = create((set, get) => ({
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+
+        // Handle HTML streaming chunks (like Deepseek Artifacts)
+        if (data.type === 'html_chunk' && data.landingId === landingId) {
+          if (data.isComplete) {
+            // Streaming complete
+            set({ isStreaming: false });
+          } else {
+            // Append chunk to streaming HTML
+            const currentHtml = get().streamingHtml;
+            set({
+              streamingHtml: currentHtml + data.chunk,
+              isStreaming: true
+            });
+          }
+          return;
+        }
 
         if (data.type === 'landing_update' && data.landingId === landingId) {
           const currentLog = get().thinkingLog;
@@ -292,6 +312,8 @@ export const useLandingStore = create((set, get) => ({
       analysis: null,
       palette: null,
       previewHtml: null,
+      streamingHtml: '',
+      isStreaming: false,
       zipUrl: null,
       ws: null
     });
