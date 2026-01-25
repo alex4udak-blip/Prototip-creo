@@ -113,7 +113,7 @@ export async function assembleLanding(params) {
   await fs.mkdir(assetsDir, { recursive: true });
   await fs.mkdir(soundsDir, { recursive: true });
 
-  log.info('Assembling landing', { landingId, landingDir });
+  log.info('Assembling landing', { landingId, landingDir, assetCount: Object.keys(assets || {}).length });
 
   // Copy assets
   const assetPaths = {};
@@ -124,13 +124,16 @@ export async function assembleLanding(params) {
         const fileName = `${key}${ext}`;
         const destPath = path.join(assetsDir, fileName);
 
+        log.debug('Copying asset', { key, sourcePath: asset.path, destPath });
         await fs.copyFile(asset.path, destPath);
         assetPaths[key] = `assets/${fileName}`;
 
         log.info('Asset copied', { key, destPath });
       } catch (error) {
-        log.warn('Failed to copy asset', { key, error: error.message });
+        log.warn('Failed to copy asset', { key, sourcePath: asset.path, error: error.message });
       }
+    } else {
+      log.warn('Asset has no path', { key, asset });
     }
   }
 
@@ -241,7 +244,7 @@ export async function assembleLanding(params) {
  * @param {string[]} includes - Files/folders to include
  */
 async function createZipArchive(sourceDir, zipPath, includes) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const output = createWriteStream(zipPath);
     const archive = archiver('zip', {
       zlib: { level: 9 }
@@ -258,28 +261,27 @@ async function createZipArchive(sourceDir, zipPath, includes) {
     archive.on('error', reject);
     archive.pipe(output);
 
+    // Add items synchronously before finalize
     for (const item of includes) {
       const itemPath = path.join(sourceDir, item);
 
-      // Check if exists
-      fs.stat(itemPath)
-        .then(stats => {
-          if (stats.isDirectory()) {
-            archive.directory(itemPath, item);
-          } else {
-            archive.file(itemPath, { name: item });
-          }
-        })
-        .catch(() => {
-          // Item doesn't exist, skip
-          log.debug('Archive item not found, skipping', { item });
-        });
+      try {
+        const stats = await fs.stat(itemPath);
+        if (stats.isDirectory()) {
+          archive.directory(itemPath, item);
+          log.debug('Added directory to archive', { item });
+        } else {
+          archive.file(itemPath, { name: item });
+          log.debug('Added file to archive', { item });
+        }
+      } catch {
+        // Item doesn't exist, skip
+        log.debug('Archive item not found, skipping', { item });
+      }
     }
 
-    // Finalize after short delay to ensure all items are added
-    setTimeout(() => {
-      archive.finalize();
-    }, 100);
+    // Finalize after all items are added
+    archive.finalize();
   });
 }
 

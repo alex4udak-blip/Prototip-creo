@@ -220,9 +220,10 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
             });
           }
         } else if (part.inlineData) {
-          const imageUrl = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
+          const imageResult = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
           result.images.push({
-            url: imageUrl,
+            url: imageResult.url,
+            path: imageResult.path,
             mimeType: part.inlineData.mimeType
           });
           if (onProgress) {
@@ -230,7 +231,7 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
               status: 'generating_image',
               text: result.text,
               imagesCount: result.images.length,
-              newImage: imageUrl
+              newImage: imageResult.url
             });
           }
         }
@@ -376,9 +377,10 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
           if (part.text) {
             result.text += '\n' + part.text;
           } else if (part.inlineData) {
-            const imageUrl = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
+            const imageResult = await saveBase64Image(part.inlineData.data, part.inlineData.mimeType);
             result.images.push({
-              url: imageUrl,
+              url: imageResult.url,
+              path: imageResult.path,
               mimeType: part.inlineData.mimeType
             });
             if (onProgress) {
@@ -386,7 +388,7 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
                 status: 'generating_image',
                 text: result.text,
                 imagesCount: result.images.length,
-                newImage: imageUrl
+                newImage: imageResult.url
               });
             }
           }
@@ -408,6 +410,7 @@ export async function sendMessageStream(chatId, text, images = [], options = {},
 
 /**
  * Сохранить base64 картинку в файл
+ * @returns {{ url: string, path: string }} URL for frontend and full path for backend processing
  */
 async function saveBase64Image(base64Data, mimeType = 'image/png') {
   const ext = mimeType?.includes('jpeg') ? '.jpg' : '.png';
@@ -423,7 +426,10 @@ async function saveBase64Image(base64Data, mimeType = 'image/png') {
 
   log.debug('Saved image', { filename, sizeKB: Math.round(buffer.length / 1024) });
 
-  return `/uploads/${filename}`;
+  return {
+    url: `/uploads/${filename}`,
+    path: filepath
+  };
 }
 
 /**
@@ -517,10 +523,11 @@ The text should look like professional casino/gambling banner typography with ri
     const imagePart = parts.find(p => p.inlineData);
 
     if (imagePart?.inlineData) {
-      const imageUrl = await saveBase64Image(imagePart.inlineData.data, imagePart.inlineData.mimeType);
-      log.info('Styled text PNG generated', { text, url: imageUrl });
+      const imageResult = await saveBase64Image(imagePart.inlineData.data, imagePart.inlineData.mimeType);
+      log.info('Styled text PNG generated', { text, url: imageResult.url });
       return {
-        url: imageUrl,
+        url: imageResult.url,
+        path: imageResult.path,
         mimeType: imagePart.inlineData.mimeType || 'image/png'
       };
     }

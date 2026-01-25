@@ -406,7 +406,8 @@ export async function generateLanding(session, request) {
         sendHtmlChunk(session.userId, session.id, chunk, false);
 
         // Update progress more frequently (every 5 chunks) for better UX
-        const currentProgress = 70 + Math.min(14, chunkCount * 0.3);
+        // Progress from 70 to 87 during streaming
+        const currentProgress = 70 + Math.min(17, chunkCount * 0.4);
         if (chunkCount % 5 === 0) {
           session.setState(STATES.GENERATING_CODE, {
             progress: Math.floor(currentProgress),
@@ -421,7 +422,7 @@ export async function generateLanding(session, request) {
     sendHtmlChunk(session.userId, session.id, '', true);
 
     session.setState(STATES.GENERATING_CODE, {
-      progress: 85,
+      progress: 88,
       message: `HTML готов (${Math.round(html.length / 1024)}KB)`
     });
 
@@ -620,9 +621,39 @@ Colors: primary ${palette.primary}, secondary ${palette.secondary}`;
  * Process assets that need transparent backgrounds
  */
 async function processTransparentAssets(assets, session) {
+  // Log incoming assets for debugging
+  const assetKeys = Object.keys(assets);
+  const assetDetails = Object.entries(assets).map(([key, asset]) => ({
+    key,
+    hasPath: !!asset.path,
+    needsTransparency: asset.needsTransparency,
+    path: asset.path
+  }));
+
+  log.info('Processing transparent assets', {
+    totalAssets: assetKeys.length,
+    assetDetails
+  });
+
   const assetsNeedingTransparency = Object.entries(assets).filter(([, asset]) => asset.needsTransparency && asset.path);
   const totalToProcess = assetsNeedingTransparency.length;
+
+  log.info('Assets needing transparency', {
+    count: totalToProcess,
+    keys: assetsNeedingTransparency.map(([key]) => key)
+  });
+
+  if (totalToProcess === 0) {
+    log.warn('No assets need background removal - skipping');
+    session.setState(STATES.REMOVING_BACKGROUNDS, {
+      progress: 68,
+      message: 'Нет ассетов для удаления фона'
+    });
+    return;
+  }
+
   let processed = 0;
+  let successful = 0;
 
   for (const [key, asset] of assetsNeedingTransparency) {
     try {
@@ -634,27 +665,46 @@ async function processTransparentAssets(assets, session) {
         message: `Убираю фон: ${key} (${processed}/${totalToProcess})`
       });
 
-      log.info('Removing background from asset', { key });
+      log.info('Removing background from asset', { key, path: asset.path });
 
       // Read the image file
       const fs = await import('fs/promises');
-      const imageBuffer = await fs.readFile(asset.path);
+
+      // Resolve path - asset.path might be URL like /uploads/xxx.png
+      let fullPath = asset.path;
+      if (asset.path.startsWith('/uploads/')) {
+        fullPath = `${config.storagePath}/${asset.path.replace('/uploads/', '')}`;
+      }
+
+      log.debug('Reading asset file', { key, fullPath });
+
+      const imageBuffer = await fs.readFile(fullPath);
 
       // Remove background using Runware
       const transparentBuffer = await removeBackground(imageBuffer);
 
       // Save the processed image
-      await fs.writeFile(asset.path, transparentBuffer);
+      await fs.writeFile(fullPath, transparentBuffer);
 
-      log.info('Background removed successfully', { key });
+      successful++;
+      log.info('Background removed successfully', { key, fullPath });
     } catch (error) {
-      log.warn('Background removal failed', {
+      log.error('Background removal failed', {
         key,
-        error: error.message
+        path: asset.path,
+        error: error.message,
+        stack: error.stack
       });
       // Keep the original asset
     }
   }
+
+  session.setState(STATES.REMOVING_BACKGROUNDS, {
+    progress: 68,
+    message: `Фон удалён: ${successful}/${totalToProcess} ассетов`
+  });
+
+  log.info('Background removal complete', { processed, successful, totalToProcess });
 }
 
 /**
