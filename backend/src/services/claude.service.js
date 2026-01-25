@@ -19,9 +19,9 @@ function getClient() {
 
 /**
  * Claude model configuration
- * Using Claude 3.5 Sonnet for best code generation
+ * Using Claude 4 Sonnet for best code generation
  */
-const MODEL = 'claude-sonnet-4-5-20250514';
+const MODEL = 'claude-sonnet-4-20250514';
 const MAX_TOKENS = 8192;
 
 /**
