@@ -84,7 +84,7 @@ export const useLandingStore = create((set, get) => ({
    * Subscribe to landing updates via WebSocket
    */
   subscribeToLanding: (landingId) => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('mstcreo_token');
     if (!token) return;
 
     // Use existing WebSocket or create new one
