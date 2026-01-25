@@ -1,18 +1,38 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Download, ExternalLink, Smartphone, Monitor, RefreshCw, Copy, Check, Loader2 } from 'lucide-react';
+import { Download, ExternalLink, Smartphone, Monitor, RefreshCw, Copy, Check, Loader2, Star } from 'lucide-react';
 import { useLandingStore } from '../../hooks/useLanding';
+import { LandingRating } from './LandingRating';
 
 /**
  * Landing Preview Component - Claude.ai Style
  * Shows live preview in iframe with device switching
  */
 export function LandingPreview() {
-  const { previewHtml, streamingHtml, isStreaming, zipUrl, generationState, analysis, palette } = useLandingStore();
+  const { previewHtml, streamingHtml, isStreaming, zipUrl, generationState, analysis, palette, currentLandingId } = useLandingStore();
 
   const [viewMode, setViewMode] = useState('desktop');
   const [copied, setCopied] = useState(false);
+  const [showRating, setShowRating] = useState(false);
+  const [hasRated, setHasRated] = useState(false);
   const iframeRef = useRef(null);
   const blobUrlRef = useRef(null); // Track blob URL for cleanup
+
+  // Show rating panel when generation is complete and not yet rated
+  useEffect(() => {
+    if (generationState === 'complete' && currentLandingId && !hasRated) {
+      // Show rating after a short delay
+      const timer = setTimeout(() => setShowRating(true), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [generationState, currentLandingId, hasRated]);
+
+  // Reset rating state when new generation starts
+  useEffect(() => {
+    if (generationState === 'generating') {
+      setShowRating(false);
+      setHasRated(false);
+    }
+  }, [generationState]);
 
   const iframeWidth = viewMode === 'mobile' ? 390 : '100%';
   const iframeHeight = viewMode === 'mobile' ? 844 : '100%';
@@ -273,7 +293,7 @@ export function LandingPreview() {
 
       {/* Preview iframe */}
       <div className="flex-1 overflow-auto flex items-start justify-center p-4
-        bg-[var(--bg-tertiary)]">
+        bg-[var(--bg-tertiary)] relative">
         <div
           className={`bg-white rounded-2xl shadow-lg overflow-hidden transition-all duration-300 ${
             viewMode === 'mobile' ? 'border-4 border-gray-800 rounded-[40px]' : ''
@@ -291,6 +311,33 @@ export function LandingPreview() {
             sandbox="allow-scripts allow-same-origin"
           />
         </div>
+
+        {/* Rating panel - appears after generation completes */}
+        {showRating && currentLandingId && !hasRated && (
+          <div className="absolute bottom-4 right-4 w-80 z-10 animate-slide-up">
+            <LandingRating
+              landingId={currentLandingId}
+              onRated={(rating) => {
+                setHasRated(true);
+                setShowRating(false);
+              }}
+            />
+          </div>
+        )}
+
+        {/* Rating button (when rating panel is hidden but user can still rate) */}
+        {generationState === 'complete' && currentLandingId && !showRating && !hasRated && (
+          <button
+            onClick={() => setShowRating(true)}
+            className="absolute bottom-4 right-4 flex items-center gap-2 px-4 py-2
+              bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl
+              text-sm font-medium text-[var(--text-secondary)]
+              hover:bg-[var(--bg-hover)] transition-colors shadow-lg"
+          >
+            <Star className="w-4 h-4 text-yellow-400" />
+            Оценить результат
+          </button>
+        )}
       </div>
     </div>
   );

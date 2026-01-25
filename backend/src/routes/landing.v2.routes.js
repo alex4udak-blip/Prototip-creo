@@ -5,6 +5,7 @@ import { pool } from '../db/connection.js';
 import * as orchestrator from '../services/landing/orchestrator.service.js';
 import * as assembler from '../services/landing/assembler.service.js';
 import * as claudeService from '../services/claude.service.js';
+import * as ratingService from '../services/rating.service.js';
 
 const router = Router();
 
@@ -303,6 +304,120 @@ router.get('/:landingId/download', auth, async (req, res) => {
     res.status(500).json({ error: 'Failed to download' });
   }
 });
+
+// ===========================================
+// RATING ROUTES
+// ===========================================
+
+/**
+ * POST /api/landing/v2/:landingId/rate
+ * Rate a landing (1-5 stars)
+ */
+router.post('/:landingId/rate', auth, async (req, res) => {
+  const { landingId } = req.params;
+  const userId = req.user.id;
+  const {
+    score,
+    feedbackText,
+    designScore,
+    codeQualityScore,
+    animationScore,
+    relevanceScore,
+    positiveAspects,
+    negativeAspects
+  } = req.body;
+
+  // Validate score
+  if (!score || score < 1 || score > 5) {
+    return res.status(400).json({ error: 'Score must be between 1 and 5' });
+  }
+
+  try {
+    // Get the DB landing ID
+    const landingResult = await pool.query(
+      `SELECT id FROM landings WHERE landing_id = $1 AND user_id = $2`,
+      [landingId, userId]
+    );
+
+    if (landingResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Landing not found' });
+    }
+
+    const dbLandingId = landingResult.rows[0].id;
+
+    const result = await ratingService.rateLanding({
+      landingId: dbLandingId,
+      userId,
+      score,
+      feedbackText,
+      designScore,
+      codeQualityScore,
+      animationScore,
+      relevanceScore,
+      positiveAspects,
+      negativeAspects
+    });
+
+    res.json({
+      success: true,
+      rating: result.rating,
+      landingStats: result.landingStats
+    });
+  } catch (error) {
+    log.error('Failed to rate landing', { error: error.message });
+    res.status(500).json({ error: 'Failed to rate landing' });
+  }
+});
+
+/**
+ * GET /api/landing/v2/:landingId/rating
+ * Get rating for a landing
+ */
+router.get('/:landingId/rating', auth, async (req, res) => {
+  const { landingId } = req.params;
+  const userId = req.user.id;
+
+  try {
+    const landingResult = await pool.query(
+      `SELECT id FROM landings WHERE landing_id = $1 AND user_id = $2`,
+      [landingId, userId]
+    );
+
+    if (landingResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Landing not found' });
+    }
+
+    const dbLandingId = landingResult.rows[0].id;
+    const avgRating = await ratingService.getLandingAvgRating(dbLandingId);
+    const ratings = await ratingService.getLandingRatings(dbLandingId);
+
+    res.json({
+      avgRating,
+      ratings
+    });
+  } catch (error) {
+    log.error('Failed to get rating', { error: error.message });
+    res.status(500).json({ error: 'Failed to get rating' });
+  }
+});
+
+/**
+ * GET /api/landing/v2/stats/learning
+ * Get learning statistics (how the system is improving)
+ */
+router.get('/stats/learning', auth, async (req, res) => {
+  try {
+    const stats = await ratingService.getLearningStats();
+    res.json(stats);
+  } catch (error) {
+    log.error('Failed to get learning stats', { error: error.message });
+    res.status(500).json({ error: 'Failed to get learning stats' });
+  }
+});
+
+// ===========================================
+// OTHER DYNAMIC ROUTES
+// ===========================================
 
 /**
  * DELETE /api/landing/v2/:landingId

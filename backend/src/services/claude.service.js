@@ -3,6 +3,7 @@ import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
 import { buildExampleBasedPrompt, getExampleForMechanic } from './landing-examples.js';
 import { buildPromptWithExamples, validateGeneratedHtml } from './examples-loader.service.js';
+import * as ratingService from './rating.service.js';
 
 // Lazy initialization
 let anthropic = null;
@@ -408,35 +409,77 @@ The mechanicDescription field should contain a clear explanation of how the game
 
 /**
  * Generate complete HTML/CSS/JS for a landing page
- * Uses example-based prompting for higher quality output
+ * Uses RLHF-style learning: prioritizes top-rated examples for better quality
  * @param {Object} spec - Game specification from analysis
  * @param {Object} assets - Generated asset paths
  * @param {Object} colors - Color palette
- * @returns {Promise<{html: string, validation: Object}>} HTML code and validation result
+ * @returns {Promise<{html: string, validation: Object, examplesUsed: Array}>} HTML code, validation result, and examples used
  */
 export async function generateLandingCode(spec, assets, colors) {
   const client = getClient();
+  const examplesUsed = [];
 
-  // Try to get real examples from filesystem first
-  let realExamples = null;
+  // LEARNING SYSTEM: Try to get TOP-RATED examples from database first
+  // This is the key to "learning" - high-rated landings become examples
+  let dbExamples = null;
   try {
-    realExamples = await buildPromptWithExamples(spec.mechanicType, 1);
+    dbExamples = await ratingService.getBestExamplesForMechanic(spec.mechanicType, 2);
+    if (dbExamples && dbExamples.length > 0) {
+      log.info('Claude: Using top-rated examples from feedback system', {
+        count: dbExamples.length,
+        ratings: dbExamples.map(e => e.avg_rating)
+      });
+      for (const ex of dbExamples) {
+        examplesUsed.push(ex.id);
+        // Mark example as used for tracking
+        await ratingService.markExampleUsed(ex.id).catch(() => {});
+      }
+    }
   } catch (e) {
-    log.warn('Could not load real examples', { error: e.message });
+    log.warn('Could not load DB examples', { error: e.message });
   }
 
-  // Build system prompt - prefer real examples if available
-  const systemPrompt = realExamples
-    ? `You are an expert gambling landing page generator.\n\n${realExamples}\n\n${buildExampleBasedPrompt(spec.mechanicType)}`
-    : buildExampleBasedPrompt(spec.mechanicType);
+  // Build examples prompt from DB examples (if available)
+  let dbExamplesPrompt = '';
+  if (dbExamples && dbExamples.length > 0) {
+    dbExamplesPrompt = `## TOP-RATED PRODUCTION EXAMPLES (Learn from these!):\n\n`;
+    for (const ex of dbExamples) {
+      dbExamplesPrompt += `### Example: ${ex.name} (Rating: ${ex.avg_rating}/5, Used ${ex.usage_count} times)\n`;
+      dbExamplesPrompt += `Features: ${JSON.stringify(ex.features)}\n`;
+      // Include code snippet (truncated for token efficiency)
+      const codeSnippet = ex.html_code?.slice(0, 5000) || '';
+      dbExamplesPrompt += `Code pattern:\n\`\`\`html\n${codeSnippet}\n...\`\`\`\n\n`;
+    }
+  }
+
+  // Fallback to filesystem examples if no DB examples
+  let realExamples = null;
+  if (!dbExamples || dbExamples.length === 0) {
+    try {
+      realExamples = await buildPromptWithExamples(spec.mechanicType, 1);
+    } catch (e) {
+      log.warn('Could not load filesystem examples', { error: e.message });
+    }
+  }
+
+  // Build system prompt - prefer DB examples > filesystem examples > hardcoded
+  let systemPrompt;
+  if (dbExamplesPrompt) {
+    systemPrompt = `You are an expert gambling landing page generator.\n\n${dbExamplesPrompt}\n\n${buildExampleBasedPrompt(spec.mechanicType)}`;
+  } else if (realExamples) {
+    systemPrompt = `You are an expert gambling landing page generator.\n\n${realExamples}\n\n${buildExampleBasedPrompt(spec.mechanicType)}`;
+  } else {
+    systemPrompt = buildExampleBasedPrompt(spec.mechanicType);
+  }
 
   const prompt = buildCodeGenerationPrompt(spec, assets, colors);
 
-  log.info('Claude: Generating landing code with examples', {
+  log.info('Claude: Generating landing code with learning system', {
     mechanicType: spec.mechanicType,
     slotName: spec.slotName,
-    hasRealExamples: !!realExamples,
-    exampleType: getExampleForMechanic(spec.mechanicType).type
+    hasDbExamples: !!(dbExamples && dbExamples.length > 0),
+    hasFilesystemExamples: !!realExamples,
+    examplesUsed
   });
 
   try {
@@ -462,7 +505,7 @@ export async function generateLandingCode(spec, assets, colors) {
       issues: validation.issues
     });
 
-    return { html, validation };
+    return { html, validation, examplesUsed };
   } catch (error) {
     log.error('Claude: Code generation failed', { error: error.message });
     throw error;
@@ -471,35 +514,68 @@ export async function generateLandingCode(spec, assets, colors) {
 
 /**
  * Stream code generation for real-time updates
- * Uses example-based prompting for higher quality output
+ * Uses RLHF-style learning: prioritizes top-rated examples
  * @param {Object} spec - Game specification
  * @param {Object} assets - Asset paths
  * @param {Object} colors - Color palette
  * @param {Function} onChunk - Callback for each chunk
- * @returns {Promise<{html: string, validation: Object}>} HTML and validation
+ * @returns {Promise<{html: string, validation: Object, examplesUsed: Array}>} HTML, validation, and examples used
  */
 export async function generateLandingCodeStream(spec, assets, colors, onChunk) {
   const client = getClient();
+  const examplesUsed = [];
 
-  // Try to get real examples from filesystem first
-  let realExamples = null;
+  // LEARNING SYSTEM: Try to get TOP-RATED examples from database first
+  let dbExamples = null;
   try {
-    realExamples = await buildPromptWithExamples(spec.mechanicType, 1);
+    dbExamples = await ratingService.getBestExamplesForMechanic(spec.mechanicType, 2);
+    if (dbExamples && dbExamples.length > 0) {
+      for (const ex of dbExamples) {
+        examplesUsed.push(ex.id);
+        await ratingService.markExampleUsed(ex.id).catch(() => {});
+      }
+    }
   } catch (e) {
-    log.warn('Could not load real examples', { error: e.message });
+    log.warn('Could not load DB examples', { error: e.message });
   }
 
-  // Build system prompt - prefer real examples if available
-  const systemPrompt = realExamples
-    ? `You are an expert gambling landing page generator.\n\n${realExamples}\n\n${buildExampleBasedPrompt(spec.mechanicType)}`
-    : buildExampleBasedPrompt(spec.mechanicType);
+  // Build examples prompt from DB examples
+  let dbExamplesPrompt = '';
+  if (dbExamples && dbExamples.length > 0) {
+    dbExamplesPrompt = `## TOP-RATED PRODUCTION EXAMPLES:\n\n`;
+    for (const ex of dbExamples) {
+      dbExamplesPrompt += `### ${ex.name} (Rating: ${ex.avg_rating}/5)\n`;
+      const codeSnippet = ex.html_code?.slice(0, 5000) || '';
+      dbExamplesPrompt += `\`\`\`html\n${codeSnippet}\n...\`\`\`\n\n`;
+    }
+  }
+
+  // Fallback to filesystem examples
+  let realExamples = null;
+  if (!dbExamples || dbExamples.length === 0) {
+    try {
+      realExamples = await buildPromptWithExamples(spec.mechanicType, 1);
+    } catch (e) {
+      log.warn('Could not load filesystem examples', { error: e.message });
+    }
+  }
+
+  // Build system prompt
+  let systemPrompt;
+  if (dbExamplesPrompt) {
+    systemPrompt = `You are an expert gambling landing page generator.\n\n${dbExamplesPrompt}\n\n${buildExampleBasedPrompt(spec.mechanicType)}`;
+  } else if (realExamples) {
+    systemPrompt = `You are an expert gambling landing page generator.\n\n${realExamples}\n\n${buildExampleBasedPrompt(spec.mechanicType)}`;
+  } else {
+    systemPrompt = buildExampleBasedPrompt(spec.mechanicType);
+  }
 
   const prompt = buildCodeGenerationPrompt(spec, assets, colors);
 
-  log.info('Claude: Starting streaming code generation with examples', {
+  log.info('Claude: Starting streaming with learning system', {
     mechanicType: spec.mechanicType,
-    hasRealExamples: !!realExamples,
-    exampleType: getExampleForMechanic(spec.mechanicType).type
+    hasDbExamples: !!(dbExamples && dbExamples.length > 0),
+    hasFilesystemExamples: !!realExamples
   });
 
   let html = '';
@@ -533,7 +609,7 @@ export async function generateLandingCodeStream(spec, assets, colors, onChunk) {
       score: validation.score
     });
 
-    return { html, validation };
+    return { html, validation, examplesUsed };
   } catch (error) {
     log.error('Claude: Streaming failed', { error: error.message });
     throw error;

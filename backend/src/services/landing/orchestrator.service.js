@@ -4,6 +4,8 @@ import { log } from '../../utils/logger.js';
 import * as claudeService from '../claude.service.js';
 import * as serperService from '../serper.service.js';
 import * as geminiService from '../gemini.service.js';
+import * as pixabayService from '../pixabay.service.js';
+import * as ratingService from '../rating.service.js';
 import { removeBackground } from '../runware.service.js';
 import { assembleLanding } from './assembler.service.js';
 import { extractPalette } from './palette.service.js';
@@ -385,6 +387,37 @@ export async function generateLanding(session, request) {
     await processTransparentAssets(session.assets, session);
 
     // ============================================
+    // STEP 5.5: Fetch sounds dynamically from Pixabay (FULL API USAGE)
+    // ============================================
+    session.setState(STATES.GENERATING_ASSETS, {
+      progress: 57,
+      message: 'Ищу звуковые эффекты...'
+    });
+
+    try {
+      const soundKeywords = getSoundKeywords(analysis.mechanicType, analysis.theme);
+      log.info('Searching sounds with keywords', { soundKeywords });
+
+      const sounds = await pixabayService.findGameSounds(soundKeywords);
+
+      if (sounds && Object.keys(sounds).length > 0) {
+        session.sounds = sounds;
+        log.info('Sounds fetched from Pixabay', {
+          count: Object.keys(sounds).length,
+          types: Object.keys(sounds)
+        });
+        session.setState(STATES.GENERATING_ASSETS, {
+          progress: 58,
+          message: `Найдено ${Object.keys(sounds).length} звуков`
+        });
+      } else {
+        log.info('Using default sounds (Pixabay returned empty)');
+      }
+    } catch (soundError) {
+      log.warn('Sound search failed, using defaults', { error: soundError.message });
+    }
+
+    // ============================================
     // STEP 6: Generate HTML/CSS/JS with Claude (STREAMING)
     // ============================================
     session.setState(STATES.GENERATING_CODE, {
@@ -395,7 +428,7 @@ export async function generateLanding(session, request) {
     // Stream HTML chunks to frontend for real-time preview (like Deepseek Artifacts)
     let chunkCount = 0;
     let htmlLength = 0;
-    const html = await claudeService.generateLandingCodeStream(
+    const codeResult = await claudeService.generateLandingCodeStream(
       analysis,
       session.assets,
       palette,
@@ -416,14 +449,24 @@ export async function generateLanding(session, request) {
         }
       }
     );
-    session.html = html;
+    session.html = codeResult.html;
+    session.examplesUsed = codeResult.examplesUsed || [];
+
+    // Log validation results for learning
+    if (codeResult.validation) {
+      log.info('Code validation', {
+        valid: codeResult.validation.valid,
+        score: codeResult.validation.score,
+        issues: codeResult.validation.issues
+      });
+    }
 
     // Signal completion of HTML streaming
     sendHtmlChunk(session.userId, session.id, '', true);
 
     session.setState(STATES.GENERATING_CODE, {
       progress: 88,
-      message: `HTML готов (${Math.round(html.length / 1024)}KB)`
+      message: `HTML готов (${Math.round(session.html.length / 1024)}KB)`
     });
 
     // ============================================
@@ -445,6 +488,25 @@ export async function generateLanding(session, request) {
 
     session.zipPath = result.zipPath;
     session.previewPath = result.previewPath;
+
+    // ============================================
+    // STEP 8: Record generation feedback for LEARNING SYSTEM
+    // ============================================
+    try {
+      await ratingService.recordGenerationFeedback({
+        landingId: session.dbLandingId || null,
+        originalPrompt: prompt,
+        mechanicType: analysis.mechanicType,
+        slotName: analysis.slotName,
+        language: analysis.language,
+        examplesUsed: session.examplesUsed || [],
+        promptTokens: null, // Could add token tracking later
+        completionTokens: null
+      });
+      log.info('Generation feedback recorded for learning system');
+    } catch (fbError) {
+      log.warn('Could not record generation feedback', { error: fbError.message });
+    }
 
     // ============================================
     // COMPLETE
@@ -593,6 +655,41 @@ function getAssetPlan(mechanicType, analysis) {
   };
 
   return plans[mechanicType] || plans[MECHANICS.WHEEL];
+}
+
+/**
+ * Get sound keywords based on mechanic type and theme
+ * This enables FULL Pixabay API usage for dynamic sound fetching
+ */
+function getSoundKeywords(mechanicType, theme) {
+  const baseKeywords = {
+    [MECHANICS.WHEEL]: ['wheel spin', 'roulette', 'casino win', 'jackpot celebration'],
+    [MECHANICS.BOXES]: ['open box', 'mystery reveal', 'magic unwrap', 'gift opening'],
+    [MECHANICS.CRASH]: ['footsteps', 'danger alert', 'success chime', 'game over'],
+    [MECHANICS.BOARD]: ['dice roll', 'board game', 'move piece', 'victory fanfare'],
+    [MECHANICS.SCRATCH]: ['scratch paper', 'reveal prize', 'card scratch', 'winning sound'],
+    [MECHANICS.LOADER]: ['loading', 'progress', 'success notification'],
+    [MECHANICS.SLOT]: ['slot machine', 'reels spinning', 'jackpot', 'coins falling']
+  };
+
+  // Get base keywords for mechanic
+  const keywords = baseKeywords[mechanicType] || baseKeywords[MECHANICS.WHEEL];
+
+  // Add theme-specific keywords
+  if (theme) {
+    const themeLower = theme.toLowerCase();
+    if (themeLower.includes('egypt') || themeLower.includes('pyramid')) {
+      keywords.push('ancient mystery', 'egyptian');
+    } else if (themeLower.includes('fruit') || themeLower.includes('classic')) {
+      keywords.push('fruit machine', 'classic slot');
+    } else if (themeLower.includes('gold') || themeLower.includes('treasure')) {
+      keywords.push('coins gold', 'treasure chest');
+    } else if (themeLower.includes('space') || themeLower.includes('galaxy')) {
+      keywords.push('space ambient', 'sci-fi');
+    }
+  }
+
+  return keywords;
 }
 
 /**
