@@ -3,8 +3,12 @@
  * Поиск звуковых эффектов для лендингов
  */
 
+import { fetchWithTimeout } from '../utils/fetchWithTimeout.js';
+
 const PIXABAY_API_KEY = process.env.PIXABAY_API_KEY;
 const PIXABAY_BASE_URL = 'https://pixabay.com/api';
+const API_TIMEOUT = 15000; // 15 seconds for API calls
+const DOWNLOAD_TIMEOUT = 30000; // 30 seconds for downloads
 
 /**
  * Поиск звуков по запросу
@@ -26,7 +30,7 @@ export async function searchSounds(query, perPage = 10) {
     // Pixabay использует тип "music" для аудио, нет отдельного типа для SFX
     // Но можно искать через обычный эндпоинт
 
-    const response = await fetch(url.toString());
+    const response = await fetchWithTimeout(url.toString(), { timeout: API_TIMEOUT });
 
     if (!response.ok) {
       throw new Error(`Pixabay API error: ${response.status}`);
@@ -112,7 +116,7 @@ export async function findGameSounds(theme = 'classic') {
  */
 export async function downloadSound(soundUrl) {
   try {
-    const response = await fetch(soundUrl);
+    const response = await fetchWithTimeout(soundUrl, { timeout: DOWNLOAD_TIMEOUT });
 
     if (!response.ok) {
       throw new Error(`Failed to download sound: ${response.status}`);

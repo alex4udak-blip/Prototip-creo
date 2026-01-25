@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../../config/env.js';
 import { log } from '../../utils/logger.js';
+import { pool } from '../../db/connection.js';
 import * as claudeService from '../claude.service.js';
 import * as serperService from '../serper.service.js';
 import * as geminiService from '../gemini.service.js';
@@ -119,6 +120,9 @@ class LandingSession {
     // Final output
     this.zipPath = null;
     this.previewPath = null;
+
+    // Database landing ID (set after persisting to DB)
+    this.dbLandingId = null;
 
     // Event listeners
     this.listeners = new Set();
@@ -515,20 +519,80 @@ export async function generateLanding(session, request) {
     session.previewPath = result.previewPath;
 
     // ============================================
+    // STEP 7.5: Persist landing to database (CRITICAL for rating system)
+    // ============================================
+    try {
+      // Extract features from analysis for example matching
+      const features = [];
+      if (analysis.hasLoader) features.push('loader');
+      if (analysis.hasModal) features.push('modal');
+      if (analysis.hasSounds) features.push('sounds');
+      if (analysis.hasAnimations) features.push('animations');
+      if (analysis.hasConfetti) features.push('confetti');
+      if (analysis.mechanicType) features.push(analysis.mechanicType);
+
+      const dbResult = await pool.query(`
+        INSERT INTO landings (
+          landing_id, user_id, type, slot_name, language,
+          prizes, palette, status, preview_path, generated_html, features, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+        ON CONFLICT (landing_id) DO UPDATE SET
+          status = 'complete',
+          preview_path = EXCLUDED.preview_path,
+          generated_html = EXCLUDED.generated_html,
+          features = EXCLUDED.features,
+          updated_at = NOW()
+        RETURNING id
+      `, [
+        session.id,
+        session.userId,
+        analysis.mechanicType || 'wheel',
+        analysis.slotName || null,
+        analysis.language || 'en',
+        JSON.stringify(analysis.prizes || []),
+        JSON.stringify(session.palette || {}),
+        'complete',
+        result.previewPath || null,
+        session.html || null,  // CRITICAL: Store HTML for auto-promotion
+        JSON.stringify(features)
+      ]);
+
+      // CRITICAL: Store the DB ID for rating system
+      session.dbLandingId = dbResult.rows[0]?.id || null;
+      log.info('Landing persisted to database', {
+        landingId: session.id,
+        dbLandingId: session.dbLandingId
+      });
+    } catch (dbError) {
+      // Log but don't fail - filesystem storage is still valid
+      log.warn('Failed to persist landing to database', {
+        landingId: session.id,
+        error: dbError.message
+      });
+    }
+
+    // ============================================
     // STEP 8: Record generation feedback for LEARNING SYSTEM
     // ============================================
     try {
-      await ratingService.recordGenerationFeedback({
-        landingId: session.dbLandingId || null,
-        originalPrompt: prompt,
-        mechanicType: analysis.mechanicType,
-        slotName: analysis.slotName,
-        language: analysis.language,
-        examplesUsed: session.examplesUsed || [],
-        promptTokens: null, // Could add token tracking later
-        completionTokens: null
-      });
-      log.info('Generation feedback recorded for learning system');
+      // Record generation feedback with actual DB landing ID
+      if (session.dbLandingId) {
+        await ratingService.recordGenerationFeedback({
+          landingId: session.dbLandingId,
+          originalPrompt: prompt,
+          mechanicType: analysis.mechanicType,
+          slotName: analysis.slotName,
+          language: analysis.language,
+          examplesUsed: session.examplesUsed || [],
+          promptTokens: null, // Could add token tracking later
+          completionTokens: null
+        });
+        log.info('Generation feedback recorded for learning system', {
+          dbLandingId: session.dbLandingId
+        });
+      } else {
+        log.warn('Cannot record generation feedback - landing not in database');
+      }
     } catch (fbError) {
       log.warn('Could not record generation feedback', { error: fbError.message });
     }

@@ -4,7 +4,10 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
+import { fetchWithTimeout } from '../utils/fetchWithTimeout.js';
 import { extractTextFromPrompt, overlayPngText, detectTextStyle } from './textOverlay.service.js';
+
+const DOWNLOAD_TIMEOUT = 30000; // 30 seconds for image downloads
 
 // Ленивый импорт для избежания циклической зависимости
 let generateStyledTextPng = null;
@@ -356,7 +359,7 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
  * Скачать изображение и сохранить локально
  */
 async function downloadAndSaveImage(imageUrl) {
-  const response = await fetch(imageUrl);
+  const response = await fetchWithTimeout(imageUrl, { timeout: DOWNLOAD_TIMEOUT });
   if (!response.ok) {
     throw new Error(`Failed to download image: ${response.status}`);
   }
@@ -443,7 +446,7 @@ export async function removeBackground(imageBuffer) {
       processedBuffer = Buffer.from(resultItem.imageBase64Data, 'base64');
     } else {
       // Download the processed image from URL
-      const response = await fetch(resultItem.imageURL);
+      const response = await fetchWithTimeout(resultItem.imageURL, { timeout: DOWNLOAD_TIMEOUT });
       if (!response.ok) {
         throw new Error(`Failed to download processed image: ${response.status}`);
       }

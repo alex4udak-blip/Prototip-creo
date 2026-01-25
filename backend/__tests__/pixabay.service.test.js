@@ -10,6 +10,22 @@ import { jest } from '@jest/globals';
 // Mock fetch globally
 global.fetch = jest.fn();
 
+// Mock fetchWithTimeout to use global.fetch
+jest.unstable_mockModule('../src/utils/fetchWithTimeout.js', () => ({
+  fetchWithTimeout: jest.fn((url, options) => global.fetch(url, options)),
+  fetchJsonWithTimeout: jest.fn(async (url, options) => {
+    const resp = await global.fetch(url, options);
+    return resp.json();
+  }),
+  default: {
+    fetchWithTimeout: jest.fn((url, options) => global.fetch(url, options)),
+    fetchJsonWithTimeout: jest.fn(async (url, options) => {
+      const resp = await global.fetch(url, options);
+      return resp.json();
+    })
+  }
+}));
+
 // Mock fs/promises for path tests
 jest.unstable_mockModule('fs/promises', () => ({
   mkdir: jest.fn().mockResolvedValue(undefined),
@@ -104,7 +120,11 @@ describe('Pixabay Service', () => {
       const result = await pixabayService.downloadSound('https://example.com/sound.mp3');
 
       expect(result).toBeInstanceOf(Buffer);
-      expect(global.fetch).toHaveBeenCalledWith('https://example.com/sound.mp3');
+      // fetchWithTimeout is now used with timeout option
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://example.com/sound.mp3',
+        expect.objectContaining({ timeout: expect.any(Number) })
+      );
     });
 
     it('should throw on download failure', async () => {

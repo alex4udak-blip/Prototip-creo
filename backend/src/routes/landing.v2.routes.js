@@ -6,6 +6,7 @@ import * as orchestrator from '../services/landing/orchestrator.service.js';
 import * as assembler from '../services/landing/assembler.service.js';
 import * as claudeService from '../services/claude.service.js';
 import * as ratingService from '../services/rating.service.js';
+import { sendLandingUpdate } from '../websocket/handler.js';
 
 const router = Router();
 
@@ -176,6 +177,21 @@ router.post('/generate', auth, async (req, res) => {
         landingId: session.id,
         error: error.message
       });
+
+      // CRITICAL: Propagate error to client via WebSocket
+      // Client was waiting for updates and needs to know about failure
+      try {
+        sendLandingUpdate(userId, session.id, {
+          type: 'landing_error',
+          state: 'error',
+          progress: session.progress || 0,
+          error: error.message,
+          errorCode: error.code || 'GENERATION_FAILED',
+          timestamp: new Date().toISOString()
+        });
+      } catch (wsError) {
+        log.warn('Could not send error via WebSocket', { error: wsError.message });
+      }
     });
 
     // Return session ID immediately
@@ -253,23 +269,112 @@ router.get('/status/:landingId', auth, async (req, res) => {
 /**
  * GET /api/landing/v2/:landingId/preview
  * Get landing HTML for iframe preview
+ * CRITICAL: Rewrites asset paths to absolute URLs for correct preview
  */
 router.get('/:landingId/preview', auth, async (req, res) => {
   const { landingId } = req.params;
   const userId = req.user.id;
 
   try {
-    const html = await assembler.getLandingHtml(landingId, userId);
+    let html = await assembler.getLandingHtml(landingId, userId);
 
     if (!html) {
       return res.status(404).json({ error: 'Landing not found' });
     }
 
+    // CRITICAL: Rewrite relative asset paths to absolute API paths
+    // Preview is served from /api/landing/v2/:id/preview, but assets are in
+    // /api/landing/v2/:id/assets/... so we need to rewrite paths
+    const baseAssetUrl = `/api/landing/v2/${landingId}/asset`;
+
+    // Replace relative asset paths with absolute paths
+    // Pattern 1: assets/filename.ext
+    html = html.replace(
+      /(['"])(assets\/[^'"]+)(['"])/g,
+      (match, q1, path, q2) => `${q1}${baseAssetUrl}/${path.replace('assets/', '')}${q2}`
+    );
+
+    // Pattern 2: sounds/filename.ext
+    html = html.replace(
+      /(['"])(sounds\/[^'"]+)(['"])/g,
+      (match, q1, path, q2) => `${q1}${baseAssetUrl}/${path}${q2}`
+    );
+
     res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Cache-Control', 'no-cache');
     res.send(html);
   } catch (error) {
     log.error('Failed to get preview', { error: error.message });
     res.status(500).json({ error: 'Failed to get preview' });
+  }
+});
+
+/**
+ * GET /api/landing/v2/:landingId/asset/*
+ * Serve individual landing assets (images, sounds) for preview
+ * CRITICAL: Required for preview to work - assets need to be served via API
+ */
+router.get('/:landingId/asset/*', auth, async (req, res) => {
+  const { landingId } = req.params;
+  const userId = req.user.id;
+  // Get the asset path from URL (everything after /asset/)
+  const assetPath = req.params[0];
+
+  if (!assetPath) {
+    return res.status(400).json({ error: 'Asset path required' });
+  }
+
+  try {
+    const landing = await assembler.getLanding(landingId, userId);
+
+    if (!landing || !landing.landingDir) {
+      return res.status(404).json({ error: 'Landing not found' });
+    }
+
+    const fs = await import('fs/promises');
+    const path = await import('path');
+
+    // Sanitize path to prevent directory traversal
+    const safePath = assetPath.replace(/\.\./g, '').replace(/^\/+/, '');
+    const fullPath = path.join(landing.landingDir, safePath);
+
+    // Verify the path is within the landing directory
+    if (!fullPath.startsWith(landing.landingDir)) {
+      return res.status(403).json({ error: 'Invalid asset path' });
+    }
+
+    // Check if file exists
+    try {
+      await fs.access(fullPath);
+    } catch {
+      return res.status(404).json({ error: 'Asset not found' });
+    }
+
+    // Determine content type
+    const ext = path.extname(fullPath).toLowerCase();
+    const contentTypes = {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.webp': 'image/webp',
+      '.gif': 'image/gif',
+      '.svg': 'image/svg+xml',
+      '.mp3': 'audio/mpeg',
+      '.wav': 'audio/wav',
+      '.ogg': 'audio/ogg'
+    };
+
+    const contentType = contentTypes[ext] || 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+
+    // Stream the file
+    const { createReadStream } = await import('fs');
+    const stream = createReadStream(fullPath);
+    stream.pipe(res);
+  } catch (error) {
+    log.error('Failed to serve asset', { landingId, assetPath, error: error.message });
+    res.status(500).json({ error: 'Failed to serve asset' });
   }
 });
 
@@ -357,6 +462,18 @@ router.post('/:landingId/rate', auth, async (req, res) => {
       positiveAspects,
       negativeAspects
     });
+
+    // CRITICAL: Update generation feedback with final score for learning system
+    // This connects user ratings to the generation that produced the landing
+    try {
+      await ratingService.updateGenerationFeedbackScore(dbLandingId, score);
+      log.info('Generation feedback score updated', { dbLandingId, score });
+    } catch (updateError) {
+      log.warn('Could not update generation feedback score', {
+        dbLandingId,
+        error: updateError.message
+      });
+    }
 
     res.json({
       success: true,

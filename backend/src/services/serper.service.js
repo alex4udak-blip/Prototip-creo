@@ -1,5 +1,6 @@
 import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
+import { fetchWithTimeout } from '../utils/fetchWithTimeout.js';
 
 /**
  * Serper.dev API Service
@@ -12,6 +13,8 @@ import { log } from '../utils/logger.js';
  */
 
 const SERPER_API_URL = 'https://google.serper.dev';
+const API_TIMEOUT = 15000; // 15 seconds for API calls
+const DOWNLOAD_TIMEOUT = 30000; // 30 seconds for image downloads
 
 /**
  * Search for images using Serper API
@@ -34,7 +37,7 @@ export async function searchImages(query, options = {}) {
   log.info('Serper: Searching images', { query, num });
 
   try {
-    const response = await fetch(`${SERPER_API_URL}/images`, {
+    const response = await fetchWithTimeout(`${SERPER_API_URL}/images`, {
       method: 'POST',
       headers: {
         'X-API-KEY': config.serperApiKey,
@@ -46,7 +49,8 @@ export async function searchImages(query, options = {}) {
         gl: country,
         hl: 'en',
         safe
-      })
+      }),
+      timeout: API_TIMEOUT
     });
 
     if (!response.ok) {
@@ -116,7 +120,7 @@ export async function searchSlotInfo(slotName) {
 
   try {
     // Search for web results to get provider info
-    const webResponse = await fetch(`${SERPER_API_URL}/search`, {
+    const webResponse = await fetchWithTimeout(`${SERPER_API_URL}/search`, {
       method: 'POST',
       headers: {
         'X-API-KEY': config.serperApiKey,
@@ -125,7 +129,8 @@ export async function searchSlotInfo(slotName) {
       body: JSON.stringify({
         q: query,
         num: 5
-      })
+      }),
+      timeout: API_TIMEOUT
     });
 
     if (!webResponse.ok) {
@@ -202,10 +207,11 @@ export async function downloadImage(imageUrl) {
   log.info('Serper: Downloading image', { url: imageUrl.substring(0, 100) });
 
   try {
-    const response = await fetch(imageUrl, {
+    const response = await fetchWithTimeout(imageUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
+      },
+      timeout: DOWNLOAD_TIMEOUT
     });
 
     if (!response.ok) {
@@ -326,7 +332,7 @@ export async function searchSounds(query) {
   log.info('Serper: Searching sounds', { query: searchQuery });
 
   try {
-    const response = await fetch(`${SERPER_API_URL}/search`, {
+    const response = await fetchWithTimeout(`${SERPER_API_URL}/search`, {
       method: 'POST',
       headers: {
         'X-API-KEY': config.serperApiKey,
@@ -335,7 +341,8 @@ export async function searchSounds(query) {
       body: JSON.stringify({
         q: searchQuery,
         num: 10
-      })
+      }),
+      timeout: API_TIMEOUT
     });
 
     if (!response.ok) {

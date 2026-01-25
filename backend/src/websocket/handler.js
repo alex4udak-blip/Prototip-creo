@@ -2,6 +2,7 @@ import { WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
+import * as orchestrator from '../services/landing/orchestrator.service.js';
 
 // Хранилище соединений по chatId
 const connections = new Map(); // chatId -> Set<WebSocket>
@@ -164,7 +165,25 @@ function handleMessage(ws, data) {
 
       case 'subscribe_landing':
         // Подписка на landing generation events
+        // SECURITY: Verify ownership before allowing subscription
         if (message.landingId) {
+          // Check if the user owns this landing session
+          const session = orchestrator.getSession(message.landingId);
+          if (session && session.userId !== ws.userId) {
+            // SECURITY: Reject subscription to other user's landing
+            log.warn('WebSocket subscribe_landing denied - not owner', {
+              requestingUserId: ws.userId,
+              ownerUserId: session.userId,
+              landingId: message.landingId
+            });
+            sendToClient(ws, {
+              type: 'error',
+              code: 'FORBIDDEN',
+              message: 'You do not have access to this landing'
+            });
+            break;
+          }
+
           // Отписываемся от старого
           if (ws.landingId && landingConnections.has(ws.landingId)) {
             landingConnections.get(ws.landingId).delete(ws);
