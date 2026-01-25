@@ -571,11 +571,20 @@ async function generateAssets(session, analysis, palette) {
     try {
       const prompt = buildAssetPrompt(asset, analysis, palette);
 
+      // Prepare reference images for Gemini (from Serper search)
+      const referenceImages = [];
+      if (session.referenceImage) {
+        referenceImages.push({
+          data: session.referenceImage.buffer.toString('base64'),
+          mimeType: session.referenceImage.mimeType || 'image/png'
+        });
+      }
+
       // Use Gemini to generate image
       const result = await geminiService.sendMessageStream(
         chatId,
         prompt,
-        [],
+        referenceImages,
         { expectedImages: 1, width: asset.width || 1024, height: asset.height || 1024 }
       );
 
@@ -587,6 +596,25 @@ async function generateAssets(session, analysis, palette) {
           width: asset.width,
           height: asset.height
         };
+
+        // Validate generated asset
+        if (result.images && result.images[0]?.path) {
+          try {
+            const fs = await import('fs/promises');
+            let assetPath = result.images[0].path;
+            if (assetPath.startsWith('/uploads/')) {
+              assetPath = `${config.storagePath}/${assetPath.replace('/uploads/', '')}`;
+            }
+            const stats = await fs.stat(assetPath);
+            if (stats.size < 1024) {
+              log.warn('Generated asset too small', { asset: asset.key, size: stats.size });
+            } else if (stats.size > 10 * 1024 * 1024) {
+              log.warn('Generated asset too large', { asset: asset.key, size: stats.size });
+            }
+          } catch (e) {
+            log.warn('Could not validate asset file', { asset: asset.key, error: e.message });
+          }
+        }
 
         // Update with completion of this asset
         session.setState(STATES.GENERATING_ASSETS, {
@@ -600,11 +628,34 @@ async function generateAssets(session, analysis, palette) {
         });
       }
     } catch (error) {
-      log.error('Asset generation failed', {
-        asset: asset.key,
-        error: error.message
-      });
-      // Continue with other assets
+      log.warn('Asset generation failed, retrying...', { asset: asset.key, attempt: 1, error: error.message });
+
+      // Retry once with simplified prompt but KEEP reference images for style consistency
+      try {
+        const retryPrompt = `Generate a simple ${asset.name} image for a casino landing page. Style: ${analysis.style || 'modern casino'}. Colors: ${palette?.primary || 'gold'}, ${palette?.secondary || 'dark blue'}.`;
+        const retryResult = await geminiService.sendMessageStream(
+          chatId,
+          retryPrompt,
+          referenceImages, // Keep reference images for style consistency on retry
+          { expectedImages: 1, width: asset.width, height: asset.height }
+        );
+
+        if (retryResult.images && retryResult.images.length > 0) {
+          assets[asset.key] = {
+            path: retryResult.images[0].path,
+            url: retryResult.images[0].url,
+            needsTransparency: asset.needsTransparency,
+            width: asset.width,
+            height: asset.height,
+            retried: true
+          };
+          log.info('Asset generated on retry', { asset: asset.key });
+        } else {
+          log.error('Asset generation failed after retry', { asset: asset.key });
+        }
+      } catch (retryError) {
+        log.error('Asset generation failed permanently', { asset: asset.key, error: retryError.message });
+      }
     }
   }
 
