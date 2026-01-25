@@ -17,7 +17,9 @@ export function ChatPage() {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [mode, setMode] = useState('banners'); // banners | landings
+  const [mode, setMode] = useState(() => {
+    return localStorage.getItem('mst-creo-mode') || 'banners';
+  }); // banners | landings
 
   // Проверка авторизации при загрузке
   useEffect(() => {
@@ -52,6 +54,7 @@ export function ChatPage() {
   // Handle mode change
   const handleModeChange = (newMode) => {
     setMode(newMode);
+    localStorage.setItem('mst-creo-mode', newMode);
     if (newMode === 'banners') {
       resetLanding();
     }
