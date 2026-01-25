@@ -104,3 +104,22 @@ export async function incrementGenerationStats(userId, timeMs) {
     log.error('Increment generation stats error', { error: error.message });
   }
 }
+
+/**
+ * Middleware для проверки admin-прав
+ * Требует authMiddleware перед собой
+ */
+export function adminMiddleware(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Не авторизован' });
+  }
+
+  const adminIds = config.adminUserIds || [1];
+
+  if (!adminIds.includes(req.user.id)) {
+    log.warn('Admin access denied', { userId: req.user.id, path: req.path });
+    return res.status(403).json({ error: 'Доступ запрещён. Требуются права администратора.' });
+  }
+
+  next();
+}

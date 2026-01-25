@@ -2,6 +2,7 @@ import { WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
+import { pool } from '../db/connection.js';
 import * as orchestrator from '../services/landing/orchestrator.service.js';
 
 // Хранилище соединений по chatId
@@ -115,7 +116,7 @@ function handleConnection(ws, req) {
 /**
  * Обработка входящих сообщений
  */
-function handleMessage(ws, data) {
+async function handleMessage(ws, data) {
   try {
     const message = JSON.parse(data.toString());
 
@@ -127,13 +128,54 @@ function handleMessage(ws, data) {
       case 'subscribe':
         // Подписка на чат
         if (message.chatId) {
+          const requestedChatId = parseInt(message.chatId);
+
+          // SECURITY: Verify chat ownership before subscribing
+          try {
+            const chatResult = await pool.query(
+              'SELECT user_id FROM chats WHERE id = $1',
+              [requestedChatId]
+            );
+
+            if (chatResult.rows.length === 0) {
+              sendToClient(ws, {
+                type: 'error',
+                code: 'NOT_FOUND',
+                message: 'Chat not found'
+              });
+              break;
+            }
+
+            if (chatResult.rows[0].user_id !== ws.userId) {
+              log.warn('WebSocket subscribe denied - not chat owner', {
+                requestingUserId: ws.userId,
+                ownerUserId: chatResult.rows[0].user_id,
+                chatId: requestedChatId
+              });
+              sendToClient(ws, {
+                type: 'error',
+                code: 'FORBIDDEN',
+                message: 'You do not have access to this chat'
+              });
+              break;
+            }
+          } catch (dbError) {
+            log.error('Failed to verify chat ownership', { error: dbError.message });
+            sendToClient(ws, {
+              type: 'error',
+              code: 'INTERNAL_ERROR',
+              message: 'Failed to verify chat access'
+            });
+            break;
+          }
+
           // Отписываемся от старого
           if (ws.chatId && connections.has(ws.chatId)) {
             connections.get(ws.chatId).delete(ws);
           }
 
           // Подписываемся на новый
-          ws.chatId = parseInt(message.chatId);
+          ws.chatId = requestedChatId;
           if (!connections.has(ws.chatId)) {
             connections.set(ws.chatId, new Set());
           }

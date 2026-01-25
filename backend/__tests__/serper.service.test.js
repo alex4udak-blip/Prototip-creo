@@ -181,7 +181,8 @@ describe('Serper Service', () => {
 
   describe('downloadImage', () => {
     it('should download image and return buffer', async () => {
-      const imageData = Buffer.from('fake image data');
+      // Create a buffer that's larger than minimum size (100 bytes)
+      const imageData = Buffer.alloc(200, 0xFF); // 200 bytes of 0xFF
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -191,6 +192,20 @@ describe('Serper Service', () => {
       const buffer = await downloadImage('https://example.com/image.jpg');
 
       expect(Buffer.isBuffer(buffer)).toBe(true);
+      expect(buffer.length).toBe(200);
+    });
+
+    it('should throw for too small images', async () => {
+      const tinyImage = Buffer.from('tiny');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(tinyImage)
+      });
+
+      await expect(downloadImage('https://example.com/tiny.jpg'))
+        .rejects
+        .toThrow(/too small/);
     });
 
     it('should throw on download failure', async () => {

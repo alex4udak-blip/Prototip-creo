@@ -1,5 +1,6 @@
 import { Runware } from '@runware/sdk-js';
-import fs from 'fs';
+import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config/env.js';
@@ -356,7 +357,7 @@ export async function generateWithRunware(prompt, options = {}, onProgress) {
 }
 
 /**
- * Скачать изображение и сохранить локально
+ * Скачать изображение и сохранить локально (async-safe)
  */
 async function downloadAndSaveImage(imageUrl) {
   const response = await fetchWithTimeout(imageUrl, { timeout: DOWNLOAD_TIMEOUT });
@@ -365,14 +366,29 @@ async function downloadAndSaveImage(imageUrl) {
   }
 
   const buffer = Buffer.from(await response.arrayBuffer());
+
+  // Validate buffer size
+  if (buffer.length < 100) {
+    throw new Error('Downloaded image too small');
+  }
+
+  const MAX_SIZE = 50 * 1024 * 1024; // 50MB
+  if (buffer.length > MAX_SIZE) {
+    throw new Error(`Downloaded image too large: ${buffer.length} bytes`);
+  }
+
   const filename = `runware-${uuidv4()}.png`;
   const filepath = path.join(config.storagePath, filename);
 
-  if (!fs.existsSync(config.storagePath)) {
-    fs.mkdirSync(config.storagePath, { recursive: true });
+  // Async directory creation
+  try {
+    await fs.access(config.storagePath);
+  } catch {
+    await fs.mkdir(config.storagePath, { recursive: true });
   }
 
-  fs.writeFileSync(filepath, buffer);
+  // Async file write
+  await fs.writeFile(filepath, buffer);
 
   log.debug('Saved Runware image', { filename, sizeKB: Math.round(buffer.length / 1024) });
 
@@ -408,6 +424,21 @@ export async function checkRunwareHealth() {
 export async function removeBackground(imageBuffer) {
   if (!config.runwareApiKey) {
     throw new Error('Runware API key not configured');
+  }
+
+  // Validate input
+  if (!Buffer.isBuffer(imageBuffer)) {
+    throw new Error('Invalid input: expected Buffer');
+  }
+
+  if (imageBuffer.length < 100) {
+    throw new Error('Image buffer too small');
+  }
+
+  // Limit image size for base64 encoding (10MB max)
+  const MAX_SIZE = 10 * 1024 * 1024;
+  if (imageBuffer.length > MAX_SIZE) {
+    throw new Error(`Image too large for background removal: ${imageBuffer.length} bytes (max ${MAX_SIZE})`);
   }
 
   log.info('Runware: Removing background', { sizeKB: Math.round(imageBuffer.length / 1024) });
@@ -471,7 +502,7 @@ export async function removeBackground(imageBuffer) {
  * @returns {Promise<Buffer>} Image with transparent background
  */
 export async function removeBackgroundFromFile(imagePath) {
-  const imageBuffer = fs.readFileSync(imagePath);
+  const imageBuffer = await fs.readFile(imagePath);
   return removeBackground(imageBuffer);
 }
 

@@ -65,6 +65,10 @@ export const config = {
   // Лимиты
   maxGenerationsPerDay: parseInt(process.env.MAX_GENERATIONS_PER_DAY || '100'),
 
+  // Admin user IDs (comma-separated list)
+  // User ID 1 is always admin by default
+  adminUserIds: (process.env.ADMIN_USER_IDS || '1').split(',').map(id => parseInt(id.trim())).filter(Boolean),
+
   // Проверка обязательных переменных
   validate() {
     const required = ['DATABASE_URL', 'JWT_SECRET'];

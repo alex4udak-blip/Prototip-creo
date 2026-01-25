@@ -66,31 +66,36 @@ setInterval(() => {
 
 /**
  * Cleanup old and completed sessions to prevent memory leaks
+ * Note: We collect IDs first, then delete to avoid iterator invalidation
  */
 function cleanupSessions() {
   const now = Date.now();
-  let cleaned = 0;
+  const toDelete = [];
 
+  // First pass: collect IDs to delete (safe iteration)
   for (const [id, session] of sessions.entries()) {
     const age = now - session.createdAt.getTime();
 
     // Remove sessions older than TTL
     if (age > SESSION_TTL) {
-      sessions.delete(id);
-      cleaned++;
+      toDelete.push(id);
       continue;
     }
 
     // Remove completed/error sessions after 30 minutes
     if ((session.state === STATES.COMPLETE || session.state === STATES.ERROR) &&
         (now - session.updatedAt.getTime() > 30 * 60 * 1000)) {
-      sessions.delete(id);
-      cleaned++;
+      toDelete.push(id);
     }
   }
 
-  if (cleaned > 0) {
-    log.info('Session cleanup', { cleaned, remaining: sessions.size });
+  // Second pass: delete collected IDs
+  for (const id of toDelete) {
+    sessions.delete(id);
+  }
+
+  if (toDelete.length > 0) {
+    log.info('Session cleanup', { cleaned: toDelete.length, remaining: sessions.size });
   }
 }
 

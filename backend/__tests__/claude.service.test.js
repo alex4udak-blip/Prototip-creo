@@ -194,10 +194,10 @@ describe('Claude Service', () => {
         secondary: '#1E3A5F'
       };
 
-      const html = await generateLandingCode(spec, assets, colors);
+      const result = await generateLandingCode(spec, assets, colors);
 
-      expect(html).toContain('<!DOCTYPE html>');
-      expect(html).toContain('wheel-container');
+      expect(result.html).toContain('<!DOCTYPE html>');
+      expect(result.html).toContain('wheel-container');
       expect(mockCreate).toHaveBeenCalledTimes(1);
     });
 
@@ -208,10 +208,10 @@ describe('Claude Service', () => {
         }]
       });
 
-      const html = await generateLandingCode({}, {}, {});
+      const result = await generateLandingCode({}, {}, {});
 
-      expect(html).not.toContain('```');
-      expect(html).toContain('<!DOCTYPE html>');
+      expect(result.html).not.toContain('```');
+      expect(result.html).toContain('<!DOCTYPE html>');
     });
   });
 
@@ -227,14 +227,14 @@ describe('Claude Service', () => {
       mockStream.mockResolvedValueOnce(mockStreamGenerator());
 
       const chunks = [];
-      const html = await generateLandingCodeStream({}, {}, {}, (chunk) => {
+      const result = await generateLandingCodeStream({}, {}, {}, (chunk) => {
         chunks.push(chunk);
       });
 
       expect(chunks.length).toBe(3);
       expect(chunks[0]).toBe('<!DOCTYPE html>');
-      expect(html).toContain('<!DOCTYPE html>');
-      expect(html).toContain('<html>');
+      expect(result.html).toContain('<!DOCTYPE html>');
+      expect(result.html).toContain('<html>');
     });
 
     it('should clean markdown from streamed result', async () => {
@@ -246,10 +246,10 @@ describe('Claude Service', () => {
 
       mockStream.mockResolvedValueOnce(mockStreamGenerator());
 
-      const html = await generateLandingCodeStream({}, {}, {}, () => {});
+      const result = await generateLandingCodeStream({}, {}, {}, () => {});
 
-      expect(html).not.toContain('```');
-      expect(html).toContain('<!DOCTYPE html>');
+      expect(result.html).not.toContain('```');
+      expect(result.html).toContain('<!DOCTYPE html>');
     });
 
     it('should handle stream errors gracefully', async () => {

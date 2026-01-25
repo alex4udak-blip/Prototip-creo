@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authMiddleware as auth } from '../middleware/auth.middleware.js';
+import { authMiddleware as auth, adminMiddleware } from '../middleware/auth.middleware.js';
 import { log } from '../utils/logger.js';
 import { pool } from '../db/connection.js';
 import * as orchestrator from '../services/landing/orchestrator.service.js';
@@ -537,7 +537,7 @@ router.get('/stats/learning', auth, async (req, res) => {
  * Import curated examples from filesystem to database
  * This bootstraps the RLHF learning system with known-good examples
  */
-router.post('/admin/import-examples', auth, async (req, res) => {
+router.post('/admin/import-examples', auth, adminMiddleware, async (req, res) => {
   try {
     // Dynamic import to avoid loading on startup
     const { addCuratedExample } = await import('../services/rating.service.js');

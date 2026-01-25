@@ -221,6 +221,17 @@ export async function downloadImage(imageUrl) {
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    // Validate minimum size (image should be at least 100 bytes)
+    if (buffer.length < 100) {
+      throw new Error(`Downloaded image too small: ${buffer.length} bytes`);
+    }
+
+    // Validate maximum size (50MB limit)
+    const MAX_SIZE = 50 * 1024 * 1024;
+    if (buffer.length > MAX_SIZE) {
+      throw new Error(`Downloaded image too large: ${buffer.length} bytes (max ${MAX_SIZE})`);
+    }
+
     log.info('Serper: Image downloaded', { size: buffer.length });
 
     return buffer;
@@ -292,14 +303,25 @@ export async function getSlotReferenceImage(slotName) {
     try {
       const buffer = await downloadImage(img.url);
 
-      // Detect mime type from buffer
-      let mimeType = 'image/png';
-      if (buffer[0] === 0xFF && buffer[1] === 0xD8) {
+      // Validate buffer has enough bytes for MIME detection
+      if (buffer.length < 12) {
+        throw new Error('Downloaded image too small to determine type');
+      }
+
+      // Detect mime type from buffer magic bytes
+      let mimeType = 'image/png'; // Default
+      if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
         mimeType = 'image/jpeg';
-      } else if (buffer[0] === 0x89 && buffer[1] === 0x50) {
+      } else if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+        // PNG: 89 50 4E 47 (‰PNG)
         mimeType = 'image/png';
-      } else if (buffer[0] === 0x52 && buffer[1] === 0x49) {
+      } else if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+                 buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) {
+        // WebP: RIFF....WEBP
         mimeType = 'image/webp';
+      } else if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
+        // GIF: 47 49 46 (GIF)
+        mimeType = 'image/gif';
       }
 
       return {
