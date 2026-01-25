@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
 import { buildExampleBasedPrompt, getExampleForMechanic } from './landing-examples.js';
+import { buildPromptWithExamples, validateGeneratedHtml } from './examples-loader.service.js';
 
 // Lazy initialization
 let anthropic = null;
@@ -411,18 +412,30 @@ The mechanicDescription field should contain a clear explanation of how the game
  * @param {Object} spec - Game specification from analysis
  * @param {Object} assets - Generated asset paths
  * @param {Object} colors - Color palette
- * @returns {Promise<string>} Complete HTML code
+ * @returns {Promise<{html: string, validation: Object}>} HTML code and validation result
  */
 export async function generateLandingCode(spec, assets, colors) {
   const client = getClient();
 
-  // Build example-based system prompt for this mechanic type
-  const systemPrompt = buildExampleBasedPrompt(spec.mechanicType);
+  // Try to get real examples from filesystem first
+  let realExamples = null;
+  try {
+    realExamples = await buildPromptWithExamples(spec.mechanicType, 1);
+  } catch (e) {
+    log.warn('Could not load real examples', { error: e.message });
+  }
+
+  // Build system prompt - prefer real examples if available
+  const systemPrompt = realExamples
+    ? `You are an expert gambling landing page generator.\n\n${realExamples}\n\n${buildExampleBasedPrompt(spec.mechanicType)}`
+    : buildExampleBasedPrompt(spec.mechanicType);
+
   const prompt = buildCodeGenerationPrompt(spec, assets, colors);
 
   log.info('Claude: Generating landing code with examples', {
     mechanicType: spec.mechanicType,
     slotName: spec.slotName,
+    hasRealExamples: !!realExamples,
     exampleType: getExampleForMechanic(spec.mechanicType).type
   });
 
@@ -439,9 +452,17 @@ export async function generateLandingCode(spec, assets, colors) {
     // Clean up if wrapped in markdown code blocks
     html = html.replace(/^```html?\n?/i, '').replace(/\n?```$/i, '');
 
-    log.info('Claude: Code generation complete', { htmlLength: html.length });
+    // Validate generated HTML
+    const validation = validateGeneratedHtml(html);
 
-    return html;
+    log.info('Claude: Code generation complete', {
+      htmlLength: html.length,
+      valid: validation.valid,
+      score: validation.score,
+      issues: validation.issues
+    });
+
+    return { html, validation };
   } catch (error) {
     log.error('Claude: Code generation failed', { error: error.message });
     throw error;
@@ -455,17 +476,29 @@ export async function generateLandingCode(spec, assets, colors) {
  * @param {Object} assets - Asset paths
  * @param {Object} colors - Color palette
  * @param {Function} onChunk - Callback for each chunk
- * @returns {Promise<string>} Complete HTML
+ * @returns {Promise<{html: string, validation: Object}>} HTML and validation
  */
 export async function generateLandingCodeStream(spec, assets, colors, onChunk) {
   const client = getClient();
 
-  // Build example-based system prompt for this mechanic type
-  const systemPrompt = buildExampleBasedPrompt(spec.mechanicType);
+  // Try to get real examples from filesystem first
+  let realExamples = null;
+  try {
+    realExamples = await buildPromptWithExamples(spec.mechanicType, 1);
+  } catch (e) {
+    log.warn('Could not load real examples', { error: e.message });
+  }
+
+  // Build system prompt - prefer real examples if available
+  const systemPrompt = realExamples
+    ? `You are an expert gambling landing page generator.\n\n${realExamples}\n\n${buildExampleBasedPrompt(spec.mechanicType)}`
+    : buildExampleBasedPrompt(spec.mechanicType);
+
   const prompt = buildCodeGenerationPrompt(spec, assets, colors);
 
   log.info('Claude: Starting streaming code generation with examples', {
     mechanicType: spec.mechanicType,
+    hasRealExamples: !!realExamples,
     exampleType: getExampleForMechanic(spec.mechanicType).type
   });
 
@@ -491,9 +524,16 @@ export async function generateLandingCodeStream(spec, assets, colors, onChunk) {
     // Clean up markdown if present
     html = html.replace(/^```html?\n?/i, '').replace(/\n?```$/i, '');
 
-    log.info('Claude: Streaming complete', { htmlLength: html.length });
+    // Validate generated HTML
+    const validation = validateGeneratedHtml(html);
 
-    return html;
+    log.info('Claude: Streaming complete', {
+      htmlLength: html.length,
+      valid: validation.valid,
+      score: validation.score
+    });
+
+    return { html, validation };
   } catch (error) {
     log.error('Claude: Streaming failed', { error: error.message });
     throw error;
