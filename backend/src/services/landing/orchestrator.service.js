@@ -89,8 +89,12 @@ function cleanupSessions() {
     }
   }
 
-  // Second pass: delete collected IDs
+  // Second pass: cleanup and delete collected IDs
   for (const id of toDelete) {
+    const session = sessions.get(id);
+    if (session?.listeners) {
+      session.listeners.clear(); // Clear listeners to prevent memory leaks
+    }
     sessions.delete(id);
   }
 
@@ -249,10 +253,17 @@ export function getSession(landingId) {
 }
 
 /**
- * Delete session
+ * Delete session and cleanup resources
  * @param {string} landingId - Landing ID
  */
 export function deleteSession(landingId) {
+  const session = sessions.get(landingId);
+  if (session) {
+    // Clear all listeners to prevent memory leaks
+    if (session.listeners) {
+      session.listeners.clear();
+    }
+  }
   sessions.delete(landingId);
 }
 

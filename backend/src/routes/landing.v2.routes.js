@@ -334,13 +334,29 @@ router.get('/:landingId/asset/*', auth, async (req, res) => {
     const fs = await import('fs/promises');
     const path = await import('path');
 
-    // Sanitize path to prevent directory traversal
-    const safePath = assetPath.replace(/\.\./g, '').replace(/^\/+/, '');
-    const fullPath = path.join(landing.landingDir, safePath);
+    // SECURITY: Strong path traversal prevention
+    // 1. Decode URL encoding (handles %2e%2e and similar)
+    const decodedPath = decodeURIComponent(assetPath);
 
-    // Verify the path is within the landing directory
-    if (!fullPath.startsWith(landing.landingDir)) {
+    // 2. Normalize path to resolve all . and .. components
+    const normalizedBase = path.normalize(landing.landingDir);
+    const fullPath = path.resolve(landing.landingDir, decodedPath);
+
+    // 3. Verify the resolved path starts with the landing directory
+    // path.resolve handles all traversal tricks (.., encoded variants, etc.)
+    if (!fullPath.startsWith(normalizedBase + path.sep) && fullPath !== normalizedBase) {
+      log.warn('Path traversal attempt blocked', {
+        landingId,
+        originalPath: assetPath,
+        resolvedPath: fullPath,
+        basePath: normalizedBase
+      });
       return res.status(403).json({ error: 'Invalid asset path' });
+    }
+
+    // 4. Additional check: no null bytes (can bypass some checks)
+    if (assetPath.includes('\0') || decodedPath.includes('\0')) {
+      return res.status(400).json({ error: 'Invalid characters in path' });
     }
 
     // Check if file exists

@@ -81,9 +81,11 @@ export const useChatStore = create((set, get) => ({
   },
 
   selectChat: async (chatId) => {
+    // Always unsubscribe from previous chat first to prevent duplicate subscriptions
+    wsManager.unsubscribe();
+
     if (!chatId) {
       set({ currentChat: null, messages: [] });
-      wsManager.unsubscribe();
       return;
     }
 
@@ -96,6 +98,7 @@ export const useChatStore = create((set, get) => ({
         chatLoading: false
       });
 
+      // Subscribe to new chat after setting state
       wsManager.subscribe(chatId);
     } catch (error) {
       console.error('Select chat error:', error);

@@ -19,8 +19,43 @@ function getAI() {
   return ai;
 }
 
-// Хранилище чат-сессий
+// Хранилище чат-сессий с TTL
 const chatSessions = new Map();
+const SESSION_TTL = 2 * 60 * 60 * 1000; // 2 hours
+const MAX_SESSIONS = 100; // Maximum sessions to keep
+
+// Cleanup old sessions periodically
+setInterval(() => {
+  const now = Date.now();
+  const toDelete = [];
+
+  for (const [chatId, session] of chatSessions.entries()) {
+    if (session.createdAt && (now - session.createdAt > SESSION_TTL)) {
+      toDelete.push(chatId);
+    }
+  }
+
+  // Delete expired sessions
+  for (const chatId of toDelete) {
+    chatSessions.delete(chatId);
+  }
+
+  // If still too many, remove oldest
+  if (chatSessions.size > MAX_SESSIONS) {
+    const sorted = [...chatSessions.entries()]
+      .filter(([_, s]) => s.createdAt)
+      .sort((a, b) => a[1].createdAt - b[1].createdAt);
+
+    const toRemove = sorted.slice(0, chatSessions.size - MAX_SESSIONS);
+    for (const [chatId] of toRemove) {
+      chatSessions.delete(chatId);
+    }
+  }
+
+  if (toDelete.length > 0 || chatSessions.size > MAX_SESSIONS) {
+    log.debug('Gemini session cleanup', { expired: toDelete.length, remaining: chatSessions.size });
+  }
+}, 5 * 60 * 1000); // Run every 5 minutes
 
 /**
  * SYSTEM PROMPT для Gemini
@@ -105,14 +140,19 @@ export function getOrCreateChat(chatId) {
       config: chatConfig
     });
 
-    chatSessions.set(chatId, chat);
+    // Store with metadata for TTL tracking
+    chatSessions.set(chatId, {
+      chat,
+      createdAt: Date.now()
+    });
     log.info('Created new Gemini chat session', {
       chatId,
       model: geminiConfig.model,
       thinkingBudget: geminiConfig.thinkingBudget
     });
   }
-  return chatSessions.get(chatId);
+  const session = chatSessions.get(chatId);
+  return session?.chat || session; // Handle both new and old format
 }
 
 /**

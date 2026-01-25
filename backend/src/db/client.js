@@ -60,25 +60,59 @@ export const db = {
     return result.rows;
   },
 
-  // INSERT и вернуть вставленную строку
+  // Allowed tables and columns (whitelist for SQL injection protection)
+  _allowedTables: new Set(['chats', 'messages', 'users', 'landings', 'landing_ratings', 'landing_examples', 'generation_feedback', 'generation_stats', 'landing_assets', 'landing_templates', 'slot_library', 'sound_library', 'saved_styles', 'size_presets']),
+  _allowedColumnPattern: /^[a-z_][a-z0-9_]*$/i,
+
+  // Validate identifier (table or column name)
+  _validateIdentifier(name, type = 'identifier') {
+    if (typeof name !== 'string' || !this._allowedColumnPattern.test(name)) {
+      throw new Error(`Invalid ${type} name: ${name}`);
+    }
+    return name;
+  },
+
+  // Validate table name against whitelist
+  _validateTable(table) {
+    if (!this._allowedTables.has(table)) {
+      throw new Error(`Table not allowed: ${table}`);
+    }
+    return table;
+  },
+
+  // INSERT и вернуть вставленную строку (SQL injection protected)
   async insert(table, data) {
+    // Validate table name
+    this._validateTable(table);
+
     const keys = Object.keys(data);
     const values = Object.values(data);
-    const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
-    const columns = keys.join(', ');
 
-    const text = `INSERT INTO ${table} (${columns}) VALUES (${placeholders}) RETURNING *`;
+    // Validate all column names
+    keys.forEach(k => this._validateIdentifier(k, 'column'));
+
+    const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
+    const columns = keys.map(k => `"${k}"`).join(', '); // Quote identifiers
+
+    const text = `INSERT INTO "${table}" (${columns}) VALUES (${placeholders}) RETURNING *`;
     const result = await this.query(text, values);
     return result.rows[0];
   },
 
-  // UPDATE и вернуть обновлённую строку
+  // UPDATE и вернуть обновлённую строку (SQL injection protected)
   async update(table, id, data) {
+    // Validate table name
+    this._validateTable(table);
+
     const keys = Object.keys(data);
     const values = Object.values(data);
-    const setClause = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
 
-    const text = `UPDATE ${table} SET ${setClause} WHERE id = $${keys.length + 1} RETURNING *`;
+    // Validate all column names
+    keys.forEach(k => this._validateIdentifier(k, 'column'));
+
+    const setClause = keys.map((k, i) => `"${k}" = $${i + 1}`).join(', ');
+
+    const text = `UPDATE "${table}" SET ${setClause} WHERE id = $${keys.length + 1} RETURNING *`;
     const result = await this.query(text, [...values, id]);
     return result.rows[0];
   },
