@@ -5,6 +5,45 @@ import { log } from '../utils/logger.js';
 // Lazy initialization
 let anthropic = null;
 
+/**
+ * Extract JSON from text - handles nested objects correctly
+ * @param {string} text - Text potentially containing JSON
+ * @returns {Object|null} Parsed JSON or null
+ */
+function extractJSON(text) {
+  // Try to parse directly first
+  try {
+    return JSON.parse(text.trim());
+  } catch {
+    // Continue to extraction
+  }
+
+  // Find first { and match balanced braces
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+
+  let depth = 0;
+  let end = -1;
+
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    if (text[i] === '}') depth--;
+    if (depth === 0) {
+      end = i;
+      break;
+    }
+  }
+
+  if (end === -1) return null;
+
+  try {
+    return JSON.parse(text.slice(start, end + 1));
+  } catch (e) {
+    log.error('JSON extraction failed', { error: e.message, substring: text.slice(start, start + 100) });
+    return null;
+  }
+}
+
 function getClient() {
   if (!anthropic && config.anthropicApiKey) {
     anthropic = new Anthropic({
@@ -113,10 +152,9 @@ For this request, analyze and return a JSON object with:
 
     const text = response.content[0]?.text || '';
 
-    // Extract JSON from response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const analysis = JSON.parse(jsonMatch[0]);
+    // Extract JSON from response - find balanced braces
+    const analysis = extractJSON(text);
+    if (analysis) {
       log.info('Claude: Analysis complete', {
         slotName: analysis.slotName,
         mechanicType: analysis.mechanicType,
