@@ -132,14 +132,20 @@ describe('Auth Routes', () => {
   });
 
   describe('GET /api/auth/invites - Admin endpoint', () => {
-    test('should return 403 without secret', async () => {
+    test('should return 503 when ADMIN_SECRET not configured', async () => {
+      const originalEnv = process.env.ADMIN_SECRET;
+      delete process.env.ADMIN_SECRET;
+
       const response = await request(app)
         .get('/api/auth/invites');
 
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(503);
+      process.env.ADMIN_SECRET = originalEnv;
     });
 
     test('should return 403 for wrong secret', async () => {
+      process.env.ADMIN_SECRET = 'test-admin-secret';
+
       const response = await request(app)
         .get('/api/auth/invites?secret=wrongsecret');
 
@@ -147,6 +153,8 @@ describe('Auth Routes', () => {
     });
 
     test('should return invites for correct secret', async () => {
+      process.env.ADMIN_SECRET = 'test-admin-secret';
+
       mockQuery.mockResolvedValueOnce({
         rows: [
           { name: 'User 1', invite_token: 'token1' },
@@ -155,7 +163,7 @@ describe('Auth Routes', () => {
       });
 
       const response = await request(app)
-        .get('/api/auth/invites?secret=mstcreo2026');
+        .get('/api/auth/invites?secret=test-admin-secret');
 
       expect(response.status).toBe(200);
       expect(response.body.invites).toBeDefined();
@@ -164,10 +172,11 @@ describe('Auth Routes', () => {
     });
 
     test('should return empty array when no users', async () => {
+      process.env.ADMIN_SECRET = 'test-admin-secret';
       mockQuery.mockResolvedValueOnce({ rows: [] });
 
       const response = await request(app)
-        .get('/api/auth/invites?secret=mstcreo2026');
+        .get('/api/auth/invites?secret=test-admin-secret');
 
       expect(response.status).toBe(200);
       expect(response.body.invites).toEqual([]);

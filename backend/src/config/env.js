@@ -25,13 +25,19 @@ export const config = {
     safetyThreshold: process.env.GEMINI_SAFETY_THRESHOLD || 'BLOCK_ONLY_HIGH'
   },
 
-  // Runware API (Fallback для заблокированного контента)
+  // Runware API (Fallback для заблокированного контента + Background Removal)
   runwareApiKey: process.env.RUNWARE_API_KEY,
   runware: {
     // Juggernaut Pro FLUX — фотореализм, меньше цензуры, $0.0066/1024x1024
     model: process.env.RUNWARE_MODEL || 'rundiffusion:130@100',
     enabled: !!process.env.RUNWARE_API_KEY
   },
+
+  // Anthropic Claude API (Landing generator brain)
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+
+  // Serper.dev API (Image search for slot references)
+  serperApiKey: process.env.SERPER_API_KEY,
 
   // Storage (Railway Volume)
   storagePath: process.env.STORAGE_PATH || './uploads',
@@ -59,6 +65,20 @@ export const config = {
       console.warn('⚠️  RUNWARE_API_KEY not set - Runware fallback disabled');
     } else {
       console.log('✅ Runware API fallback enabled');
+    }
+
+    // Проверка Anthropic API Key
+    if (!this.anthropicApiKey) {
+      console.warn('⚠️  ANTHROPIC_API_KEY not set - Landing generator disabled');
+    } else {
+      console.log('✅ Anthropic Claude API enabled');
+    }
+
+    // Проверка Serper API Key
+    if (!this.serperApiKey) {
+      console.warn('⚠️  SERPER_API_KEY not set - Slot image search disabled');
+    } else {
+      console.log('✅ Serper image search enabled');
     }
   }
 };

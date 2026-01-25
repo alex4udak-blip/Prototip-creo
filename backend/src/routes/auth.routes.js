@@ -106,14 +106,19 @@ router.get('/me', authMiddleware, async (req, res) => {
 /**
  * GET /api/auth/invites
  * Получить все invite-ссылки (для админа)
- * Секретный endpoint — доступ по ?secret=mstcreo2026
+ * Секретный endpoint — доступ по ?secret=ADMIN_SECRET (env)
  */
 router.get('/invites', async (req, res) => {
   try {
     const { secret } = req.query;
+    const adminSecret = process.env.ADMIN_SECRET;
 
-    // Простая защита
-    if (secret !== 'mstcreo2026') {
+    // Требуем ADMIN_SECRET в production
+    if (!adminSecret) {
+      return res.status(503).json({ error: 'Admin endpoint not configured' });
+    }
+
+    if (secret !== adminSecret) {
       return res.status(403).json({ error: 'Access denied' });
     }
 

@@ -397,7 +397,75 @@ export async function checkRunwareHealth() {
   };
 }
 
+/**
+ * Remove background from image using Runware API
+ * @param {Buffer} imageBuffer - Image data
+ * @returns {Promise<Buffer>} Image with transparent background
+ */
+export async function removeBackground(imageBuffer) {
+  if (!config.runwareApiKey) {
+    throw new Error('Runware API key not configured');
+  }
+
+  log.info('Runware: Removing background', { sizeKB: Math.round(imageBuffer.length / 1024) });
+
+  try {
+    const client = await getRunwareClient();
+
+    // Convert buffer to base64 data URI
+    const base64Data = imageBuffer.toString('base64');
+    const dataUri = `data:image/png;base64,${base64Data}`;
+
+    // Use Runware's background removal
+    const result = await client.imageBackgroundRemoval({
+      inputImage: dataUri,
+      outputFormat: 'PNG',
+      rgba: [0, 0, 0, 0],  // Transparent
+      postProcessMask: true,
+      returnOnlyMask: false,
+      alphaMatting: true,  // Better edges for hair/details
+      alphaMattingForegroundThreshold: 240,
+      alphaMattingBackgroundThreshold: 10,
+      alphaMattingErodeSize: 10
+    });
+
+    if (!result || !result[0]?.imageURL) {
+      throw new Error('No result from background removal');
+    }
+
+    // Download the processed image
+    const response = await fetch(result[0].imageURL);
+    if (!response.ok) {
+      throw new Error(`Failed to download processed image: ${response.status}`);
+    }
+
+    const processedBuffer = Buffer.from(await response.arrayBuffer());
+
+    log.info('Runware: Background removed', {
+      originalSizeKB: Math.round(imageBuffer.length / 1024),
+      processedSizeKB: Math.round(processedBuffer.length / 1024)
+    });
+
+    return processedBuffer;
+  } catch (error) {
+    log.error('Runware: Background removal failed', { error: error.message });
+    throw error;
+  }
+}
+
+/**
+ * Remove background from image file
+ * @param {string} imagePath - Path to image file
+ * @returns {Promise<Buffer>} Image with transparent background
+ */
+export async function removeBackgroundFromFile(imagePath) {
+  const imageBuffer = fs.readFileSync(imagePath);
+  return removeBackground(imageBuffer);
+}
+
 export default {
   generateWithRunware,
-  checkRunwareHealth
+  checkRunwareHealth,
+  removeBackground,
+  removeBackgroundFromFile
 };

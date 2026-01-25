@@ -1,9 +1,13 @@
 import { useState } from 'react';
-import { MessageSquarePlus, Trash2, Edit2, Check, X, History } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, History } from 'lucide-react';
 import { useChatStore } from '../../hooks/useChat';
 import { useAuthStore } from '../../hooks/useAuth';
 import { Logo } from '../UI/Logo';
 
+/**
+ * Sidebar Component
+ * Claude.ai inspired design
+ */
 export function Sidebar({ className = '' }) {
   const { user, logout } = useAuthStore();
   const {
@@ -19,7 +23,6 @@ export function Sidebar({ className = '' }) {
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
 
-  // Создать новый чат
   const handleNewChat = async () => {
     try {
       const chat = await createChat();
@@ -29,14 +32,12 @@ export function Sidebar({ className = '' }) {
     }
   };
 
-  // Начать редактирование
   const startEditing = (chat, e) => {
     e.stopPropagation();
     setEditingId(chat.id);
     setEditTitle(chat.title);
   };
 
-  // Сохранить название
   const saveTitle = async (chatId) => {
     if (editTitle.trim()) {
       await renameChat(chatId, editTitle.trim());
@@ -44,37 +45,40 @@ export function Sidebar({ className = '' }) {
     setEditingId(null);
   };
 
-  // Удалить чат
   const handleDelete = async (chatId, e) => {
     e.stopPropagation();
-    if (window.confirm('Удалить этот чат?')) {
+    if (window.confirm('Delete this chat?')) {
       await deleteChat(chatId);
     }
   };
 
   return (
-    <aside className={`flex flex-col glass border-r border-border ${className}`}>
-      {/* Header */}
-      <div className="p-4 border-b border-border">
-        <div className="flex items-center gap-2 mb-4">
-          <Logo size={28} />
-          <span className="font-bold text-lg text-gradient">MST CREO AI</span>
-        </div>
+    <aside className={`flex flex-col bg-[var(--bg-secondary)]
+      border-r border-[var(--border)] ${className}`}>
+
+      {/* Header with Logo */}
+      <div className="p-4 border-b border-[var(--border)]">
+        <Logo size="md" className="mb-4" />
 
         <button
           onClick={handleNewChat}
-          className="w-full btn-primary flex items-center justify-center gap-2"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5
+            bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl
+            text-[var(--text-primary)] font-sans text-sm font-medium
+            hover:bg-[var(--bg-hover)] transition-colors"
         >
-          <MessageSquarePlus className="w-4 h-4" />
-          Новый чат
+          <Plus className="w-4 h-4" />
+          New chat
         </button>
       </div>
 
-      {/* Chat list */}
-      <div className="flex-1 overflow-y-auto p-2">
-        <div className="flex items-center gap-2 px-2 py-1 text-text-muted text-xs uppercase tracking-wider">
+      {/* Chat History */}
+      <div className="flex-1 overflow-y-auto px-2 py-4">
+        <div className="flex items-center gap-2 px-3 py-2
+          text-xs font-sans font-medium text-[var(--text-muted)]
+          uppercase tracking-wider">
           <History className="w-3 h-3" />
-          История
+          History
         </div>
 
         {chatsLoading ? (
@@ -84,9 +88,11 @@ export function Sidebar({ className = '' }) {
             ))}
           </div>
         ) : chats.length === 0 ? (
-          <div className="text-center text-text-muted py-8 px-4">
-            <p className="text-sm">Нет чатов</p>
-            <p className="text-xs mt-1">Создайте первый чат</p>
+          <div className="text-center py-8 px-4">
+            <p className="text-sm font-sans text-[var(--text-muted)]">No chats yet</p>
+            <p className="text-xs font-sans text-[var(--text-muted)] mt-1">
+              Create your first chat
+            </p>
           </div>
         ) : (
           <div className="space-y-1 mt-2">
@@ -94,10 +100,11 @@ export function Sidebar({ className = '' }) {
               <div
                 key={chat.id}
                 onClick={() => selectChat(chat.id)}
-                className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+                className={`group flex items-center gap-2 px-3 py-2 rounded-lg
+                  cursor-pointer transition-colors ${
                   currentChat?.id === chat.id
-                    ? 'bg-accent/20 text-text-primary'
-                    : 'hover:bg-bg-hover text-text-secondary hover:text-text-primary'
+                    ? 'bg-[var(--bg-hover)] text-[var(--text-primary)] font-medium'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
                 }`}
               >
                 {editingId === chat.id ? (
@@ -111,20 +118,22 @@ export function Sidebar({ className = '' }) {
                         if (e.key === 'Escape') setEditingId(null);
                       }}
                       onClick={(e) => e.stopPropagation()}
-                      className="flex-1 bg-bg-input px-2 py-1 rounded text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                      className="flex-1 bg-[var(--bg-input)] px-2 py-1 rounded
+                        text-sm font-sans text-[var(--text-primary)]
+                        focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
                       autoFocus
                     />
                     <button
                       onClick={(e) => { e.stopPropagation(); saveTitle(chat.id); }}
-                      className="p-1 hover:bg-success/20 rounded"
+                      className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30"
                     >
-                      <Check className="w-3 h-3 text-success" />
+                      <Check className="w-3 h-3 text-green-600" />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); setEditingId(null); }}
-                      className="p-1 hover:bg-error/20 rounded"
+                      className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30"
                     >
-                      <X className="w-3 h-3 text-error" />
+                      <X className="w-3 h-3 text-red-500" />
                     </button>
                   </>
                 ) : (
@@ -139,25 +148,25 @@ export function Sidebar({ className = '' }) {
                     )}
 
                     {/* Title */}
-                    <span className="flex-1 truncate text-sm">
+                    <span className="flex-1 truncate text-sm font-sans">
                       {chat.title}
                     </span>
 
-                    {/* Actions (показываются при hover) */}
+                    {/* Actions on hover */}
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={(e) => startEditing(chat, e)}
-                        className="p-1 hover:bg-bg-primary rounded"
-                        title="Переименовать"
+                        className="p-1 rounded hover:bg-[var(--bg-primary)]"
+                        title="Rename"
                       >
-                        <Edit2 className="w-3 h-3" />
+                        <Edit2 className="w-3 h-3 text-[var(--text-muted)]" />
                       </button>
                       <button
                         onClick={(e) => handleDelete(chat.id, e)}
-                        className="p-1 hover:bg-error/20 rounded"
-                        title="Удалить"
+                        className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30"
+                        title="Delete"
                       >
-                        <Trash2 className="w-3 h-3 text-error" />
+                        <Trash2 className="w-3 h-3 text-red-500" />
                       </button>
                     </div>
                   </>
@@ -169,21 +178,24 @@ export function Sidebar({ className = '' }) {
       </div>
 
       {/* User info */}
-      <div className="p-4 border-t border-border">
+      <div className="p-4 border-t border-[var(--border)]">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center text-accent font-medium">
+            <div className="w-8 h-8 rounded-full bg-[var(--accent-light)]
+              flex items-center justify-center text-[var(--accent)] font-sans font-medium">
               {user?.name?.[0]?.toUpperCase() || '?'}
             </div>
-            <span className="text-sm text-text-secondary truncate max-w-[120px]">
-              {user?.name || 'Пользователь'}
+            <span className="text-sm font-sans text-[var(--text-secondary)]
+              truncate max-w-[120px]">
+              {user?.name || 'User'}
             </span>
           </div>
           <button
             onClick={logout}
-            className="text-xs text-text-muted hover:text-error transition-colors"
+            className="text-xs font-sans text-[var(--text-muted)]
+              hover:text-red-500 transition-colors"
           >
-            Выйти
+            Logout
           </button>
         </div>
       </div>

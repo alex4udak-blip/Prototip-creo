@@ -3,6 +3,7 @@
  */
 
 const API_BASE = '/api';
+export const API_BASE_URL = '/api';
 
 // Получаем токен из localStorage
 function getToken() {
@@ -203,7 +204,6 @@ export class WebSocketManager {
 
   connect(chatId = null) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      console.log('[WS] Already connected, subscribing to chat:', chatId);
       if (chatId) {
         this.subscribe(chatId);
       }
@@ -225,11 +225,9 @@ export class WebSocketManager {
       this.currentChatId = chatId;
     }
 
-    console.log('[WS] Connecting to:', url);
     this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
-      console.log('[WS] Connected, chatId:', chatId);
       this.reconnectAttempts = 0;
       this.emit('connected');
     };
@@ -237,7 +235,6 @@ export class WebSocketManager {
     this.ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log('[WS] Message received:', data.type, data);
         this.emit(data.type, data);
       } catch (e) {
         console.error('[WS] Parse error:', e);
@@ -245,7 +242,6 @@ export class WebSocketManager {
     };
 
     this.ws.onclose = (event) => {
-      console.log('[WS] Disconnected, code:', event.code);
       this.emit('disconnected');
       this.attemptReconnect(this.currentChatId);
     };
@@ -257,15 +253,11 @@ export class WebSocketManager {
   }
 
   subscribe(chatId) {
-    console.log('[WS] Subscribe to chat:', chatId, 'readyState:', this.ws?.readyState);
     this.currentChatId = chatId;
 
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'subscribe', chatId }));
-      console.log('[WS] Sent subscribe message for chat:', chatId);
     } else {
-      // Если WS не подключен — подключаемся с этим chatId
-      console.log('[WS] Not connected, connecting with chatId:', chatId);
       this.connect(chatId);
     }
   }
@@ -285,14 +277,12 @@ export class WebSocketManager {
 
   attemptReconnect(chatId) {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.log('Max reconnect attempts reached');
+      console.warn('[WS] Max reconnect attempts reached');
       return;
     }
 
     this.reconnectAttempts++;
     const delay = this.reconnectDelay * this.reconnectAttempts;
-
-    console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
     setTimeout(() => {
       this.connect(chatId);
@@ -325,4 +315,29 @@ export class WebSocketManager {
 // Singleton instance
 export const wsManager = new WebSocketManager();
 
-export default { authAPI, chatsAPI, generateAPI, wsManager };
+// ==========================================
+// API Client (axios-like wrapper)
+// ==========================================
+
+export const apiClient = {
+  async get(endpoint, options = {}) {
+    const data = await fetchAPI(endpoint, { method: 'GET', ...options });
+    return { data };
+  },
+
+  async post(endpoint, body, options = {}) {
+    const data = await fetchAPI(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      ...options
+    });
+    return { data };
+  },
+
+  async delete(endpoint, options = {}) {
+    const data = await fetchAPI(endpoint, { method: 'DELETE', ...options });
+    return { data };
+  }
+};
+
+export default { authAPI, chatsAPI, generateAPI, wsManager, apiClient };

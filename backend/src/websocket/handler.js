@@ -6,6 +6,9 @@ import { log } from '../utils/logger.js';
 // Хранилище соединений по chatId
 const connections = new Map(); // chatId -> Set<WebSocket>
 
+// Хранилище соединений по landingId
+const landingConnections = new Map(); // landingId -> Set<WebSocket>
+
 // Глобальная ссылка на WSS
 let wss = null;
 
@@ -151,6 +154,45 @@ function handleMessage(ws, data) {
         sendToClient(ws, { type: 'unsubscribed' });
         break;
 
+      case 'subscribe_landing':
+        // Подписка на landing generation events
+        if (message.landingId) {
+          // Отписываемся от старого
+          if (ws.landingId && landingConnections.has(ws.landingId)) {
+            landingConnections.get(ws.landingId).delete(ws);
+          }
+
+          // Подписываемся на новый
+          ws.landingId = message.landingId;
+          if (!landingConnections.has(ws.landingId)) {
+            landingConnections.set(ws.landingId, new Set());
+          }
+          landingConnections.get(ws.landingId).add(ws);
+
+          sendToClient(ws, {
+            type: 'subscribed_landing',
+            landingId: ws.landingId
+          });
+
+          log.debug('WebSocket subscribed to landing', {
+            userId: ws.userId,
+            landingId: ws.landingId
+          });
+        }
+        break;
+
+      case 'unsubscribe_landing':
+        // Отписка от landing
+        if (ws.landingId && landingConnections.has(ws.landingId)) {
+          landingConnections.get(ws.landingId).delete(ws);
+          if (landingConnections.get(ws.landingId).size === 0) {
+            landingConnections.delete(ws.landingId);
+          }
+        }
+        ws.landingId = null;
+        sendToClient(ws, { type: 'unsubscribed_landing' });
+        break;
+
       default:
         log.debug('Unknown WebSocket message type', { type: message.type });
     }
@@ -241,14 +283,80 @@ function cleanupConnections() {
 }
 
 /**
+ * Отправка сообщения подписчикам landing generation
+ */
+export function broadcastToLanding(landingId, data) {
+  const landingConns = landingConnections.get(landingId);
+
+  if (!landingConns || landingConns.size === 0) {
+    log.debug('No WebSocket connections for landing', { landingId });
+    return;
+  }
+
+  const message = JSON.stringify({
+    ...data,
+    landingId,
+    timestamp: new Date().toISOString()
+  });
+
+  let sentCount = 0;
+
+  for (const ws of landingConns) {
+    if (ws.readyState === ws.OPEN) {
+      ws.send(message);
+      sentCount++;
+    }
+  }
+
+  log.debug('Broadcast to landing', {
+    landingId,
+    type: data.type,
+    recipients: sentCount
+  });
+}
+
+/**
+ * Отправка landing update пользователю
+ * Отправляет во все соединения пользователя
+ */
+export function sendLandingUpdate(userId, landingId, data) {
+  if (!wss) return;
+
+  const message = JSON.stringify({
+    type: 'landing_update',
+    landingId,
+    ...data,
+    timestamp: new Date().toISOString()
+  });
+
+  let sent = 0;
+
+  wss.clients.forEach(ws => {
+    if (ws.userId === userId && ws.readyState === ws.OPEN) {
+      ws.send(message);
+      sent++;
+    }
+  });
+
+  // Also broadcast to landing-specific subscriptions
+  broadcastToLanding(landingId, { type: 'landing_update', ...data });
+
+  log.debug('Sent landing update', { userId, landingId, connections: sent });
+}
+
+/**
  * Получить статистику соединений
  */
 export function getConnectionStats() {
   return {
     totalConnections: wss ? wss.clients.size : 0,
     activeChats: connections.size,
+    activeLandings: landingConnections.size,
     connectionsByChat: Object.fromEntries(
       Array.from(connections.entries()).map(([chatId, set]) => [chatId, set.size])
+    ),
+    connectionsByLanding: Object.fromEntries(
+      Array.from(landingConnections.entries()).map(([landingId, set]) => [landingId, set.size])
     )
   };
 }

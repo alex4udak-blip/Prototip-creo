@@ -4,11 +4,20 @@ import {
   X,
   Image,
   Loader2,
-  Sparkles
+  ArrowUp
 } from 'lucide-react';
 import { useChatStore } from '../../hooks/useChat';
 import { toast } from '../UI/Toast';
 
+/**
+ * InputArea Component - Claude.ai Style
+ *
+ * ⭐ KEY DESIGN:
+ * - Soft shadow (Claude's characteristic shadow)
+ * - Rounded corners (20px)
+ * - Clean, minimal design
+ * - Sans-serif font for UI
+ */
 export function InputArea() {
   const {
     sendMessage,
@@ -89,7 +98,7 @@ export function InputArea() {
     }
   };
 
-  // Keyboard shortcuts: Enter или Ctrl+Enter для отправки
+  // Keyboard shortcuts
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || !e.shiftKey)) {
       e.preventDefault();
@@ -101,7 +110,8 @@ export function InputArea() {
 
   return (
     <div
-      className={`border-t border-border/50 bg-gradient-to-t from-bg-primary to-transparent backdrop-blur-xl transition-all ${isDragging ? 'bg-accent/5 border-accent' : ''}`}
+      className={`bg-[var(--bg-primary)] border-t border-[var(--border)]
+        transition-all ${isDragging ? 'bg-[var(--accent-light)]' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -109,31 +119,40 @@ export function InputArea() {
 
       {/* Drag overlay */}
       {isDragging && (
-        <div className="drag-overlay">
+        <div className="fixed inset-0 z-50 bg-[var(--bg-primary)]/90 flex items-center justify-center">
           <div className="text-center">
-            <Image className="w-16 h-16 text-accent mx-auto mb-3 animate-bounce" />
-            <p className="text-xl font-semibold text-white">Отпустите для загрузки</p>
-            <p className="text-sm text-text-muted mt-1">До 14 референсов</p>
+            <div className="w-20 h-20 rounded-2xl bg-[var(--accent-light)] flex items-center justify-center mx-auto mb-4">
+              <Image className="w-10 h-10 text-[var(--accent)]" />
+            </div>
+            <p className="text-xl font-sans font-semibold text-[var(--text-primary)]">
+              Отпустите для загрузки
+            </p>
+            <p className="text-sm text-[var(--text-muted)] mt-2 font-sans">
+              До 14 референсов
+            </p>
           </div>
         </div>
       )}
 
-      <div className="max-w-4xl mx-auto p-4">
+      <div className="max-w-3xl mx-auto p-4">
         {/* Attached images preview */}
         {attachedImages.length > 0 && (
-          <div className="mb-4 bg-bg-secondary/80 backdrop-blur rounded-2xl p-4 border border-border/50 animate-scale-in">
+          <div className="mb-4 bg-[var(--bg-secondary)] rounded-2xl p-4
+            border border-[var(--border)]">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
-                  <Image className="w-4 h-4 text-accent" />
+                <div className="w-8 h-8 rounded-xl bg-[var(--accent-light)]
+                  flex items-center justify-center">
+                  <Image className="w-4 h-4 text-[var(--accent)]" />
                 </div>
-                <span className="text-sm font-medium text-text-primary">
+                <span className="text-sm font-sans font-medium text-[var(--text-primary)]">
                   {attachedImages.length} референс{attachedImages.length > 1 ? (attachedImages.length < 5 ? 'а' : 'ов') : ''}
                 </span>
               </div>
               <button
                 onClick={clearAttachedImages}
-                className="text-xs text-text-muted hover:text-error transition-colors"
+                className="text-xs font-sans text-[var(--text-muted)]
+                  hover:text-red-500 transition-colors"
               >
                 Удалить все
               </button>
@@ -144,15 +163,18 @@ export function InputArea() {
                   <img
                     src={URL.createObjectURL(img)}
                     alt={`Reference ${index + 1}`}
-                    className="h-20 w-20 rounded-xl object-cover border-2 border-border/50 group-hover:border-accent/50 transition-all shadow-lg"
+                    className="h-16 w-16 rounded-xl object-cover border border-[var(--border)]
+                      group-hover:border-[var(--accent)] transition-all"
                   />
                   <button
                     onClick={() => removeAttachedImage(index)}
-                    className="absolute -top-2 -right-2 p-1.5 bg-error rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg hover:scale-110"
+                    className="absolute -top-1.5 -right-1.5 p-1 bg-red-500 rounded-full
+                      opacity-0 group-hover:opacity-100 transition-all shadow-sm"
                   >
                     <X className="w-3 h-3 text-white" />
                   </button>
-                  <div className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-black/60 backdrop-blur rounded text-[10px] text-white font-medium">
+                  <div className="absolute bottom-1 left-1 px-1.5 py-0.5
+                    bg-black/60 backdrop-blur rounded text-[10px] text-white font-sans font-medium">
                     {index + 1}
                   </div>
                 </div>
@@ -160,25 +182,37 @@ export function InputArea() {
               {attachedImages.length < 14 && (
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="h-20 w-20 rounded-xl border-2 border-dashed border-border/50 hover:border-accent/50 flex flex-col items-center justify-center transition-all hover:bg-accent/5 group"
+                  className="h-16 w-16 rounded-xl border-2 border-dashed border-[var(--border)]
+                    hover:border-[var(--accent)] flex flex-col items-center justify-center
+                    transition-all hover:bg-[var(--accent-light)] group"
                 >
-                  <span className="text-2xl text-text-muted group-hover:text-accent transition-colors">+</span>
-                  <span className="text-[10px] text-text-muted mt-0.5">{14 - attachedImages.length}</span>
+                  <span className="text-xl text-[var(--text-muted)] group-hover:text-[var(--accent)]
+                    transition-colors font-sans">+</span>
                 </button>
               )}
             </div>
           </div>
         )}
 
-        {/* Main input */}
-        <div className="relative bg-bg-secondary/80 backdrop-blur rounded-2xl border-2 border-border/50 hover:border-border focus-within:border-accent/50 transition-all shadow-xl">
+        {/* ⭐ Main input - Claude.ai style with characteristic shadow */}
+        <div className="relative bg-[var(--bg-primary)] rounded-[20px]
+          border border-[var(--border)]
+          shadow-[var(--shadow-input)]
+          hover:shadow-[0_0.25rem_1.5rem_rgba(0,0,0,0.06)]
+          focus-within:shadow-[0_0.25rem_1.5rem_rgba(0,0,0,0.08)]
+          focus-within:border-[var(--accent)]
+          transition-all duration-200">
+
           <textarea
             ref={textareaRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Опишите баннер или задайте вопрос..."
-            className="w-full bg-transparent text-text-primary placeholder-text-muted resize-none px-5 py-4 pr-28 outline-none text-[15px] leading-relaxed"
+            placeholder="Опишите баннер, который хотите создать..."
+            className="w-full bg-transparent text-[var(--text-primary)]
+              placeholder-[var(--text-muted)] resize-none
+              px-5 py-4 pr-24 outline-none
+              text-base font-serif leading-relaxed rounded-[20px]"
             style={{ minHeight: '56px', maxHeight: '200px' }}
             disabled={isGenerating}
           />
@@ -190,45 +224,45 @@ export function InputArea() {
               type="file"
               accept="image/*"
               multiple
-              onChange={(e) => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value = ''; }}
+              onChange={(e) => {
+                if (e.target.files?.length) handleFiles(e.target.files);
+                e.target.value = '';
+              }}
               className="hidden"
             />
+
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="p-2.5 hover:bg-bg-hover rounded-xl transition-all group"
+              className="p-2 hover:bg-[var(--bg-hover)] rounded-xl transition-all group"
               title="Добавить референсы (до 14)"
             >
-              <Paperclip className="w-5 h-5 text-text-muted group-hover:text-accent transition-colors" />
+              <Paperclip className="w-5 h-5 text-[var(--text-muted)]
+                group-hover:text-[var(--text-primary)] transition-colors" />
             </button>
 
-            {/* Send button */}
+            {/* Send button - круглая кнопка как у Claude */}
             <button
               onClick={handleSend}
               disabled={!canSend}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all ${
+              className={`p-2.5 rounded-xl transition-all ${
                 canSend
-                  ? 'bg-accent hover:bg-accent-hover text-white shadow-lg hover:shadow-xl hover:scale-[1.02]'
-                  : 'bg-bg-hover text-text-muted cursor-not-allowed'
+                  ? 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white shadow-sm'
+                  : 'bg-[var(--bg-hover)] text-[var(--text-muted)] cursor-not-allowed'
               }`}
+              title="Отправить"
             >
               {isGenerating ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="hidden sm:inline">Генерация...</span>
-                </>
+                <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  <span className="hidden sm:inline">Создать</span>
-                </>
+                <ArrowUp className="w-5 h-5" />
               )}
             </button>
           </div>
         </div>
 
         {/* Hint */}
-        <p className="text-xs text-text-muted mt-3 text-center opacity-60">
-          Перетащите референсы или нажмите 📎 • Enter/Ctrl+Enter для отправки • Shift+Enter для новой строки
+        <p className="text-xs text-[var(--text-muted)] mt-3 text-center font-sans">
+          Перетащите референсы или нажмите 📎 • Enter для отправки
         </p>
       </div>
     </div>

@@ -13,7 +13,7 @@ import { log } from './utils/logger.js';
 import authRoutes from './routes/auth.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import generateRoutes from './routes/generate.routes.js';
-import landingRoutes from './routes/landing.routes.js';
+import landingV2Routes from './routes/landing.v2.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -71,9 +71,10 @@ app.get('/api/health', async (req, res) => {
     websocket: wsStats,
     environment: config.nodeEnv,
     apis: {
+      gemini: !!config.googleApiKey,
       claude: !!config.anthropicApiKey,
       runware: !!config.runwareApiKey,
-      vertexAi: !!(config.googleCloudProject && config.googleCredentialsJson)
+      serper: !!config.serperApiKey
     }
   });
 });
@@ -87,8 +88,8 @@ app.use('/api/chats', chatRoutes);
 // Generate routes
 app.use('/api/generate', generateRoutes);
 
-// Landing routes
-app.use('/api/landing', landingRoutes);
+// Landing routes v2
+app.use('/api/landing/v2', landingV2Routes);
 
 // ===========================================
 // Static Frontend (Production)
@@ -151,9 +152,10 @@ server.listen(config.port, async () => {
 
   // Логируем доступные API
   log.info('API Keys status:', {
+    gemini: !!config.googleApiKey,
     claude: !!config.anthropicApiKey,
     runware: !!config.runwareApiKey,
-    vertexAi: !!(config.googleCloudProject && config.googleCredentialsJson)
+    serper: !!config.serperApiKey
   });
 
   if (config.nodeEnv === 'development') {
