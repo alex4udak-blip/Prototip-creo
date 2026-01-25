@@ -572,7 +572,22 @@ async function generateAssets(session, analysis, palette) {
   const chatId = `landing_${session.id}`;
 
   // Define assets to generate based on mechanic type
-  const assetPlan = getAssetPlan(mechanicType, analysis);
+  // Use Claude's dynamic asset analysis if available, otherwise fallback to mechanic-based plan
+  let assetPlan;
+  if (analysis.assetsNeeded && analysis.assetsNeeded.length > 0) {
+    // Claude analyzed what assets are needed (including custom ones like "девушка", "model", etc.)
+    assetPlan = analysis.assetsNeeded.map(asset => ({
+      key: asset.type || asset.name?.replace(/\s+/g, '').toLowerCase() || 'custom',
+      name: asset.description || asset.name || asset.type,
+      width: asset.width || 1024,
+      height: asset.height || 1024,
+      needsTransparency: asset.type !== 'background'
+    }));
+    log.info('Using Claude dynamic asset plan', { count: assetPlan.length, assets: assetPlan.map(a => a.key) });
+  } else {
+    assetPlan = getAssetPlan(mechanicType, analysis);
+    log.info('Using default mechanic asset plan', { mechanicType, count: assetPlan.length });
+  }
 
   let assetIndex = 0;
   const totalAssets = assetPlan.length;

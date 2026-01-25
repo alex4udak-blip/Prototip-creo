@@ -100,9 +100,19 @@ Return a JSON object with this exact structure:
   "colorSuggestion": {"primary": "#hex", "secondary": "#hex", "accent": "#hex"},
   "style": "string - art style (cartoon, realistic, neon, dark)",
   "offerUrl": "string or null",
+  "assetsNeeded": [
+    {"type": "background", "description": "full screen background image"},
+    {"type": "logo", "description": "brand logo"},
+    {"type": "wheel/boxes/character/etc", "description": "what to generate"}
+  ],
   "soundsNeeded": ["spin", "win", "click"],
   "confidence": "number 0-100"
 }
+
+IMPORTANT for assetsNeeded:
+- If user asks for "девушка", "girl", "model" → add {"type": "modelImage", "description": "attractive female character/model"}
+- If user asks for character guide → add {"type": "characterGuide", "description": "guide character with speech bubble"}
+- Always include: background, logo, and mechanic-specific assets (wheel, boxes, cells, etc.)
 </output_format>
 
 <thinking_process>
