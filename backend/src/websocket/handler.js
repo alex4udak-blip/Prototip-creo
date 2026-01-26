@@ -51,7 +51,7 @@ function handleConnection(ws, req) {
     const decoded = jwt.verify(token, config.jwtSecret);
     userId = decoded.userId;
   } catch (error) {
-    log.warn('WebSocket auth failed', { error: error.message, ip: clientIp });
+    log.warn('WebSocket auth failed', { error: error.message });
     ws.close(4001, 'Unauthorized');
     return;
   }
