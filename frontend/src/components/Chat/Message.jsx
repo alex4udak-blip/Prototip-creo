@@ -257,18 +257,22 @@ function QuickEditButtons({ imageUrls }) {
 
   return (
     <div className="flex gap-1 ml-2 pl-2 border-l border-[var(--border)]">
-      {quickActions.map(({ icon: Icon, title, prompt }) => (
-        <button
-          key={title}
-          onClick={() => handleQuickAction(prompt)}
-          disabled={isGenerating || loading}
-          className="p-2 hover:bg-[var(--bg-hover)] rounded-lg transition group
-            disabled:opacity-50 disabled:cursor-not-allowed"
-          title={title}
-        >
-          <Icon className="w-4 h-4 text-[var(--text-muted)] group-hover:text-[var(--text-primary)]" />
-        </button>
-      ))}
+      {quickActions.map(({ icon: Icon, title, prompt }) => {
+        // Guard against undefined icons
+        if (!Icon) return null;
+        return (
+          <button
+            key={title}
+            onClick={() => handleQuickAction(prompt)}
+            disabled={isGenerating || loading}
+            className="p-2 hover:bg-[var(--bg-hover)] rounded-lg transition group
+              disabled:opacity-50 disabled:cursor-not-allowed"
+            title={title}
+          >
+            <Icon className="w-4 h-4 text-[var(--text-muted)] group-hover:text-[var(--text-primary)]" />
+          </button>
+        );
+      })}
     </div>
   );
 }

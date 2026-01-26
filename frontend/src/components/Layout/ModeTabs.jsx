@@ -16,6 +16,9 @@ export function ModeTabs({ mode, onModeChange }) {
         const Icon = tab.icon;
         const isActive = mode === tab.id;
 
+        // Guard against undefined icons
+        if (!Icon) return null;
+
         return (
           <button
             key={tab.id}

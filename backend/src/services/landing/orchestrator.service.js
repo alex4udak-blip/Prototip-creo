@@ -848,34 +848,180 @@ function getAssetPlan(mechanicType, analysis) {
 
 /**
  * Build prompt for asset generation
+ * CRITICAL: Use explicit NO TEXT instructions to prevent Gemini from adding labels
  */
 function buildAssetPrompt(asset, analysis, palette) {
   const slotName = analysis.slotName || 'casino';
   const theme = analysis.theme || 'casino luxury';
-  const style = analysis.style || 'modern vibrant';
 
-  // For unknown brands, use semantic theme suggestion from Claude analysis
-  const themeDescription = analysis.isRealSlot
-    ? theme
-    : `${analysis.themeSuggestion || theme} (original casino brand "${slotName}")`;
+  // Asset-specific templates with explicit NO TEXT instructions
+  const assetTemplates = {
+    // WHEEL - empty sectors, no prize text
+    wheel: `Generate a casino-style spinning wheel divided into 8 equal EMPTY sectors.
+CRITICAL: NO text labels, NO numbers, NO prize text inside sectors - just colored sections.
+Sectors separated by thin bright borders (color: ${palette.accent || '#FFD700'}).
+Theme: "${slotName}" slot game, ${theme} style.
+Professional minimalist wheel design.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
 
-  const basePrompt = `Create a ${asset.name} for "${slotName}" slot game landing page.
-Theme: ${themeDescription}
-Style: ${style}
-Colors: primary ${palette.primary}, secondary ${palette.secondary}, accent ${palette.accent || '#FF6B6B'}`;
+    // WHEEL FRAME - decorative border only
+    wheelFrame: `Generate a decorative circular frame/border for a casino wheel.
+CRITICAL: NO text, NO labels, NO typography - purely decorative ornamental frame.
+Open center (transparent hole) to show wheel inside.
+Luxury casino aesthetic with gold ${palette.primary || '#FFD700'} and ${palette.accent || '#FF6B6B'} accents.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
 
-  // Add extra context for unknown brands
-  const brandContext = !analysis.isRealSlot && analysis.themeSuggestion
-    ? `\nDesign inspiration: ${analysis.themeSuggestion}. Make it look like a professional casino game, not a generic template.`
-    : '';
+    // POINTER - simple arrow shape
+    pointer: `Generate a simple downward-pointing arrow or pointer indicator.
+CRITICAL: NO text, NO labels - just the arrow shape.
+Minimal geometric design, solid color (${palette.accent || '#FF6B6B'}).
+Professional game UI element for wheel indicator.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
 
-  const transparencyInstruction = asset.needsTransparency
-    ? '\nIMPORTANT: Generate on SOLID WHITE BACKGROUND (#FFFFFF) for easy background removal. No shadows on background.'
-    : '\nFull scene, no empty corners.';
+    wheelPointer: `Generate a simple downward-pointing arrow or pointer indicator.
+CRITICAL: NO text, NO labels - just the arrow shape.
+Minimal geometric design, solid color (${palette.accent || '#FF6B6B'}).
+Professional game UI element for wheel indicator.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
 
-  const sizeInstruction = `\nDimensions: ${asset.width}x${asset.height} pixels`;
+    // BUTTON - shape only, no text
+    button: `Generate a rounded rectangular button shape for casino game UI.
+CRITICAL: SHAPE ONLY - NO text labels, NO "SPIN" text, NO typography.
+Solid gradient color (${palette.primary || '#FFD700'} to ${palette.accent || '#FF6B6B'}).
+Subtle 3D bevel effect for depth. Professional game button.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
 
-  return basePrompt + brandContext + transparencyInstruction + sizeInstruction;
+    spinButton: `Generate a rounded rectangular button shape for casino game UI.
+CRITICAL: SHAPE ONLY - NO text labels, NO "SPIN" text, NO typography.
+Solid gradient color (${palette.primary || '#FFD700'} to ${palette.accent || '#FF6B6B'}).
+Subtle 3D bevel effect for depth. Professional game button.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
+
+    // BOXES - gift boxes without labels
+    boxClosed: `Generate a closed treasure/gift box for casino game.
+CRITICAL: NO text or labels on the box - just the closed box shape.
+Locked appearance with metallic details, ${theme} theme.
+Colors: ${palette.primary || '#FFD700'} and ${palette.accent || '#FF6B6B'}.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
+
+    boxOpen: `Generate an open treasure/gift box revealing prizes.
+CRITICAL: NO text labels - just the open box with glowing interior.
+Magical glow effect with ${palette.primary || '#FFD700'} and ${palette.accent || '#FF6B6B'}.
+Professional casino asset, ${theme} theme.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
+
+    // CHARACTER
+    character: `Generate a friendly cartoon character/mascot for casino game.
+CRITICAL: NO text, NO speech bubbles with text - just the character.
+Cute appealing design in ${theme} style.
+Standing pose, welcoming expression.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
+
+    characterIdle: `Generate a cartoon character in idle/standing pose for casino game.
+CRITICAL: NO text, NO labels - just the character sprite.
+${theme} theme, friendly appealing design.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
+
+    characterMove: `Generate a cartoon character in walking/moving pose for casino game.
+CRITICAL: NO text, NO labels - just the character sprite.
+${theme} theme, dynamic movement pose.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
+
+    // CELLS for crash games
+    cellDefault: `Generate a simple cell/tile for grid-based casino game.
+CRITICAL: NO text, NO numbers - just an empty tile shape.
+Default/inactive state, subtle border, ${theme} style.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
+
+    cellActive: `Generate a glowing cell/tile for grid-based casino game.
+CRITICAL: NO text, NO numbers - just the active tile shape.
+Active/selected state with glow effect, ${palette.accent || '#FFD700'} color.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
+
+    cellDanger: `Generate a danger cell/tile for grid-based casino game.
+CRITICAL: NO text, NO numbers - just the danger tile with warning visual.
+Red warning color, maybe crack or bomb visual (no text labels).
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
+
+    // OBSTACLES
+    obstacle1: `Generate a danger/obstacle element for casino crash game.
+CRITICAL: NO text - just the obstacle visual (bomb, spike, etc).
+Threatening but cartoon style, ${theme} theme.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
+
+    obstacle2: `Generate a second danger/obstacle variant for casino crash game.
+CRITICAL: NO text - different obstacle visual from obstacle1.
+Threatening but cartoon style, ${theme} theme.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
+
+    // WIN POPUP - this one CAN have congratulations text
+    winPopup: `Generate a celebration popup/banner for casino win screen.
+This asset CAN include "CONGRATULATIONS" or "WIN" text in ${analysis.language || 'en'}.
+Festive design with confetti, sparkles, coins.
+Colors: ${palette.primary || '#FFD700'}, ${palette.accent || '#FF6B6B'}.
+${theme} style, exciting celebration mood.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`,
+
+    // DECORATIVE ELEMENTS
+    decorativeElements: `Generate decorative elements for casino game (coins, gems, sparkles).
+CRITICAL: NO text - just visual decorative elements scattered.
+${theme} theme, rich casino aesthetic.
+Multiple small elements composition.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`
+  };
+
+  // Check for template match
+  const template = assetTemplates[asset.key];
+  if (template) {
+    return template;
+  }
+
+  // LOGO - special case, text is OK
+  if (asset.key === 'logo') {
+    return `Generate a professional logo for "${slotName}" casino/slot game.
+This asset SHOULD include the brand name "${slotName}" as stylized text.
+${theme} style, premium casino branding.
+Colors: ${palette.primary || '#FFD700'}, ${palette.secondary || '#1E3A5F'}.
+SOLID WHITE BACKGROUND (#FFFFFF) for background removal.
+Dimensions: ${asset.width}x${asset.height} pixels.`;
+  }
+
+  // BACKGROUND - full scene, no transparency needed
+  if (asset.key === 'background') {
+    return `Generate a full-screen background for "${slotName}" casino game landing page.
+CRITICAL: NO text, NO UI elements, NO buttons - just atmospheric background.
+${theme} style, immersive casino atmosphere.
+Rich details, ${analysis.style || 'modern vibrant'} aesthetic.
+Colors influenced by: ${palette.primary || '#FFD700'}, ${palette.secondary || '#1E3A5F'}.
+Full scene filling entire canvas, no empty corners.
+Dimensions: ${asset.width}x${asset.height} pixels.`;
+  }
+
+  // Fallback for any unknown asset
+  return `Generate a ${asset.name} for "${slotName}" casino game.
+CRITICAL: NO text, NO labels, NO typography unless specifically a logo.
+Professional casino game asset, ${theme} style.
+Colors: ${palette.primary || '#FFD700'}, ${palette.accent || '#FF6B6B'}.
+${asset.needsTransparency ? 'SOLID WHITE BACKGROUND (#FFFFFF) for background removal.' : 'Full scene, no empty corners.'}
+Dimensions: ${asset.width}x${asset.height} pixels.`;
 }
 
 /**
