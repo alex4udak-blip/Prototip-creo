@@ -560,7 +560,6 @@ export async function generateLanding(session, request) {
           generated_html = EXCLUDED.generated_html,
           features = EXCLUDED.features,
           updated_at = NOW()
-        WHERE landings.user_id = EXCLUDED.user_id
         RETURNING id
       `, [
         session.id,
