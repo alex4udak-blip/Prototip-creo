@@ -41,17 +41,11 @@ export function LandingPreview() {
   // Use streamingHtml if it has content (even during streaming), otherwise use previewHtml
   const displayHtml = (streamingHtml && streamingHtml.length > 0) ? streamingHtml : previewHtml;
 
-  // Update iframe content (real-time streaming like Deepseek Artifacts)
+  // Update iframe content using srcdoc (avoids "Identifier already declared" errors)
+  // srcdoc creates a fresh document each time, unlike doc.write which can accumulate state
   useEffect(() => {
     if (iframeRef.current && displayHtml) {
-      const iframe = iframeRef.current;
-      const doc = iframe.contentDocument || iframe.contentWindow?.document;
-
-      if (doc) {
-        doc.open();
-        doc.write(displayHtml);
-        doc.close();
-      }
+      iframeRef.current.srcdoc = displayHtml;
     }
   }, [displayHtml]);
 

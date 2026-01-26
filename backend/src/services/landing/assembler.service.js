@@ -493,6 +493,48 @@ export async function getLanding(landingId, userId) {
 }
 
 /**
+ * Get landing by UUID only (for public asset access)
+ * Searches through all user directories to find the landing
+ * @param {string} landingId - Landing UUID
+ * @returns {Promise<Object|null>} Landing data with landingDir
+ */
+export async function getLandingByUUID(landingId) {
+  if (!isValidLandingId(landingId)) {
+    return null;
+  }
+
+  const baseLandingsDir = path.join(config.storagePath, 'landings');
+
+  try {
+    // List all user directories
+    const userDirs = await fs.readdir(baseLandingsDir);
+
+    for (const userDir of userDirs) {
+      const userPath = path.join(baseLandingsDir, userDir);
+      const stat = await fs.stat(userPath).catch(() => null);
+      if (!stat?.isDirectory()) continue;
+
+      const landingDir = path.join(userPath, landingId);
+      const metadataPath = path.join(landingDir, 'metadata.json');
+
+      try {
+        const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf-8'));
+        return {
+          ...metadata,
+          landingDir
+        };
+      } catch {
+        // Not found in this user dir, continue
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * List user's landings
  * @param {number} userId - User ID
  * @returns {Promise<Object[]>} List of landings
@@ -620,6 +662,7 @@ export async function getLandingZipStream(landingId, userId) {
 export default {
   assembleLanding,
   getLanding,
+  getLandingByUUID,
   listLandings,
   deleteLanding,
   getLandingHtml,

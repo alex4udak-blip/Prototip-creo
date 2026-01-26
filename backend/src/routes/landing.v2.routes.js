@@ -355,11 +355,11 @@ router.get('/:landingId/preview', auth, async (req, res) => {
 /**
  * GET /api/landing/v2/:landingId/asset/*
  * Serve individual landing assets (images, sounds) for preview
- * CRITICAL: Required for preview to work - assets need to be served via API
+ * NOTE: No auth required - assets are served by landingId (UUID) which is unguessable
+ * This allows iframe preview to load assets without passing auth token
  */
-router.get('/:landingId/asset/*', auth, async (req, res) => {
+router.get('/:landingId/asset/*', async (req, res) => {
   const { landingId } = req.params;
-  const userId = req.user.id;
   // Get the asset path from URL (everything after /asset/)
   const assetPath = req.params[0];
 
@@ -368,7 +368,8 @@ router.get('/:landingId/asset/*', auth, async (req, res) => {
   }
 
   try {
-    const landing = await assembler.getLanding(landingId, userId);
+    // Get landing by UUID only - no user check needed for asset preview
+    const landing = await assembler.getLandingByUUID(landingId);
 
     if (!landing || !landing.landingDir) {
       return res.status(404).json({ error: 'Landing not found' });
