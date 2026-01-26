@@ -372,7 +372,7 @@ export const useLandingStore = create(
    * Restore session after page refresh
    * Called on app initialization to reconnect to active generation
    */
-  restoreSession: () => {
+  restoreSession: async () => {
     const { currentLandingId, generationState } = get();
 
     // If there was an active generation, try to reconnect
@@ -387,11 +387,66 @@ export const useLandingStore = create(
         ]
       }));
 
-      // Reconnect WebSocket
-      get().subscribeToLanding(currentLandingId);
+      // First check if the generation still exists on server
+      try {
+        const response = await apiClient.get(`/landing/v2/status/${currentLandingId}`);
+        const { state: serverState } = response.data;
 
-      // Also poll status as fallback
-      get().pollLandingStatus(currentLandingId);
+        if (serverState === 'complete') {
+          // Generation already completed, just load it
+          set(state => ({
+            thinkingLog: [
+              ...state.thinkingLog,
+              { time: new Date(), message: '✅ Генерация уже завершена!' }
+            ]
+          }));
+          get().loadLanding(currentLandingId);
+          return;
+        }
+
+        if (serverState === 'error') {
+          // Generation failed
+          set({
+            generationState: 'error',
+            error: response.data.error || 'Generation failed on server'
+          });
+          return;
+        }
+
+        // If state is 'generating' or 'pending', reconnect
+        get().subscribeToLanding(currentLandingId);
+        get().pollLandingStatus(currentLandingId);
+
+      } catch (error) {
+        // Server doesn't know about this landing - it's stale
+        const errorData = error.response?.data;
+        const isSessionExpired = errorData?.code === 'SESSION_EXPIRED' || error.response?.status === 404;
+
+        console.warn('Landing session recovery failed:', error.message);
+
+        if (isSessionExpired) {
+          // Session expired after server restart - reset to idle
+          set({
+            thinkingLog: [
+              { time: new Date(), message: '⚠️ Сессия устарела после перезапуска сервера. Начните новую генерацию.' }
+            ],
+            generationState: 'idle',
+            progress: 0,
+            progressMessage: '',
+            error: null,
+            currentLandingId: null,
+            previewHtml: null,
+            streamingHtml: '',
+            zipUrl: null
+          });
+        } else {
+          // Other error - show it
+          set({
+            generationState: 'error',
+            error: errorData?.error || error.message
+          });
+        }
+      }
     } else if (currentLandingId && generationState === 'complete') {
       // Reload the completed landing data
       get().loadLanding(currentLandingId);

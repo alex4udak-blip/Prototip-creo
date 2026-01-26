@@ -281,32 +281,84 @@ router.post('/analyze', auth, async (req, res) => {
 /**
  * GET /api/landing/v2/status/:landingId
  * Get generation status
+ * First checks in-memory sessions, then falls back to file/DB storage
+ * This allows session recovery after server restart
  */
 router.get('/status/:landingId', auth, async (req, res) => {
   const { landingId } = req.params;
+  const userId = req.user.id;
 
+  // First, check in-memory session (for active generations)
   const session = orchestrator.getSession(landingId);
 
-  if (!session) {
-    return res.status(404).json({ error: 'Session not found' });
+  if (session) {
+    // Verify ownership
+    if (session.userId !== userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    return res.json({
+      landingId: session.id,
+      state: session.state,
+      progress: session.progress,
+      message: session.getStateMessage(),
+      analysis: session.analysis,
+      palette: session.palette,
+      error: session.error,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt
+    });
   }
 
-  // Verify ownership
-  if (session.userId !== req.user.id) {
-    return res.status(403).json({ error: 'Access denied' });
-  }
+  // No in-memory session - check if landing exists in file storage or DB
+  // This handles the case after server restart where old sessions are lost
+  try {
+    // Check database
+    const dbResult = await pool.query(
+      `SELECT id, status FROM landings WHERE landing_id = $1 AND user_id = $2`,
+      [landingId, userId]
+    );
 
-  res.json({
-    landingId: session.id,
-    state: session.state,
-    progress: session.progress,
-    message: session.getStateMessage(),
-    analysis: session.analysis,
-    palette: session.palette,
-    error: session.error,
-    createdAt: session.createdAt,
-    updatedAt: session.updatedAt
-  });
+    if (dbResult.rows.length > 0) {
+      const dbLanding = dbResult.rows[0];
+      // Landing exists in DB - it was completed
+      return res.json({
+        landingId,
+        state: 'complete',
+        progress: 100,
+        message: 'Генерация завершена',
+        analysis: null,
+        palette: null,
+        error: null
+      });
+    }
+
+    // Check file storage
+    const landing = await assembler.getLanding(landingId, userId);
+
+    if (landing) {
+      // Landing exists in file storage - it was completed
+      return res.json({
+        landingId,
+        state: 'complete',
+        progress: 100,
+        message: 'Генерация завершена',
+        analysis: landing.analysis,
+        palette: landing.palette,
+        error: null
+      });
+    }
+
+    // Landing doesn't exist anywhere - session is stale
+    return res.status(404).json({
+      error: 'Session expired',
+      code: 'SESSION_EXPIRED',
+      message: 'Generation session expired after server restart. Please start a new generation.'
+    });
+  } catch (error) {
+    log.error('Failed to check landing status', { landingId, error: error.message });
+    return res.status(500).json({ error: 'Failed to check status' });
+  }
 });
 
 /**
