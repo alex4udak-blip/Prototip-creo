@@ -525,17 +525,17 @@ Match or exceed the quality of these examples. Use the SAME patterns for:
  * Structured for optimal Claude understanding
  */
 export function buildCodeGenerationUserPrompt(spec, assets, colors) {
-  // Format asset paths with full metadata
+  // Format asset paths with NORMALIZED paths for Claude
+  // CRITICAL: Always use assets/{key}.png format - assembler will handle actual file extensions
   const assetsList = Object.entries(assets || {})
     .map(([key, asset]) => {
-      if (typeof asset === 'string') {
-        return `  <asset name="${key}" path="${asset}" />`;
-      }
-      const path = asset.url || asset.path || `assets/${key}.png`;
-      const width = asset.width || 1024;
-      const height = asset.height || 1024;
-      const transparent = asset.needsTransparency ? 'true' : 'false';
-      return `  <asset name="${key}" path="${path}" width="${width}" height="${height}" transparent="${transparent}" />`;
+      // ALWAYS use normalized path format that assembler expects
+      // Claude will use these paths in HTML, assembler will replace them with actual files
+      const normalizedPath = `assets/${key}.png`;
+      const width = typeof asset === 'object' ? (asset.width || 1024) : 1024;
+      const height = typeof asset === 'object' ? (asset.height || 1024) : 1024;
+      const transparent = typeof asset === 'object' && asset.needsTransparency ? 'true' : 'false';
+      return `  <asset name="${key}" path="${normalizedPath}" width="${width}" height="${height}" transparent="${transparent}" />`;
     })
     .join('\n');
 

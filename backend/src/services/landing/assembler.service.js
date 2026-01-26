@@ -272,24 +272,34 @@ async function _doAssembleLanding(params) {
     .sort((a, b) => b[0].length - a[0].length);
 
   for (const [key, assetPath] of sortedAssets) {
+    const keyLower = key.toLowerCase();
+
     // Replace various placeholder formats for asset paths
-    // 1. Exact matches first (most specific)
+    // 1. Exact case-sensitive matches first (most specific)
     processedHtml = processedHtml
       .replace(new RegExp(`assets/${key}\\.png`, 'g'), assetPath)
       .replace(new RegExp(`assets/${key}\\.webp`, 'g'), assetPath)
-      .replace(new RegExp(`assets/${key}\\.jpg`, 'g'), assetPath);
+      .replace(new RegExp(`assets/${key}\\.jpg`, 'g'), assetPath)
+      .replace(new RegExp(`assets/${key}\\.jpeg`, 'g'), assetPath);
 
-    // 2. Template variables: {{background}} or ${assets.background}
+    // 2. Case-insensitive matches
+    processedHtml = processedHtml
+      .replace(new RegExp(`assets/${keyLower}\\.(png|webp|jpg|jpeg)`, 'gi'), assetPath);
+
+    // 3. Without "assets/" prefix (some Claude outputs use this)
+    processedHtml = processedHtml
+      .replace(new RegExp(`['"]${key}\\.(png|webp|jpg|jpeg)['"]`, 'gi'), `'${assetPath}'`)
+      .replace(new RegExp(`['"]${keyLower}\\.(png|webp|jpg|jpeg)['"]`, 'gi'), `'${assetPath}'`);
+
+    // 4. Template variables: {{background}} or ${assets.background}
     processedHtml = processedHtml
       .replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), assetPath)
       .replace(new RegExp(`\\$\\{assets\\.${key}\\}`, 'g'), assetPath);
 
-    // 3. Word-boundary match for camelCase (safer than greedy partial match)
-    // Match only if key appears as a word boundary (not inside another word)
-    // e.g., matches "wheel.png" but NOT "wheelFrame.png" when key="wheel"
-    const keyLower = key.toLowerCase();
+    // 5. Uppercase variants (WHEEL, BACKGROUND, etc.)
+    const keyUpper = key.toUpperCase();
     processedHtml = processedHtml
-      .replace(new RegExp(`assets/${keyLower}\\.(png|webp|jpg)`, 'gi'), assetPath);
+      .replace(new RegExp(`assets/${keyUpper}\\.(png|webp|jpg|jpeg)`, 'g'), assetPath);
   }
 
   // Replace sound paths in HTML
