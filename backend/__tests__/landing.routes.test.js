@@ -13,14 +13,28 @@ jest.unstable_mockModule('../src/middleware/auth.middleware.js', () => ({
   authMiddleware: (req, res, next) => {
     req.user = { id: 1, email: 'test@example.com' };
     next();
-  }
+  },
+  adminMiddleware: (req, res, next) => next()
 }));
 
 // Mock database
 jest.unstable_mockModule('../src/db/connection.js', () => ({
   pool: {
     query: jest.fn()
+  },
+  db: {
+    query: jest.fn(),
+    getOne: jest.fn(),
+    getMany: jest.fn()
   }
+}));
+
+// Mock rate limiter
+jest.unstable_mockModule('../src/middleware/rateLimit.middleware.js', () => ({
+  generationLimiter: (req, res, next) => next(),
+  uploadLimiter: (req, res, next) => next(),
+  globalLimiter: (req, res, next) => next(),
+  authLimiter: (req, res, next) => next()
 }));
 
 // Mock orchestrator
@@ -51,6 +65,14 @@ jest.unstable_mockModule('../src/services/claude.service.js', () => ({
   checkHealth: jest.fn(() => ({ configured: true }))
 }));
 
+// Mock rating service
+jest.unstable_mockModule('../src/services/rating.service.js', () => ({
+  getLearningStats: jest.fn().mockResolvedValue({ total_ratings: 0 }),
+  rateLanding: jest.fn().mockResolvedValue({ rating: {}, landingStats: {} }),
+  getLandingRatings: jest.fn().mockResolvedValue([]),
+  getLandingAvgRating: jest.fn().mockResolvedValue(null)
+}));
+
 // Mock logger
 jest.unstable_mockModule('../src/utils/logger.js', () => ({
   log: {
@@ -59,6 +81,11 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
     warn: jest.fn(),
     debug: jest.fn()
   }
+}));
+
+// Mock websocket handler
+jest.unstable_mockModule('../src/websocket/handler.js', () => ({
+  sendLandingUpdate: jest.fn()
 }));
 
 // Import after mocking

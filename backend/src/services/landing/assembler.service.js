@@ -11,7 +11,42 @@ import { log } from '../../utils/logger.js';
  */
 
 // Track in-progress assemblies to prevent concurrent writes
+// Store { startTime, inProgress } to distinguish active vs stale locks
 const assemblyLocks = new Map();
+
+// Lock timeout in milliseconds (30 seconds - assembly should complete quickly)
+// This is much shorter than before to prevent long stale locks
+const LOCK_TIMEOUT_MS = 30 * 1000;
+
+// Cleanup stale locks periodically (every 1 minute)
+// CRITICAL: Only clean up locks where inProgress is false OR startTime is very old (2+ min)
+setInterval(() => {
+  const now = Date.now();
+  const staleKeys = [];
+
+  for (const [key, lock] of assemblyLocks.entries()) {
+    // Only remove if: lock is NOT actively in progress AND older than timeout
+    // OR if it's been running for more than 2 minutes (stuck process)
+    const age = now - lock.startTime;
+    const isStuck = age > 2 * 60 * 1000; // 2 minutes = definitely stuck
+
+    if (!lock.inProgress || isStuck) {
+      if (age > LOCK_TIMEOUT_MS) {
+        staleKeys.push(key);
+      }
+    }
+  }
+
+  for (const key of staleKeys) {
+    const lock = assemblyLocks.get(key);
+    log.warn('Removing stale assembly lock', {
+      key,
+      ageMs: now - lock.startTime,
+      wasInProgress: lock.inProgress
+    });
+    assemblyLocks.delete(key);
+  }
+}, 60 * 1000);
 
 /**
  * Get default sound files with absolute paths
@@ -102,17 +137,25 @@ export async function assembleLanding(params) {
 
   // CRITICAL: Prevent concurrent writes to same landing
   const lockKey = `${userId}:${landingId}`;
-  if (assemblyLocks.has(lockKey)) {
+  const existingLock = assemblyLocks.get(lockKey);
+
+  if (existingLock && existingLock.inProgress) {
     log.warn('Concurrent assembly attempt blocked', { userId, landingId });
     throw new Error('Assembly already in progress for this landing');
   }
 
-  assemblyLocks.set(lockKey, Date.now());
+  // Set lock with inProgress=true to prevent cleanup from removing it
+  assemblyLocks.set(lockKey, { startTime: Date.now(), inProgress: true });
 
   try {
     return await _doAssembleLanding(params);
   } finally {
-    // Always release lock
+    // Mark as not in progress (cleanup will remove later)
+    const lock = assemblyLocks.get(lockKey);
+    if (lock) {
+      lock.inProgress = false;
+    }
+    // Delete immediately since we're done
     assemblyLocks.delete(lockKey);
   }
 }
@@ -288,16 +331,26 @@ async function _doAssembleLanding(params) {
   await fs.writeFile(htmlPath, processedHtml, 'utf-8');
   log.info('HTML written', { htmlPath });
 
-  // Write metadata
+  // Write metadata with ALL important fields for recovery/debugging
   const metadata = {
     landingId,
     userId,
     createdAt: new Date().toISOString(),
     analysis: {
       slotName: analysis?.slotName,
+      isRealSlot: analysis?.isRealSlot,
       mechanicType: analysis?.mechanicType,
+      mechanicDescription: analysis?.mechanicDescription,
       language: analysis?.language,
-      prizes: analysis?.prizes
+      prizes: analysis?.prizes,
+      offerUrl: analysis?.offerUrl,
+      theme: analysis?.theme,
+      style: analysis?.style,
+      colorSuggestion: analysis?.colorSuggestion,
+      themeSuggestion: analysis?.themeSuggestion,
+      assetsNeeded: analysis?.assetsNeeded,
+      soundsNeeded: analysis?.soundsNeeded,
+      confidence: analysis?.confidence
     },
     assets: Object.keys(assetPaths),
     sounds: Object.keys(soundPaths)

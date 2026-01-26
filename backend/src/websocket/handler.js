@@ -4,6 +4,7 @@ import { config } from '../config/env.js';
 import { log } from '../utils/logger.js';
 import { pool } from '../db/connection.js';
 import * as orchestrator from '../services/landing/orchestrator.service.js';
+import { checkWebSocketRateLimit } from '../middleware/rateLimit.middleware.js';
 
 // Хранилище соединений по chatId
 const connections = new Map(); // chatId -> Set<WebSocket>
@@ -37,6 +38,17 @@ export function initWebSocket(server) {
  * Обработка нового соединения
  */
 function handleConnection(ws, req) {
+  // Rate limit check for WebSocket connections
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+                   req.socket.remoteAddress ||
+                   'unknown';
+
+  if (checkWebSocketRateLimit(clientIp)) {
+    log.warn('WebSocket connection rate limited', { ip: clientIp });
+    ws.close(4029, 'Too Many Requests');
+    return;
+  }
+
   // Получаем параметры из URL
   const url = new URL(req.url, `http://${req.headers.host}`);
   const token = url.searchParams.get('token');
@@ -51,7 +63,7 @@ function handleConnection(ws, req) {
     const decoded = jwt.verify(token, config.jwtSecret);
     userId = decoded.userId;
   } catch (error) {
-    log.warn('WebSocket auth failed', { error: error.message });
+    log.warn('WebSocket auth failed', { error: error.message, ip: clientIp });
     ws.close(4001, 'Unauthorized');
     return;
   }

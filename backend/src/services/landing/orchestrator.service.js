@@ -22,6 +22,7 @@ export const STATES = {
   EXTRACTING_PALETTE: 'extracting_palette',
   GENERATING_ASSETS: 'generating_assets',
   REMOVING_BACKGROUNDS: 'removing_backgrounds',
+  FETCHING_SOUNDS: 'fetching_sounds',  // NEW: Separate state for sounds (fixes state machine regression)
   GENERATING_CODE: 'generating_code',
   ASSEMBLING: 'assembling',
   COMPLETE: 'complete',
@@ -195,6 +196,7 @@ class LandingSession {
       [STATES.EXTRACTING_PALETTE]: 'Извлекаю цветовую палитру...',
       [STATES.GENERATING_ASSETS]: 'Генерирую ассеты...',
       [STATES.REMOVING_BACKGROUNDS]: 'Удаляю фоны с ассетов...',
+      [STATES.FETCHING_SOUNDS]: 'Ищу звуковые эффекты...',
       [STATES.GENERATING_CODE]: 'Генерирую HTML/CSS/JS...',
       [STATES.ASSEMBLING]: 'Собираю ZIP архив...',
       [STATES.COMPLETE]: 'Готово!',
@@ -427,8 +429,8 @@ export async function generateLanding(session, request) {
     // ============================================
     // STEP 5.5: Fetch sounds dynamically from Pixabay (FULL API USAGE)
     // ============================================
-    session.setState(STATES.GENERATING_ASSETS, {
-      progress: 65,  // FIXED: Must be > 60 (REMOVING_BACKGROUNDS progress)
+    session.setState(STATES.FETCHING_SOUNDS, {
+      progress: 69,  // FIXED: After REMOVING_BACKGROUNDS (68) - strict monotonic
       message: 'Ищу звуковые эффекты...'
     });
 
@@ -451,8 +453,8 @@ export async function generateLanding(session, request) {
           count: Object.keys(sounds).length,
           paths: Object.values(sounds)
         });
-        session.setState(STATES.GENERATING_ASSETS, {
-          progress: 68,  // FIXED: Progress must increase monotonically
+        session.setState(STATES.FETCHING_SOUNDS, {
+          progress: 69,  // Same progress level (sounds search is fast)
           message: `Звуки готовы: ${Object.keys(sounds).join(', ')}`
         });
       } else {
@@ -558,6 +560,7 @@ export async function generateLanding(session, request) {
           generated_html = EXCLUDED.generated_html,
           features = EXCLUDED.features,
           updated_at = NOW()
+        WHERE landings.user_id = EXCLUDED.user_id
         RETURNING id
       `, [
         session.id,
@@ -841,40 +844,8 @@ function getAssetPlan(mechanicType, analysis) {
   return plans[mechanicType] || plans[MECHANICS.WHEEL];
 }
 
-/**
- * Get sound keywords based on mechanic type and theme
- * This enables FULL Pixabay API usage for dynamic sound fetching
- */
-function getSoundKeywords(mechanicType, theme) {
-  const baseKeywords = {
-    [MECHANICS.WHEEL]: ['wheel spin', 'roulette', 'casino win', 'jackpot celebration'],
-    [MECHANICS.BOXES]: ['open box', 'mystery reveal', 'magic unwrap', 'gift opening'],
-    [MECHANICS.CRASH]: ['footsteps', 'danger alert', 'success chime', 'game over'],
-    [MECHANICS.BOARD]: ['dice roll', 'board game', 'move piece', 'victory fanfare'],
-    [MECHANICS.SCRATCH]: ['scratch paper', 'reveal prize', 'card scratch', 'winning sound'],
-    [MECHANICS.LOADER]: ['loading', 'progress', 'success notification'],
-    [MECHANICS.SLOT]: ['slot machine', 'reels spinning', 'jackpot', 'coins falling']
-  };
-
-  // Get base keywords for mechanic
-  const keywords = baseKeywords[mechanicType] || baseKeywords[MECHANICS.WHEEL];
-
-  // Add theme-specific keywords
-  if (theme) {
-    const themeLower = theme.toLowerCase();
-    if (themeLower.includes('egypt') || themeLower.includes('pyramid')) {
-      keywords.push('ancient mystery', 'egyptian');
-    } else if (themeLower.includes('fruit') || themeLower.includes('classic')) {
-      keywords.push('fruit machine', 'classic slot');
-    } else if (themeLower.includes('gold') || themeLower.includes('treasure')) {
-      keywords.push('coins gold', 'treasure chest');
-    } else if (themeLower.includes('space') || themeLower.includes('galaxy')) {
-      keywords.push('space ambient', 'sci-fi');
-    }
-  }
-
-  return keywords;
-}
+// NOTE: getSoundKeywords() was removed - it was defined but never called
+// Sound themes are now determined dynamically from analysis.soundsNeeded in generateLanding()
 
 /**
  * Build prompt for asset generation

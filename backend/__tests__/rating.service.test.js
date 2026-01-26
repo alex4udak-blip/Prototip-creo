@@ -177,9 +177,10 @@ describe('Rating Service', () => {
 
   describe('getLandingRatings', () => {
     it('should fetch all ratings for a landing', async () => {
+      // Changed: user_email -> user_name for privacy protection
       const mockRatings = [
-        { id: 1, landing_id: 100, user_id: 1, score: 5, user_email: 'user1@test.com' },
-        { id: 2, landing_id: 100, user_id: 2, score: 4, user_email: 'user2@test.com' }
+        { id: 1, landing_id: 100, user_id: 1, score: 5, user_name: 'User One' },
+        { id: 2, landing_id: 100, user_id: 2, score: 4, user_name: 'User Two' }
       ];
 
       mockQuery.mockResolvedValueOnce({ rows: mockRatings });
@@ -188,7 +189,7 @@ describe('Rating Service', () => {
 
       expect(result).toHaveLength(2);
       expect(result[0].score).toBe(5);
-      expect(result[0].user_email).toBe('user1@test.com');
+      expect(result[0].user_name).toBe('User One');
       expect(mockQuery).toHaveBeenCalledTimes(1);
     });
 
@@ -208,13 +209,15 @@ describe('Rating Service', () => {
       expect(mockQuery.mock.calls[0][0]).toContain('ORDER BY lr.created_at DESC');
     });
 
-    it('should join with users table for email', async () => {
+    it('should join with users table for name (not email for privacy)', async () => {
       mockQuery.mockResolvedValueOnce({ rows: [] });
 
       await ratingService.getLandingRatings(100);
 
       expect(mockQuery.mock.calls[0][0]).toContain('LEFT JOIN users u');
-      expect(mockQuery.mock.calls[0][0]).toContain('u.email as user_email');
+      expect(mockQuery.mock.calls[0][0]).toContain('u.name as user_name');
+      // Verify email is NOT exposed
+      expect(mockQuery.mock.calls[0][0]).not.toContain('u.email');
     });
   });
 
@@ -439,45 +442,8 @@ describe('Rating Service', () => {
     });
   });
 
-  describe('getSuccessfulPatterns', () => {
-    it('should return patterns for high-rated generations', async () => {
-      const mockPatterns = [
-        { mechanic_type: 'wheel', slot_name: 'Fortune', final_score: 5 },
-        { mechanic_type: 'wheel', slot_name: 'Lucky', final_score: 4.5 }
-      ];
-
-      mockQuery.mockResolvedValueOnce({ rows: mockPatterns });
-
-      const result = await ratingService.getSuccessfulPatterns('wheel', 4);
-
-      expect(result).toHaveLength(2);
-      expect(result[0].final_score).toBe(5);
-    });
-
-    it('should use default minScore of 4', async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [] });
-
-      await ratingService.getSuccessfulPatterns('wheel');
-
-      expect(mockQuery.mock.calls[0][1]).toEqual(['wheel', 4]);
-    });
-
-    it('should order by final_score DESC', async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [] });
-
-      await ratingService.getSuccessfulPatterns('wheel');
-
-      expect(mockQuery.mock.calls[0][0]).toContain('ORDER BY gf.final_score DESC');
-    });
-
-    it('should limit to 20 results', async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [] });
-
-      await ratingService.getSuccessfulPatterns('wheel');
-
-      expect(mockQuery.mock.calls[0][0]).toContain('LIMIT 20');
-    });
-  });
+  // NOTE: getSuccessfulPatterns tests removed - function was removed from production
+  // as it was never called and the successful_patterns column was never populated
 
   describe('addCuratedExample', () => {
     it('should create a curated example successfully', async () => {
@@ -676,7 +642,7 @@ describe('Rating Service', () => {
       expect(defaultExport.getBestExamplesForMechanic).toBeDefined();
       expect(defaultExport.recordGenerationFeedback).toBeDefined();
       expect(defaultExport.updateGenerationFeedbackScore).toBeDefined();
-      expect(defaultExport.getSuccessfulPatterns).toBeDefined();
+      // getSuccessfulPatterns removed - was never used
       expect(defaultExport.addCuratedExample).toBeDefined();
       expect(defaultExport.markExampleUsed).toBeDefined();
       expect(defaultExport.getLearningStats).toBeDefined();

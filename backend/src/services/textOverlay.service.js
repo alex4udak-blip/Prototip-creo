@@ -11,6 +11,16 @@ import { log } from '../utils/logger.js';
  */
 
 /**
+ * Max prompt length to process (prevent DoS with very long inputs)
+ */
+const MAX_PROMPT_LENGTH = 10000;
+
+/**
+ * Max texts to extract from a prompt
+ */
+const MAX_EXTRACTED_TEXTS = 20;
+
+/**
  * Извлечь текст из промпта
  * Ищет текст в кавычках (русских и английских)
  *
@@ -18,28 +28,46 @@ import { log } from '../utils/logger.js';
  * @returns {Array} Массив найденных текстов [{text, type}]
  */
 export function extractTextFromPrompt(prompt) {
+  // Input validation and length limit
+  if (!prompt || typeof prompt !== 'string') {
+    return [];
+  }
+
+  // Truncate very long prompts to prevent DoS
+  const safePrompt = prompt.slice(0, MAX_PROMPT_LENGTH);
   const texts = [];
 
-  // Регулярки для разных типов кавычек
-  // "text", «text», 'text', „text"
+  // Регулярки для разных типов кавычек (no duplicates)
+  // These patterns use negated character classes which are ReDoS-safe
   const quotePatterns = [
-    /"([^"]+)"/g,           // "text"
-    /«([^»]+)»/g,           // «text»
-    /'([^']+)'/g,           // 'text'
-    /„([^"]+)"/g,           // „text"
-    /"([^"]+)"/g,           // "text" (smart quotes)
+    /"([^"]+)"/g,           // "text" (ASCII double quotes)
+    /«([^»]+)»/g,           // «text» (French/Russian guillemets)
+    /'([^']+)'/g,           // 'text' (ASCII single quotes)
+    /„([^"]+)"/g,           // „text" (German low-high quotes)
+    /"([^"]+)"/g,           // "text" (curly quotes)
   ];
 
   for (const pattern of quotePatterns) {
+    // Reset regex lastIndex to start from beginning
+    pattern.lastIndex = 0;
     let match;
-    while ((match = pattern.exec(prompt)) !== null) {
+    let matchCount = 0;
+
+    // Limit matches per pattern to prevent excessive iterations
+    while ((match = pattern.exec(safePrompt)) !== null && matchCount < MAX_EXTRACTED_TEXTS) {
+      matchCount++;
       const text = match[1].trim();
       if (text && text.length > 0 && text.length <= 50) {
         // Определяем тип текста по контексту
-        const type = guessTextType(text, prompt);
+        const type = guessTextType(text, safePrompt);
         texts.push({ text, type });
       }
+
+      // Early exit if we have enough texts
+      if (texts.length >= MAX_EXTRACTED_TEXTS) break;
     }
+
+    if (texts.length >= MAX_EXTRACTED_TEXTS) break;
   }
 
   // Убираем дубликаты
@@ -241,7 +269,22 @@ export async function overlayTextOnImage(imageUrl, texts) {
   try {
     // Получаем путь к файлу
     const filename = imageUrl.replace('/uploads/', '');
+
+    // Security: Validate filename to prevent path traversal
+    if (!filename || filename.includes('..') || filename.includes('\0') || !/^[a-zA-Z0-9_.-]+$/.test(filename)) {
+      log.warn('Invalid filename for text overlay', { imageUrl, filename });
+      return imageUrl;
+    }
+
     const filepath = path.join(config.storagePath, filename);
+
+    // Security: Verify resolved path is within storage directory
+    const resolvedPath = path.resolve(filepath);
+    const normalizedBase = path.resolve(config.storagePath);
+    if (!resolvedPath.startsWith(normalizedBase + path.sep)) {
+      log.warn('Path traversal attempt in text overlay', { imageUrl, resolvedPath });
+      return imageUrl;
+    }
 
     if (!fs.existsSync(filepath)) {
       log.warn('Image file not found for text overlay', { filepath });
@@ -346,8 +389,30 @@ export async function overlayPngText(baseImageUrl, textImageUrl, position = 'cen
     // Получаем пути к файлам
     const baseFilename = baseImageUrl.replace('/uploads/', '');
     const textFilename = textImageUrl.replace('/uploads/', '');
+
+    // Security: Validate filenames to prevent path traversal
+    const filenamePattern = /^[a-zA-Z0-9_.-]+$/;
+    if (!baseFilename || baseFilename.includes('..') || baseFilename.includes('\0') || !filenamePattern.test(baseFilename)) {
+      log.warn('Invalid base filename for PNG overlay', { baseImageUrl, baseFilename });
+      return baseImageUrl;
+    }
+    if (!textFilename || textFilename.includes('..') || textFilename.includes('\0') || !filenamePattern.test(textFilename)) {
+      log.warn('Invalid text filename for PNG overlay', { textImageUrl, textFilename });
+      return baseImageUrl;
+    }
+
     const basePath = path.join(config.storagePath, baseFilename);
     const textPath = path.join(config.storagePath, textFilename);
+
+    // Security: Verify resolved paths are within storage directory
+    const normalizedBase = path.resolve(config.storagePath);
+    const resolvedBasePath = path.resolve(basePath);
+    const resolvedTextPath = path.resolve(textPath);
+
+    if (!resolvedBasePath.startsWith(normalizedBase + path.sep) || !resolvedTextPath.startsWith(normalizedBase + path.sep)) {
+      log.warn('Path traversal attempt in PNG overlay', { baseImageUrl, textImageUrl });
+      return baseImageUrl;
+    }
 
     if (!fs.existsSync(basePath) || !fs.existsSync(textPath)) {
       log.warn('Image files not found for PNG overlay', { basePath, textPath });

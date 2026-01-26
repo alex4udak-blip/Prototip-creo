@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware as auth, adminMiddleware } from '../middleware/auth.middleware.js';
+import { generationLimiter, uploadLimiter } from '../middleware/rateLimit.middleware.js';
 import { log } from '../utils/logger.js';
 import { pool } from '../db/connection.js';
 import * as orchestrator from '../services/landing/orchestrator.service.js';
@@ -112,12 +113,31 @@ router.get('/templates', auth, async (req, res) => {
 });
 
 /**
+ * GET /api/landing/v2/stats/learning
+ * Get learning statistics (how the system is improving)
+ * IMPORTANT: Must be BEFORE dynamic :landingId routes
+ */
+router.get('/stats/learning', auth, async (req, res) => {
+  try {
+    const stats = await ratingService.getLearningStats();
+    res.json(stats);
+  } catch (error) {
+    log.error('Failed to get learning stats', { error: error.message });
+    res.status(500).json({ error: 'Failed to get learning stats' });
+  }
+});
+
+/**
  * GET /api/landing/v2/list
  * List user's landings
  */
 router.get('/list', auth, async (req, res) => {
   const userId = req.user.id;
   const { limit = 20, offset = 0 } = req.query;
+
+  // Validate and sanitize pagination params
+  const safeLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
+  const safeOffset = Math.max(parseInt(offset) || 0, 0);
 
   try {
     const result = await pool.query(
@@ -128,7 +148,7 @@ router.get('/list', auth, async (req, res) => {
        WHERE user_id = $1
        ORDER BY created_at DESC
        LIMIT $2 OFFSET $3`,
-      [userId, parseInt(limit), parseInt(offset)]
+      [userId, safeLimit, safeOffset]
     );
 
     // Also get file-based landings
@@ -149,13 +169,29 @@ router.get('/list', auth, async (req, res) => {
  * POST /api/landing/v2/generate
  * Start landing page generation
  */
-router.post('/generate', auth, async (req, res) => {
+router.post('/generate', auth, generationLimiter, async (req, res) => {
   const userId = req.user.id;
   const { prompt, screenshot, prizes, offerUrl, language, mechanicType } = req.body;
 
   if (!prompt || prompt.trim().length < 5) {
     return res.status(400).json({
       error: 'Prompt must be at least 5 characters'
+    });
+  }
+
+  // Validate mechanicType if provided (whitelist)
+  const VALID_MECHANICS = ['wheel', 'boxes', 'crash', 'board', 'scratch', 'loader', 'slot'];
+  if (mechanicType && !VALID_MECHANICS.includes(mechanicType)) {
+    return res.status(400).json({
+      error: `Invalid mechanicType. Must be one of: ${VALID_MECHANICS.join(', ')}`
+    });
+  }
+
+  // Validate screenshot size (max 2MB base64 ≈ 1.5MB image)
+  const MAX_SCREENSHOT_SIZE = 2 * 1024 * 1024; // 2MB
+  if (screenshot && screenshot.length > MAX_SCREENSHOT_SIZE) {
+    return res.status(400).json({
+      error: 'Screenshot too large. Maximum size is 2MB'
     });
   }
 
@@ -211,11 +247,19 @@ router.post('/generate', auth, async (req, res) => {
  * POST /api/landing/v2/analyze
  * Analyze request without generating (for preview/validation)
  */
-router.post('/analyze', auth, async (req, res) => {
+router.post('/analyze', auth, generationLimiter, async (req, res) => {
   const { prompt, screenshot } = req.body;
 
   if (!prompt || prompt.trim().length < 5) {
     return res.status(400).json({ error: 'Prompt required' });
+  }
+
+  // Validate screenshot size (same as /generate - max 2MB)
+  const MAX_SCREENSHOT_SIZE = 2 * 1024 * 1024;
+  if (screenshot && screenshot.length > MAX_SCREENSHOT_SIZE) {
+    return res.status(400).json({
+      error: 'Screenshot too large. Maximum size is 2MB'
+    });
   }
 
   try {
@@ -531,20 +575,6 @@ router.get('/:landingId/rating', auth, async (req, res) => {
   } catch (error) {
     log.error('Failed to get rating', { error: error.message });
     res.status(500).json({ error: 'Failed to get rating' });
-  }
-});
-
-/**
- * GET /api/landing/v2/stats/learning
- * Get learning statistics (how the system is improving)
- */
-router.get('/stats/learning', auth, async (req, res) => {
-  try {
-    const stats = await ratingService.getLearningStats();
-    res.json(stats);
-  } catch (error) {
-    log.error('Failed to get learning stats', { error: error.message });
-    res.status(500).json({ error: 'Failed to get learning stats' });
   }
 });
 

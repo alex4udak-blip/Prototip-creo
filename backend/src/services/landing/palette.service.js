@@ -67,101 +67,17 @@ export async function extractPalette(imageBuffer) {
   }
 }
 
-/**
- * Analyze image and extract detailed color information
- * @param {Buffer} imageBuffer - Image data
- * @returns {Promise<Object>} Detailed color analysis
- */
-export async function analyzeColors(imageBuffer) {
-  const VibrantClass = await getVibrant();
-
-  if (!VibrantClass) {
-    return {
-      palette: DEFAULT_PALETTE,
-      swatches: [],
-      dominantColor: DEFAULT_PALETTE.primary
-    };
-  }
-
-  try {
-    const palette = await VibrantClass.from(imageBuffer).getPalette();
-
-    const swatches = Object.entries(palette)
-      .filter(([_, swatch]) => swatch)
-      .map(([name, swatch]) => ({
-        name,
-        hex: swatch.hex,
-        population: swatch.population,
-        rgb: swatch.rgb,
-        hsl: swatch.hsl,
-        bodyTextColor: swatch.bodyTextColor,
-        titleTextColor: swatch.titleTextColor
-      }))
-      .sort((a, b) => b.population - a.population);
-
-    const dominantColor = swatches[0]?.hex || DEFAULT_PALETTE.primary;
-
-    return {
-      palette: await extractPalette(imageBuffer),
-      swatches,
-      dominantColor
-    };
-  } catch (error) {
-    log.error('Color analysis failed', { error: error.message });
-    return {
-      palette: DEFAULT_PALETTE,
-      swatches: [],
-      dominantColor: DEFAULT_PALETTE.primary
-    };
-  }
-}
-
-/**
- * Generate CSS custom properties from palette
- * @param {Object} palette - Color palette
- * @returns {string} CSS custom properties
- */
-export function generateCssVariables(palette) {
-  return `:root {
-  --color-primary: ${palette.primary};
-  --color-secondary: ${palette.secondary};
-  --color-accent: ${palette.accent};
-  --color-background: ${palette.background};
-  --color-muted: ${palette.muted};
-  --color-light: ${palette.light};
-}`;
-}
-
-/**
- * Get contrasting text color for background
- * @param {string} hexColor - Background color
- * @returns {string} Text color (black or white)
- */
-export function getContrastingColor(hexColor) {
-  // Convert hex to RGB
-  const hex = hexColor.replace('#', '');
-  const r = parseInt(hex.substr(0, 2), 16);
-  const g = parseInt(hex.substr(2, 2), 16);
-  const b = parseInt(hex.substr(4, 2), 16);
-
-  // Calculate luminance
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-
-  return luminance > 0.5 ? '#000000' : '#FFFFFF';
-}
-
-/**
- * Generate gradient from palette
- * @param {Object} palette - Color palette
- * @param {string} direction - Gradient direction
- * @returns {string} CSS gradient
- */
-export function generateGradient(palette, direction = 'to bottom right') {
-  return `linear-gradient(${direction}, ${palette.primary}, ${palette.secondary})`;
-}
+// NOTE: The following functions were removed as they are not used in production:
+// - analyzeColors() - exported but never imported
+// - generateCssVariables() - exported but never imported
+// - getContrastingColor() - exported but never imported
+// - generateGradient() - exported but never imported
+// - detectTheme() - exported but never imported
+// They remain available in git history if needed for future features.
 
 /**
  * Theme presets based on common slot themes
+ * Kept for reference - Claude uses these names in analysis
  */
 export const THEME_PRESETS = {
   egyptian: {
@@ -214,46 +130,8 @@ export const THEME_PRESETS = {
   }
 };
 
-/**
- * Get theme preset by name or detect from slot name
- * @param {string} slotName - Slot name
- * @returns {Object} Theme preset
- */
-export function detectTheme(slotName) {
-  const name = (slotName || '').toLowerCase();
-
-  if (name.includes('egypt') || name.includes('pharaoh') || name.includes('cleopatra')) {
-    return THEME_PRESETS.egyptian;
-  }
-  if (name.includes('zeus') || name.includes('olympus') || name.includes('greek') || name.includes('god')) {
-    return THEME_PRESETS.greek;
-  }
-  if (name.includes('dragon') || name.includes('fortune') || name.includes('lucky') || name.includes('china')) {
-    return THEME_PRESETS.asian;
-  }
-  if (name.includes('jungle') || name.includes('amazon') || name.includes('safari') || name.includes('gorilla')) {
-    return THEME_PRESETS.jungle;
-  }
-  if (name.includes('candy') || name.includes('sweet') || name.includes('bonanza') || name.includes('fruit')) {
-    return THEME_PRESETS.candy;
-  }
-  if (name.includes('neon') || name.includes('cyber') || name.includes('retro') || name.includes('laser')) {
-    return THEME_PRESETS.neon;
-  }
-  if (name.includes('ocean') || name.includes('fish') || name.includes('sea') || name.includes('pearl')) {
-    return THEME_PRESETS.ocean;
-  }
-
-  return THEME_PRESETS.classic;
-}
-
 export default {
   extractPalette,
-  analyzeColors,
-  generateCssVariables,
-  getContrastingColor,
-  generateGradient,
-  detectTheme,
   THEME_PRESETS,
   DEFAULT_PALETTE
 };

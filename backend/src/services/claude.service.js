@@ -85,10 +85,115 @@ function extractJSON(text) {
   }
 }
 
+// Retry configuration
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  initialDelayMs: 1000,
+  maxDelayMs: 10000,
+  retryableErrors: ['overloaded_error', 'rate_limit_error', 'api_error', 'timeout']
+};
+
+// API timeout in milliseconds (2 minutes)
+const API_TIMEOUT_MS = 120000;
+
+/**
+ * Sleep for specified milliseconds
+ * @param {number} ms - Milliseconds to sleep
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Calculate exponential backoff delay
+ * @param {number} attempt - Current attempt number (0-indexed)
+ * @returns {number} Delay in milliseconds
+ */
+function getBackoffDelay(attempt) {
+  const delay = RETRY_CONFIG.initialDelayMs * Math.pow(2, attempt);
+  // Add jitter (±20%)
+  const jitter = delay * 0.2 * (Math.random() * 2 - 1);
+  return Math.min(delay + jitter, RETRY_CONFIG.maxDelayMs);
+}
+
+/**
+ * Check if error is retryable
+ * @param {Error} error - Error to check
+ * @returns {boolean} Whether error is retryable
+ */
+function isRetryableError(error) {
+  const errorType = error.error?.type || error.type || '';
+  const message = error.message || '';
+
+  // Check known retryable error types
+  if (RETRY_CONFIG.retryableErrors.some(e => errorType.includes(e))) {
+    return true;
+  }
+
+  // Check for network/timeout errors
+  if (message.includes('timeout') || message.includes('ETIMEDOUT') ||
+      message.includes('ECONNRESET') || message.includes('socket hang up')) {
+    return true;
+  }
+
+  // Check for 5xx server errors
+  if (error.status >= 500 && error.status < 600) {
+    return true;
+  }
+
+  // Rate limit (429)
+  if (error.status === 429) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Execute API call with retry logic and timeout
+ * @param {Function} apiCall - Function that returns a promise
+ * @param {string} operationName - Name for logging
+ * @returns {Promise} API response
+ */
+async function withRetry(apiCall, operationName) {
+  let lastError;
+
+  for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    try {
+      // Create timeout wrapper
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`${operationName} timed out after ${API_TIMEOUT_MS}ms`)), API_TIMEOUT_MS);
+      });
+
+      // Race between API call and timeout
+      return await Promise.race([apiCall(), timeoutPromise]);
+    } catch (error) {
+      lastError = error;
+
+      if (attempt < RETRY_CONFIG.maxRetries && isRetryableError(error)) {
+        const delay = getBackoffDelay(attempt);
+        log.warn(`${operationName}: Retrying after error`, {
+          attempt: attempt + 1,
+          maxRetries: RETRY_CONFIG.maxRetries,
+          delayMs: Math.round(delay),
+          errorType: error.error?.type || error.type,
+          errorMessage: error.message
+        });
+        await sleep(delay);
+      } else {
+        break;
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 function getClient() {
   if (!anthropic && config.anthropicApiKey) {
     anthropic = new Anthropic({
-      apiKey: config.anthropicApiKey
+      apiKey: config.anthropicApiKey,
+      timeout: API_TIMEOUT_MS
     });
   }
   if (!anthropic) {
@@ -341,17 +446,21 @@ export async function analyzeRequest(prompt, screenshotBase64 = null) {
 
   try {
     // Use 2025-2026 best practices: XML-structured system prompt
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      // Enable Extended Thinking for better analysis (Chain-of-Thought)
-      thinking: {
-        type: 'enabled',
-        budget_tokens: THINKING_BUDGET
-      },
-      system: ANALYSIS_SYSTEM_PROMPT,
-      messages
-    });
+    // Wrap in retry logic for resilience
+    const response = await withRetry(
+      () => client.messages.create({
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        // Enable Extended Thinking for better analysis (Chain-of-Thought)
+        thinking: {
+          type: 'enabled',
+          budget_tokens: THINKING_BUDGET
+        },
+        system: ANALYSIS_SYSTEM_PROMPT,
+        messages
+      }),
+      'Claude analyzeRequest'
+    );
 
     // Extract thinking and response
     let thinkingContent = null;
@@ -461,12 +570,16 @@ export async function generateLandingCode(spec, assets, colors) {
   });
 
   try {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: prompt }]
-    });
+    // Wrap in retry logic for resilience
+    const response = await withRetry(
+      () => client.messages.create({
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: prompt }]
+      }),
+      'Claude generateLandingCode'
+    );
 
     let html = response.content[0]?.text || '';
 
@@ -545,6 +658,9 @@ export async function generateLandingCodeStream(spec, assets, colors, onChunk) {
   let html = '';
 
   try {
+    // Note: Streaming doesn't use withRetry wrapper since it handles partial data
+    // The stream itself has internal retry logic via Anthropic SDK
+    // We set timeout on the client level
     const stream = await client.messages.stream({
       model: MODEL,
       max_tokens: MAX_TOKENS,
@@ -580,47 +696,8 @@ export async function generateLandingCodeStream(spec, assets, colors, onChunk) {
   }
 }
 
-/**
- * Generate game mechanic logic based on type
- * @param {string} mechanicType - Type of game
- * @param {Object} config - Game configuration
- * @returns {Promise<string>} JavaScript code
- */
-export async function generateGameLogic(mechanicType, gameConfig) {
-  const client = getClient();
-
-  const prompt = `Generate JavaScript game logic for a ${mechanicType} game:
-
-Configuration:
-${JSON.stringify(gameConfig, null, 2)}
-
-Requirements:
-- Player MUST always win
-- Include all animations
-- Handle touch events for mobile
-- Play sounds at appropriate moments
-- Redirect to CONFIG.offerUrl after win
-- Use requestAnimationFrame for smooth animations
-
-Return ONLY the JavaScript code (no HTML, no explanations).`;
-
-  try {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: 'You are a JavaScript game developer. Generate clean, efficient code.',
-      messages: [{ role: 'user', content: prompt }]
-    });
-
-    let js = response.content[0]?.text || '';
-    js = js.replace(/^```javascript?\n?/i, '').replace(/\n?```$/i, '');
-
-    return js;
-  } catch (error) {
-    log.error('Claude: Game logic generation failed', { error: error.message });
-    throw error;
-  }
-}
+// NOTE: generateGameLogic() was removed - it was never used in production
+// Game logic is now generated inline within generateLandingCodeStream()
 
 /**
  * Build content array for analysis request
@@ -666,8 +743,7 @@ export function checkHealth() {
 
 export default {
   analyzeRequest,
-  generateLandingCode,
-  generateLandingCodeStream,
-  generateGameLogic,
+  generateLandingCode,  // Non-streaming fallback (rarely used)
+  generateLandingCodeStream,  // Main streaming function
   checkHealth
 };

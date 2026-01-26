@@ -92,10 +92,26 @@ router.post('/',
 
           for (const refUrl of lastUserMsgWithRef.reference_urls.slice(0, 4)) {
             try {
+              // Extract filename and validate path traversal
               const filename = refUrl.includes('/uploads/')
                 ? refUrl.split('/uploads/').pop()
                 : refUrl;
+
+              // Security: Validate filename format (UUID-based from uploads)
+              if (!filename || filename.includes('..') || filename.includes('\0') || !/^[a-zA-Z0-9_.-]+$/.test(filename)) {
+                log.warn('Invalid filename in reference URL', { refUrl, filename });
+                continue;
+              }
+
               const filepath = path.join(config.storagePath, filename);
+
+              // Security: Verify resolved path is within storage directory
+              const resolvedPath = path.resolve(filepath);
+              const normalizedBase = path.resolve(config.storagePath);
+              if (!resolvedPath.startsWith(normalizedBase + path.sep)) {
+                log.warn('Path traversal attempt in reference URL', { refUrl, resolvedPath });
+                continue;
+              }
 
               if (fs.existsSync(filepath)) {
                 const base64 = fs.readFileSync(filepath).toString('base64');

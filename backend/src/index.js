@@ -8,6 +8,7 @@ import { config } from './config/env.js';
 import { testConnection } from './db/client.js';
 import { initWebSocket, getConnectionStats } from './websocket/handler.js';
 import { log } from './utils/logger.js';
+import { globalLimiter, authLimiter, generationLimiter } from './middleware/rateLimit.middleware.js';
 
 // Routes
 import authRoutes from './routes/auth.routes.js';
@@ -34,6 +35,12 @@ app.use(cors({
 
 // JSON body parser
 app.use(express.json({ limit: '10mb' }));
+
+// Trust proxy for correct IP detection (Railway, Cloudflare, etc.)
+app.set('trust proxy', 1);
+
+// Global rate limiter - applies to all API routes
+app.use('/api', globalLimiter);
 
 // Статические файлы (uploads)
 const uploadsPath = path.resolve(config.storagePath);
@@ -79,16 +86,16 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
-// Auth routes
-app.use('/api/auth', authRoutes);
+// Auth routes (with stricter rate limiting for brute force protection)
+app.use('/api/auth', authLimiter, authRoutes);
 
 // Chat routes
 app.use('/api/chats', chatRoutes);
 
-// Generate routes
-app.use('/api/generate', generateRoutes);
+// Generate routes (with generation-specific rate limiting)
+app.use('/api/generate', generationLimiter, generateRoutes);
 
-// Landing routes v2
+// Landing routes v2 (with generation-specific rate limiting for generate endpoints)
 app.use('/api/landing/v2', landingV2Routes);
 
 // ===========================================

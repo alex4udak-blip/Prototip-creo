@@ -90,12 +90,24 @@ export async function rateLanding({
 
 /**
  * Get ratings for a landing
+ * NOTE: Does NOT expose user emails for privacy protection
  */
 export async function getLandingRatings(landingId) {
   const result = await db.query(`
     SELECT
-      lr.*,
-      u.email as user_email
+      lr.id,
+      lr.landing_id,
+      lr.score,
+      lr.feedback_text,
+      lr.design_score,
+      lr.code_quality_score,
+      lr.animation_score,
+      lr.relevance_score,
+      lr.positive_aspects,
+      lr.negative_aspects,
+      lr.created_at,
+      lr.updated_at,
+      u.name as user_name
     FROM landing_ratings lr
     LEFT JOIN users u ON u.id = lr.user_id
     WHERE lr.landing_id = $1
@@ -213,27 +225,9 @@ export async function updateGenerationFeedbackScore(landingId, finalScore) {
   }
 }
 
-/**
- * Get successful patterns for a mechanic type
- * This helps understand what works well
- */
-export async function getSuccessfulPatterns(mechanicType, minScore = 4) {
-  const result = await db.query(`
-    SELECT
-      gf.mechanic_type,
-      gf.slot_name,
-      gf.examples_used,
-      gf.successful_patterns,
-      gf.final_score
-    FROM generation_feedback gf
-    WHERE gf.mechanic_type = $1
-      AND gf.final_score >= $2
-    ORDER BY gf.final_score DESC
-    LIMIT 20
-  `, [mechanicType, minScore]);
-
-  return result.rows;
-}
+// NOTE: getSuccessfulPatterns() was removed - it was exported but never called
+// The successful_patterns column in generation_feedback is also never populated
+// TODO: Implement pattern analysis for RLHF optimization in future version
 
 /**
  * Manually add a curated example (for bootstrapping)
@@ -349,7 +343,7 @@ export default {
   getBestExamplesForMechanic,
   recordGenerationFeedback,
   updateGenerationFeedbackScore,
-  getSuccessfulPatterns,
+  // getSuccessfulPatterns removed - was never used
   addCuratedExample,
   markExampleUsed,
   getLearningStats,
