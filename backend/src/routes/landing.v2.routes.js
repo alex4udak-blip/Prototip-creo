@@ -403,15 +403,41 @@ router.get('/:landingId/asset/*', async (req, res) => {
       return res.status(400).json({ error: 'Invalid characters in path' });
     }
 
-    // Check if file exists
+    // Check if file exists - try exact path first, then fallback to different extensions
+    let finalPath = fullPath;
     try {
       await fs.access(fullPath);
     } catch {
-      return res.status(404).json({ error: 'Asset not found' });
+      // File not found with exact extension - try common alternatives
+      // This handles cases where HTML has .jpg but file is .png or .webp
+      const baseName = fullPath.replace(/\.[^/.]+$/, ''); // Remove extension
+      // Image and audio extensions to try
+      const extensions = ['.png', '.webp', '.jpg', '.jpeg', '.gif', '.svg', '.mp3', '.wav', '.ogg'];
+
+      let found = false;
+      for (const ext of extensions) {
+        const altPath = baseName + ext;
+        try {
+          await fs.access(altPath);
+          finalPath = altPath;
+          found = true;
+          log.debug('Asset found with alternative extension', {
+            requested: fullPath,
+            found: altPath
+          });
+          break;
+        } catch {
+          // Try next extension
+        }
+      }
+
+      if (!found) {
+        return res.status(404).json({ error: 'Asset not found' });
+      }
     }
 
-    // Determine content type
-    const ext = path.extname(fullPath).toLowerCase();
+    // Determine content type from actual file path (may differ from requested)
+    const ext = path.extname(finalPath).toLowerCase();
     const contentTypes = {
       '.png': 'image/png',
       '.jpg': 'image/jpeg',
@@ -430,7 +456,7 @@ router.get('/:landingId/asset/*', async (req, res) => {
 
     // Stream the file
     const { createReadStream } = await import('fs');
-    const stream = createReadStream(fullPath);
+    const stream = createReadStream(finalPath);
     stream.pipe(res);
   } catch (error) {
     log.error('Failed to serve asset', { landingId, assetPath, error: error.message });
