@@ -8,7 +8,6 @@ import { config } from './config/env.js';
 import { testConnection } from './db/client.js';
 import { initWebSocket, getConnectionStats } from './websocket/handler.js';
 import { log } from './utils/logger.js';
-import { globalLimiter, authLimiter, generationLimiter } from './middleware/rateLimit.middleware.js';
 
 // Routes
 import authRoutes from './routes/auth.routes.js';
@@ -38,9 +37,6 @@ app.use(express.json({ limit: '10mb' }));
 
 // Trust proxy for correct IP detection (Railway, Cloudflare, etc.)
 app.set('trust proxy', 1);
-
-// Global rate limiter - applies to all API routes
-app.use('/api', globalLimiter);
 
 // Статические файлы (uploads)
 const uploadsPath = path.resolve(config.storagePath);
@@ -86,16 +82,16 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
-// Auth routes (with stricter rate limiting for brute force protection)
-app.use('/api/auth', authLimiter, authRoutes);
+// Auth routes
+app.use('/api/auth', authRoutes);
 
 // Chat routes
 app.use('/api/chats', chatRoutes);
 
-// Generate routes (with generation-specific rate limiting)
-app.use('/api/generate', generationLimiter, generateRoutes);
+// Generate routes
+app.use('/api/generate', generateRoutes);
 
-// Landing routes v2 (with generation-specific rate limiting for generate endpoints)
+// Landing routes v2
 app.use('/api/landing/v2', landingV2Routes);
 
 // ===========================================

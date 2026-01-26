@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { authMiddleware as auth, adminMiddleware } from '../middleware/auth.middleware.js';
-import { generationLimiter, uploadLimiter } from '../middleware/rateLimit.middleware.js';
 import { log } from '../utils/logger.js';
 import { pool } from '../db/connection.js';
 import * as orchestrator from '../services/landing/orchestrator.service.js';
@@ -169,7 +168,7 @@ router.get('/list', auth, async (req, res) => {
  * POST /api/landing/v2/generate
  * Start landing page generation
  */
-router.post('/generate', auth, generationLimiter, async (req, res) => {
+router.post('/generate', auth, async (req, res) => {
   const userId = req.user.id;
   const { prompt, screenshot, prizes, offerUrl, language, mechanicType } = req.body;
 
@@ -247,7 +246,7 @@ router.post('/generate', auth, generationLimiter, async (req, res) => {
  * POST /api/landing/v2/analyze
  * Analyze request without generating (for preview/validation)
  */
-router.post('/analyze', auth, generationLimiter, async (req, res) => {
+router.post('/analyze', auth, async (req, res) => {
   const { prompt, screenshot } = req.body;
 
   if (!prompt || prompt.trim().length < 5) {
